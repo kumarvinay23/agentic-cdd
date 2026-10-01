@@ -1,0 +1,10 @@
+{
+  "name": "agetic-cdd",
+  "private": true,
+  "description": "Agentic CDD monorepo",
+  "scripts": {
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:web": "npm --prefix apps/web run build",
+    "lint:web": "npm --prefix apps/web run lint"
+  }
+}

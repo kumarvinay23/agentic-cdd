@@ -1,0 +1,192 @@
+{
+  "meta": {
+    "source": "DiligenceIQ live reference",
+    "ui": "http://143.110.187.183:3001/deals/test2/vdr",
+    "api": "GET /api/v1/portfolios/{deal_id}/cdd/data-quality",
+    "example_deal_id": "64b083aa47f4",
+    "observed_summary": {
+      "total": 77,
+      "by_kind": {
+        "dropped": 4,
+        "conflict": 73
+      },
+      "needs_review": 77
+    },
+    "purpose": "Contract + golden examples for Agentic CDD Databook data-quality parity/verification"
+  },
+  "response_shape": {
+    "items": "list of issue objects",
+    "summary": {
+      "total": "int",
+      "by_kind": {
+        "dropped|conflict|...": "int"
+      },
+      "needs_review": "int"
+    }
+  },
+  "item_kinds": {
+    "dropped": {
+      "required": [
+        "kind",
+        "source",
+        "reason",
+        "detail"
+      ],
+      "detail": [
+        "metric",
+        "fiscal_year",
+        "value"
+      ],
+      "example_reason": "value is orders of magnitude below the series centre - a ratio, not the amount"
+    },
+    "conflict": {
+      "required": [
+        "kind",
+        "metric",
+        "fiscal_year",
+        "chosen",
+        "candidates",
+        "scope",
+        "rule"
+      ],
+      "scope_values": [
+        "across documents",
+        "within one document"
+      ],
+      "candidate_fields": [
+        "value",
+        "sources",
+        "captions",
+        "chosen",
+        "stated_by",
+        "source_facts",
+        "source_total_facts"
+      ],
+      "default_rule": "most documents stating it, then that source's coverage of this metric, then how much of the fact base the source supplies, then how plainly the caption names the metric, then the most central value"
+    }
+  },
+  "representative_items": [
+    {
+      "kind": "dropped",
+      "source": "series",
+      "reason": "value is orders of magnitude below the series centre - a ratio, not the amount",
+      "detail": {
+        "metric": "Revenue",
+        "fiscal_year": 2024,
+        "value": 81.0
+      },
+      "verify": "NRR/ratio-like numbers must not enter Revenue series; surface as dropped with reason"
+    },
+    {
+      "kind": "conflict",
+      "metric": "Revenue",
+      "fiscal_year": 2022,
+      "chosen": 1900000000.0,
+      "candidates": [
+        {
+          "value": 1900000000.0,
+          "sources": [
+            "04_Commercial_Due_Diligence.pdf"
+          ],
+          "captions": [
+            "Revenue (INR Cr)"
+          ],
+          "chosen": true,
+          "stated_by": 1,
+          "source_facts": 3,
+          "source_total_facts": 41
+        },
+        {
+          "value": 4560000000.0,
+          "sources": [
+            "01_Executive_Summary (1).pdf"
+          ],
+          "captions": [
+            "Revenue (INR Cr)"
+          ],
+          "chosen": false,
+          "stated_by": 1,
+          "source_facts": 3,
+          "source_total_facts": 24
+        }
+      ],
+      "scope": "across documents",
+      "rule": "most documents stating it, then that source's coverage of this metric, then how much of the fact base the source supplies, then how plainly the caption names the metric, then the most central value",
+      "verify": "Same metric+year, different docs \u2192 Sources disagree; UI must show candidates + chosen + allow override"
+    },
+    {
+      "kind": "conflict",
+      "metric": "Revenue Share (%)",
+      "fiscal_year": 2024,
+      "chosen": 24.0,
+      "scope": "within one document",
+      "verify": "Multiple values for same metric inside one file (segment rows) must conflict within-document",
+      "note": "candidates omitted for brevity; live payload had 5 values 5/9/24/28/34"
+    },
+    {
+      "kind": "conflict",
+      "metric": "Revenue",
+      "fiscal_year": 2024,
+      "chosen": 320.0,
+      "danger": true,
+      "candidates_summary": [
+        {
+          "value": 26.0,
+          "captions": [
+            "Revenue Churn"
+          ]
+        },
+        {
+          "value": 74.0,
+          "captions": [
+            "Gross Revenue Retention (GRR)"
+          ]
+        },
+        {
+          "value": 81.0,
+          "captions": [
+            "Net Revenue Retention (NRR)"
+          ]
+        },
+        {
+          "value": 320.0,
+          "captions": [
+            "Units Sold"
+          ],
+          "chosen": true,
+          "stated_by": 2
+        },
+        {
+          "value": 31400000000.0,
+          "captions": [
+            "Revenue"
+          ]
+        },
+        {
+          "value": 49000000000.0,
+          "captions": [
+            "Revenue"
+          ]
+        }
+      ],
+      "verify": "CRITICAL anti-goal: auto-chooser must NOT pick Units Sold (320) as Revenue when real Revenue candidates exist; require human review / better metric-identity matching"
+    }
+  ],
+  "observed_failure_modes_for_our_build": [
+    "Metric identity pollution: Units Sold / NRR / GRR / Churn appear as Revenue candidates",
+    "Unit/currency confusion: captions say Revenue (INR Cr) but values look like rupees-as-float (1.9e9) and metric sometimes named net_revenue_usd_m",
+    "Heuristic auto-choose can select wrong governing value (320 Units Sold over 31.4B/49B Revenue)",
+    "Duplicate conflict items across repeated extract passes inflate needs_review (77 items, many near-duplicates)",
+    "dropped series outliers (ratio vs amount) are valuable \u2014 keep"
+  ],
+  "acceptance_checks_when_we_build": [
+    "GET .../cdd/data-quality (or Databook equivalent) returns {items, summary}",
+    "summary.by_kind counts match items",
+    "conflict items always include metric, fiscal_year, candidates[], chosen, scope, rule",
+    "dropped items always include reason + detail.metric/fiscal_year/value",
+    "Test2-like pack surfaces Exec Summary vs Commercial DD Revenue disagreements",
+    "UI maps conflict \u2192 Sources disagree flag; dropped/outlier \u2192 Not landed or Assumption triage",
+    "User can override chosen candidate; decision audited (correct/vouch) \u2014 auto-chosen never silent-final",
+    "Metric matching requires caption/metric family gates so Units Sold cannot win a Revenue conflict"
+  ]
+}

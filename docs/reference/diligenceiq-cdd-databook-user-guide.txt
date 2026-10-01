@@ -1,0 +1,372 @@
+
+--- PAGE 1/15 ---
+ 
+ 
+CDD DATABOOK 
+Review Guide  
+How reviewers turn uploaded diligence files into a checked, traceable financial history. 
+DILIGENCEIQ PRODUCT GUIDE   ·   AUGUST 2026  
+
+--- PAGE 2/15 ---
+Contents 
+Page numbers refresh automatically when the document is opened in Word. 
+About this guide ............................................................................................................................. 3 
+1.  The workflow at a glance ........................................................................................................... 3 
+2.  Why the system refuses numbers ............................................................................................... 4 
+3.  Start in Uploaded files ................................................................................................................ 4 
+4.  Clear the four flags ..................................................................................................................... 5 
+Assumption made ............................................................................................................................................ 6 
+Sources disagree .............................................................................................................................................. 7 
+Unread ............................................................................................................................................................. 7 
+Not landed ....................................................................................................................................................... 8 
+5.  Work in Derived data ................................................................................................................. 8 
+6.  Fix a held-out row ...................................................................................................................... 9 
+7.  Use Findings as the trust ledger ................................................................................................ 11 
+8.  Rerun with intent ..................................................................................................................... 12 
+9.  When the source document must be fixed ............................................................................... 13 
+A clean schedule should have: ................................................................................................................ 13 
+10.  Current limitations ................................................................................................................. 13 
+11.  Reviewer cheat sheet ............................................................................................................. 13 
+ 
+--- PAGE 3/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page3of15 
+About this guide 
+This guide explains how DiligenceIQ turns an uploaded data room into a checked, traceable databook — 
+and where your judgement enters that process. 
+THE POINT  
+Use the databook only when the 
+evidence supports it. 
+YOUR ROLE  
+Resolve exceptions; do not 
+simply clear warnings. 
+DONE MEANS  
+Material rows tie, and 
+judgement calls are recorded. 
+ 
+Working principle: DiligenceIQ is conservative by design. If a row cannot be proven, it stays visible 
+but out of the databook until a reviewer decides what the evidence supports. 
+1.  The workflow at a glance 
+A useful databook is not just a table of extracted numbers. It is a chain of evidence: source document, 
+extracted row, mapped metric, arithmetic check, reviewer decision, and final databook output. 
+DiligenceIQ builds the first pass. It reads the data room, extracts tables, maps line items, and checks 
+whether statement blocks add back to the source's own printed subtotals. The reviewer handles anything 
+the app cannot prove on its own. 
+ 
+Figure 1. The trust loop: DiligenceIQ reads and checks; reviewers resolve exceptions and rerun when needed. 
+Reviewer rule: Your job is not to make warnings disappear. Your job is to leave the databook in a 
+state where another deal team member can understand why every material number was accepted, 
+
+--- PAGE 4/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page4of15 
+corrected, dropped, or vouched. 
+2.  Why the system refuses numbers 
+Diligence files are rarely tidy. They arrive as scans, PDFs, spreadsheets, board packs, management models, 
+and exported schedules. OCR can lose commas, read a percentage as a value, mistake a segment row for a 
+total, or treat a quarter as a year. 
+The app therefore starts from zero trust. A statement block is usable only when its rows reconcile to the 
+subtotal printed in the source. If the block does not tie, the affected rows are held out. They remain 
+visible for review, but they do not silently enter the databook. 
+Simple example: If the source says Revenue 100 plus Other income 20 equals Total income 120, 
+DiligenceIQ checks that arithmetic itself. If the printed total and component rows do not reconcile, 
+the app cannot guess which value is wrong, so it holds the block back. 
+One check is one block for one period. Seven statement blocks across three years can therefore produce 
+21 checks. This is why a single source file can generate a large number of held-out rows. 
+3.  Start in Uploaded files 
+01   Use the review queue before trusting the databook. 
+Uploaded files is where the app surfaces uncertainty. The tabs show the route through review; the Data 
+quality review panel shows the issues that need a human decision. 
+--- PAGE 5/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page5of15 
+ 
+Figure 2. Full screen: Uploaded files shows the tab route, review buckets, and issue queue. 
+WHAT TO NOTICE  
+The highlighted queue is the worklist. The 
+coloured buckets are filters, not final verdicts. 
+YOUR MOVE 
+Clear assumptions first, then source 
+disagreements. Use Unread and Not landed to 
+decide whether missing material is real data or 
+harmless noise. 
+ 
+Tab Use it for Reviewer action 
+Uploaded files Review queue and source-level 
+warnings. 
+Triage flags, inspect rows, and decide 
+what needs follow-up. 
+Derived data Databook summary plus every 
+extracted line item. 
+Correct values, map metrics, drop noise, 
+vouch rows, or export rows. 
+Findings File-by-file trust ledger . Find which source is blocking trust and re-
+read a selected file when needed. 
+4.  Clear the four flags 
+The buckets are not equally risky. Start with issues that can move the whole databook, then work down to 
+row-level cleanup. 
+Order Flag Why it matters Decision to make 
+
+--- PAGE 6/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page6of15 
+Order Flag Why it matters Decision to make 
+1 Assumption made Wrong currency or scale can create a 
+large error while still passing 
+arithmetic. 
+Is the assumed unit/currency 
+correct for this deal or row? 
+2 Sources disagree Two sources appear to give different 
+values for the same metric and period. 
+Which source governs, or is the 
+difference itself a diligence finding? 
+3 Unread A page or sheet was not read as a 
+period-based financial table. 
+Is it meant to feed the databook, or 
+is it non-data material? 
+4 Not landed The app read a row but could not 
+normalise it into analysis. 
+Is it noise to drop, or real evidence 
+that needs a cleaner source/rerun? 
+Assumption made 
+Treat assumptions as the first stop. A missing currency or unit can turn a clean-looking row into a wrong 
+conclusion. This is especially important when a file mixes GBP , USD, thousands, millions, actuals, and 
+projections. 
+ 
+Figure 3. Full screen detail: the assumption row explains what was inferred and which source value was read. 
+WHAT TO NOTICE  
+The highlighted row names the metric, period, 
+source file, and raw value. The warning says the 
+unit was inferred. 
+YOUR MOVE 
+Open the source. Check currency, units, sheet 
+title, and column heading. Fix Deal parameters if 
+the whole deal context is wrong; correct a row 
+only when the source value itself was misread. 
+ 
+• Open the row and identify the source file. 
+• Check the unit/currency where the source actually states it. 
+• If the assumption affects many rows, fix the deal parameter and Rescan. 
+• If the row was read incorrectly, correct it in Derived data and record why. 
+
+--- PAGE 7/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page7of15 
+Sources disagree 
+A source disagreement is not always an extraction problem. It may reveal a genuine conflict: draft versus 
+final version, management view versus audited filing, group versus segment scope, or quarterly data 
+being compared with annual data. 
+ 
+Figure 4. Full screen: the expanded disagreement shows candidate values, captions, source documents, and the selected 
+value. 
+WHAT TO NOTICE  
+The highlighted block shows the competing values 
+and why one candidate was selected. 
+YOUR MOVE 
+Compare the captions and source documents. 
+Keep the governing value, correct or drop the bad 
+read, or record the contradiction as a diligence 
+issue. 
+ 
+• Check whether the sources are covering the same entity, period, and metric definition. 
+• Prefer the source that governs the deal workstream, not simply the largest or latest number . 
+• Document true contradictions; do not bury them by forcing a silent override. 
+Unread 
+Unread commonly appears as Missing period. It does not automatically mean the app failed. Intro pages, 
+disclaimers, entity ledgers, and tables of contents often should stay out of the databook. 
+
+--- PAGE 8/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page8of15 
+ 
+Figure 5. Full screen: Missing period explains why no period-based table was extracted. 
+Language to remember: No figure extracted means absent from the table, not zero. A missing figure 
+should never be treated as a nil balance unless the source explicitly says so. 
+Not landed 
+Not landed means the app found something row-shaped, but it could not land the row in the analysis 
+model. Common causes are an implausible fiscal year, a ratio read as an amount, or a page number read 
+as data. 
+ 
+Figure 6. Full screen: Not landed rows were read but are absent from the analysis. 
+WHAT TO NOTICE  
+The highlighted row tells you why the extracted 
+item could not become a usable databook row. 
+YOUR MOVE 
+Drop obvious noise. If the row is real evidence, fix 
+the source structure or rules and rerun rather 
+than forcing a weak row through. 
+5.  Work in Derived data 
+02   Use Derived data when the issue is row-level. 
+This is the operating surface for the databook itself: totals, mapped metrics, unmapped rows, failed 
+checks, and every extracted line item. 
+
+--- PAGE 9/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page9of15 
+The orange warning tells you a block has failed and rows were left out. The line-item table is where you 
+inspect the affected rows and choose whether to correct, drop, vouch, or re-read. 
+ 
+Figure 7. Full screen: Derived data shows the databook summary, failed checks, and the line-item table. 
+WHAT TO NOTICE  
+The top card gives the state of the databook; the 
+line-item table shows exactly which rows are still 
+blocked. 
+YOUR MOVE 
+Do not confuse unmapped with left out. 
+Unmapped is a metric-mapping issue. Left out is a 
+trust issue. 
+ 
+Practical distinction: Unmapped means the row was read but not recognised as a standard metric. 
+Left out means the row may be known, but the app cannot prove it yet. 
+6.  Fix a held-out row 
+03   Open the pencil, then decide what kind of fault you are looking at. 
+The editor shows what was read, which token was parsed, the current value, the metric mapping, and the 
+reason field that will become part of the audit trail. 
+Make the correction match the fault. Correcting, dropping, vouching, and re-reading mean different 
+things, and the difference matters later when another reviewer asks why the databook changed. 
+
+--- PAGE 10/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page10of15 
+ 
+Figure 8. Full screen: the inline editor shows the parsed value, metric choice, reason field, and action buttons. 
+WHAT TO NOTICE  
+The top highlighted area is the evidence line. The 
+lower highlight is where the reviewer records the 
+decision. 
+YOUR MOVE 
+Write a reason a colleague could understand. 
+Short is fine; vague is not. 
+ 
+If the fault is… Button What happens 
+In the reading Save correction Correct the value or metric, add a reason, and save. The 
+correction is recorded and the row can flow into the databook. 
+Not a figure Not a figure — drop it Remove noise such as a percentage, page number, footnote 
+marker, or non-financial token from the analysis. 
+In the check Vouch for it Release the row into the databook on the user's authority, 
+with the review decision recorded. 
+In the file Re-read Read that document again from scratch instead of correcting 
+many rows by hand. 
+ 
+Reviewer discipline: Correcting and vouching are not the same. Correcting says the machine 
+misread the source. Vouching says the source was read correctly but the check should not block the 
+row. Never vouch just to clear a list. 
+
+--- PAGE 11/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page11of15 
+7.  Use Findings as the trust ledger 
+04   Use Findings when the question is source-level. 
+Derived data shows rows. Findings shows documents. When a warning says many rows were held out, 
+Findings helps you find the file that is causing the trust problem. 
+A clean-looking document list is not automatically a pass. A file can have no financial table to check, which 
+means it neither passed nor failed. Open the source row when the contribution is unclear . 
+ 
+Figure 9. Full screen: Findings gives a document-by-document view of trust and source contribution. 
+WHAT TO NOTICE  
+The top highlighted card gives the overall findings 
+state; the document row explains what that file 
+contributed. 
+YOUR MOVE 
+Open any file that looks silent. Confirm whether it 
+should contain financial data before treating 
+silence as comfort. 
+ 
+In the example, lender-information-memorandum.pdf shows 21/21 checks failed and 703 rows held out. 
+That tells you where the review effort should go next. 
+
+--- PAGE 12/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page12of15 
+ 
+Figure 10. Full screen: the expanded document view keeps held-out rows visible with source context. 
+Silence is not a pass: A document with no financial table produces no checks. It neither passed nor 
+failed. Open the document in Findings to confirm what it actually contributed. 
+8.  Rerun with intent 
+Rerun only as much as the problem requires. A good rerun choice saves time and preserves a clearer 
+audit trail. 
+Button Plain-English meaning Use it when 
+Rescan Re-think. Re-applies extraction and mapping 
+rules to the text the system already has. 
+You changed deal parameters, added a rule, 
+fixed a mapping, or saved a correction where 
+cached text is still reliable. 
+Deep Re-read everything. Discards stored text and 
+reads every source document again from the 
+original files. 
+The cached text is bad, documents were 
+garbled or empty, or the reader/OCR engine 
+has been fixed. 
+Re-read Re-read one document. Same idea as Deep, 
+but only for the selected file. 
+You know which document is the problem 
+and want a cheaper, targeted rerun. 
+Refresh Update the screen state. You want to see whether processing or 
+review actions have completed. Refresh does 
+not re-extract data. 
+
+--- PAGE 13/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page13of15 
+9.  When the source document must be fixed 
+Some problems do not belong inside the app. If a scan is unreadable, figures only exist inside a picture, or 
+a spreadsheet is not laid out like a table, fix the source evidence instead of hand-correcting a long list of 
+rows. 
+• Ask for a cleaner copy, ideally a native PDF or original Excel file instead of a scan. 
+• Re-upload a corrected version after fixing source formatting. 
+• Build a clean supporting schedule when the source cannot be made readable. 
+A clean schedule should have: 
+• One header row, with years across the top and line items down the side. 
+• One number per cell, with no text mixed into number cells. 
+• No merged cells, blank spacer rows, or footnote markers inside number cells. 
+• Currency and units stated clearly, such as GBP millions or USD thousands. 
+• Subtotals that actually add to the rows above them. 
+10.  Current limitations 
+• There is no dedicated review screen yet. Editing happens inline in All line items. 
+• Users can only edit rows that are headed for the databook. Other material may still need source-
+document review. 
+• Users cannot overwrite a disagreement directly on the disagreement panel. That is deliberate: the 
+conflict must be resolved through source review, row correction, or report commentary. 
+11.  Reviewer cheat sheet 
+You see It means Do this 
+Assumption made Currency or units were inferred. Open the file and check units. Fix Deal 
+parameters and Rescan, or correct the row in All 
+line items. 
+Sources disagree Two values exist for the same 
+metric and year . 
+Decide which source governs. Correct or drop 
+the bad row, or record the contradiction as a 
+--- PAGE 14/15 ---
+CDD DATABOOK · REVIEW GUIDE  DILIGENCEIQ 
+DiligenceIQ product guide  |  August 2026 Page14of15 
+You see It means Do this 
+finding. 
+Unread A sheet was not read as a table. If it is real data, add a rule or upload a clean 
+schedule. If not, ignore it. 
+Not landed A row could not be normalised. Drop noise. If the row matters, fix the source 
+and rerun. 
+Failed its check The statement block does not 
+add up. 
+Correct, drop, vouch, or re-read the source file. 
+Unmapped The row was read but not 
+recognised as a metric. 
+Re-map it in All line items if it should feed the 
+databook. 
+No financial table 
+found 
+Nothing was checked in that file. Open the source and confirm whether the file 
+should contain financial data. 
+Every statement used 
+here ties 
+The databook has passed its 
+material arithmetic checks. 
+Proceed, subject to any documented judgement 
+calls or exceptions. 
+--- PAGE 15/15 ---
+ 
+ 
+ 
+Review with confidence. 
+Every material number, traceable to its evidence. 
+ 
+DILIGENCEIQ PRODUCT GUIDE  ·  AUGUST 2026  

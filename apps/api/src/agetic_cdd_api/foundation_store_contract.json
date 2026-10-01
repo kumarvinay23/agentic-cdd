@@ -1,0 +1,53 @@
+{
+  "required_keys": [
+    "deal_id",
+    "target",
+    "target_company",
+    "generated_at",
+    "run_order",
+    "substage_a",
+    "substage_b",
+    "substages",
+    "roles",
+    "agents",
+    "agents_by_role",
+    "completeness"
+  ],
+  "required_roles": ["F-01", "F-02", "F-03", "F-04", "F-05", "F-06"],
+  "role_entry_keys": [
+    "status",
+    "slug",
+    "depends_on",
+    "summary",
+    "source_coverage",
+    "spec"
+  ],
+  "completeness_keys": [
+    "required_roles",
+    "present_roles",
+    "missing_roles",
+    "failed_roles",
+    "incomplete_spec",
+    "complete"
+  ],
+  "spec_keys_by_role": {
+    "F-01": [
+      "investment_drivers",
+      "must_be_true",
+      "deal_breaker_risks",
+      "attractiveness_score",
+      "thesis_framework"
+    ],
+    "F-02": ["ic_hooks", "workstreams", "milestones", "consumes_f01_score"],
+    "F-03": ["dates", "submission_rules", "unusual_terms", "coverage"],
+    "F-04": ["risks", "restricted_activities", "data_handling", "penalty_notes"],
+    "F-05": [
+      "legal_name",
+      "jurisdiction",
+      "entity_type",
+      "incorporation_date",
+      "share_classes"
+    ],
+    "F-06": ["c_suite", "succession_gaps", "org_risk_score", "consumes_f05"]
+  }
+}

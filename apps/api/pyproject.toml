@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agetic-cdd-api"
+version = "0.1.0"
+description = "Agentic CDD API — /api/v1 compatible backend"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "email-validator>=2.0",
+    "SQLAlchemy>=2.0",
+    "PyJWT>=2.8",
+    "bcrypt>=4.0",
+    "python-multipart>=0.0.9",
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "python-pptx>=0.6.21",
+    "reportlab>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+agetic-cdd-api = "agetic_cdd_api.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+markers = [
+    "diq_sequence: DIQ side-by-side Document Workspace validation sequence",
+    "fts_scale: FTS re-ingest and retrieval scale tests (100+ files)",
+    "retrieval_benchmark: 20-prompt FTS + passage recall benchmark matrix",
+    "live_web: opt into live web research (no stub)",
+]

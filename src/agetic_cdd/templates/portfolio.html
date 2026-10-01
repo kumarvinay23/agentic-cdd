@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ brand }} · Portfolio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/portfolio.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" type="button" aria-label="Toggle navigation" id="nav-toggle">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M13 2 4.5 13.5h6L11 22l8.5-11.5h-6L13 2z" />
+            </svg>
+          </span>
+          <span class="brand-name">{{ brand }}</span>
+        </div>
+        <span class="topbar-divider" aria-hidden="true"></span>
+        <span class="topbar-section">Portfolio</span>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" type="button" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H10a1.7 1.7 0 0 0 1-1.5V5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V10c.1.7.7 1.2 1.5 1.2H19a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
+        </button>
+        <div class="avatar" aria-label="Signed in as {{ user_initials }}">{{ user_initials }}</div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-block">
+          <p class="sidebar-label">Global</p>
+          <a class="nav-item is-active" href="/">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="3" y="3" width="7" height="7" rx="1.2" />
+              <rect x="14" y="3" width="7" height="7" rx="1.2" />
+              <rect x="3" y="14" width="7" height="7" rx="1.2" />
+              <rect x="14" y="14" width="7" height="7" rx="1.2" />
+            </svg>
+            <span>Portfolio</span>
+          </a>
+          <p class="sidebar-hint">Select a deal from the portfolio to open its workspace.</p>
+        </div>
+
+        <div class="sidebar-block usage-block">
+          <p class="sidebar-label">Usage</p>
+          <div class="usage-row">
+            <span class="usage-icon">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M13 2 4.5 13.5h6L11 22l8.5-11.5h-6L13 2z" />
+              </svg>
+            </span>
+            <span class="usage-name">Agent runs</span>
+            <span class="usage-value">{{ usage.agent_runs }}</span>
+          </div>
+          <div class="usage-row">
+            <span class="usage-icon">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <ellipse cx="12" cy="6" rx="7" ry="3" />
+                <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+                <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+              </svg>
+            </span>
+            <span class="usage-name">VDR files</span>
+            <span class="usage-value">{{ usage.vdr_files }}</span>
+          </div>
+          <div class="usage-row">
+            <span class="usage-icon">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 16V7" />
+                <path d="m8.5 10.5 3.5-3.5 3.5 3.5" />
+                <path d="M5 18h14" />
+              </svg>
+            </span>
+            <span class="usage-name">Uploaded</span>
+            <span class="usage-value">{{ usage.uploaded }}</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="page-header">
+          <div>
+            <h1>Portfolio dashboard</h1>
+            <p class="page-subtitle">
+              Global view of investment portfolios, active VDR rooms, and intelligence execution metrics.
+            </p>
+          </div>
+          <div class="page-actions">
+            <button class="ghost-btn" type="button" aria-label="Refresh" id="refresh-btn">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 12a9 9 0 1 1-2.6-6.3" />
+                <path d="M21 4v5h-5" />
+              </svg>
+            </button>
+            <button class="primary-btn" type="button" id="create-dealroom">
+              <span>+</span> Create Dealroom
+            </button>
+          </div>
+        </div>
+
+        <section class="metrics" aria-label="Portfolio metrics">
+          <article class="metric-card">
+            <p class="metric-label">Active deals</p>
+            <p class="metric-value" id="metric-active-deals">{{ metrics.active_deals }}</p>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Agents running now</p>
+            <p class="metric-value" id="metric-agents-running">{{ metrics.agents_running_now }}</p>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Reports ready</p>
+            <p class="metric-value" id="metric-reports-ready">{{ metrics.reports_ready }}</p>
+          </article>
+        </section>
+
+        <section class="deal-grid" id="deal-grid" aria-label="Dealrooms">
+          {% for deal in deals %}
+          <article class="deal-card" tabindex="0" data-deal="{{ deal.name }}" data-slug="{{ deal.slug }}">
+            <div class="deal-card-body">
+              <div class="deal-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H10l2 2h6.5A2.5 2.5 0 0 1 21 10.5v7A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-9z" />
+                </svg>
+              </div>
+              <div class="deal-content">
+                <div class="deal-title-row">
+                  <h2>{{ deal.name }}</h2>
+                  <span class="status-badge status-{{ deal.status|lower|replace('-', '') }}">{{ deal.status }}</span>
+                </div>
+                <p class="deal-summary">{{ deal.summary }}</p>
+                <p class="deal-team">{{ deal.team }}</p>
+              </div>
+              <span class="deal-chevron" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+              </span>
+            </div>
+          </article>
+          {% endfor %}
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="create-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
+      <div class="modal-header">
+        <h2 id="create-modal-title">Create investment portfolio</h2>
+        <button class="modal-close" type="button" id="modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </div>
+
+      <form id="create-deal-form" class="modal-form" novalidate>
+        <label class="field">
+          <span class="field-label">Portfolio name</span>
+          <input id="portfolio-name" name="name" type="text" placeholder="e.g. Growth Equity Fund IV" required />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Slug (auto-generated)</span>
+          <input id="portfolio-slug" name="slug" type="text" placeholder="growth-equity-fund-iv" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Description</span>
+          <textarea id="portfolio-description" name="description" rows="4" placeholder="Primary growth equity and late-stage software portfolio details..."></textarea>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Tags (comma separated)</span>
+          <input id="portfolio-tags" name="tags" type="text" placeholder="e.g. Tech, Late-Stage, Software" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Industry</span>
+          <select id="portfolio-industry" name="industry">
+            {% for industry in industries %}
+            <option value="{{ industry }}" {% if industry == "Other / Generic" %}selected{% endif %}>{{ industry }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <p class="form-error" id="form-error" hidden></p>
+
+        <div class="modal-actions">
+          <button class="secondary-btn" type="button" id="modal-cancel">Cancel</button>
+          <button class="primary-btn" type="submit" id="modal-submit">Create workspace</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/js/portfolio.js"></script>
+</body>
+</html>
