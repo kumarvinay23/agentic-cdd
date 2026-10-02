@@ -1,0 +1,61 @@
+# Local / pre-compiled container orchestration for Agentic CDD
+#
+# 1) Build locally:
+#      cp .env.docker.example .env.docker   # set AGETIC_CDD_JWT_SECRET
+#      docker compose --env-file .env.docker build
+# 2) Run pre-built images (after pull from Artifact Registry):
+#      docker compose --env-file .env.docker pull && docker compose --env-file .env.docker up -d
+# 3) Or run images you already built:
+#      docker compose --env-file .env.docker up -d
+
+services:
+  api:
+    image: ${API_IMAGE:-agetic-cdd-api:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: agetic-cdd-api
+    ports:
+      - "${API_PORT:-4600}:4600"
+    environment:
+      AGETIC_CDD_APP_ENV: ${AGETIC_CDD_APP_ENV:-development}
+      AGETIC_CDD_HOST: 0.0.0.0
+      AGETIC_CDD_PORT: "4600"
+      AGETIC_CDD_CORS_ORIGINS: ${AGETIC_CDD_CORS_ORIGINS:-http://127.0.0.1:3000,http://localhost:3000}
+      AGETIC_CDD_JWT_SECRET: ${AGETIC_CDD_JWT_SECRET:?Set AGETIC_CDD_JWT_SECRET in .env.docker}
+      AGETIC_CDD_DEALS_STORAGE_PATH: /data/deals
+      AGETIC_CDD_DATABASE_URL: sqlite:////data/agetic_cdd.db
+      AGETIC_CDD_SEED_ADMIN_EMAIL: ${AGETIC_CDD_SEED_ADMIN_EMAIL:-admin@ageticcdd.com}
+      AGETIC_CDD_SEED_ADMIN_PASSWORD: ${AGETIC_CDD_SEED_ADMIN_PASSWORD:-adminpass}
+      AGETIC_CDD_SEED_ORG_NAME: ${AGETIC_CDD_SEED_ORG_NAME:-Agentic CDD Workspace}
+      AGETIC_CDD_GEMINI_API_KEY: ${AGETIC_CDD_GEMINI_API_KEY:-}
+      AGETIC_CDD_GEMINI_MODEL: ${AGETIC_CDD_GEMINI_MODEL:-gemini-3.6-flash}
+      AGETIC_CDD_DOCUMENT_SYNTHESIS_LLM: ${AGETIC_CDD_DOCUMENT_SYNTHESIS_LLM:-true}
+      AGETIC_CDD_DEEP_DIVE_LLM: ${AGETIC_CDD_DEEP_DIVE_LLM:-false}
+    volumes:
+      - agetic_cdd_deals:/data/deals
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4600/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    image: ${WEB_IMAGE:-agetic-cdd-web:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:4600}
+    container_name: agetic-cdd-web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  agetic_cdd_deals:

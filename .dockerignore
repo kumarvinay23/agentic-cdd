@@ -1,0 +1,53 @@
+# Git / IDE
+.git
+.gitignore
+.idea
+.vscode
+**/.DS_Store
+
+# Local envs & secrets — never bake into images
+.env
+.env.*
+!**/.env.example
+!**/.env.docker.example
+apps/api/.env
+apps/web/.env.local
+
+# Python / Node caches
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/venv
+**/node_modules
+**/.next
+**/out
+**/.turbo
+**/*.egg-info
+**/dist
+**/build
+
+# Local deal data & large sample artifacts
+data/
+apps/api/data/
+*.zip
+Test2_*
+Test5_*
+Compost*
+DiligenceIQ*
+screencapture-*
+live_Test2_*
+
+# Docs / transcripts not needed at runtime
+CONTEXT.md
+docs/
+agent-transcripts/
+.tmp-home/
+
+# Tests (not required in runtime image)
+apps/api/tests/
+tests/
+**/.coverage
+**/htmlcov/

@@ -627,7 +627,7 @@ export function DealDocumentWorkspace({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [, setEditing] = useState(false);
   const [editBuffer, setEditBuffer] = useState("");
   const [liveTasks, setLiveTasks] = useState<DocumentTask[]>([]);
   const [statusLine, setStatusLine] = useState<string | null>(null);
