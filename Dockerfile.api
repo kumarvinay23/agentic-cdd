@@ -1,0 +1,46 @@
+# Agentic CDD API — production image (pre-compiled / deployable)
+# Build context: repository root
+#   docker build -f Dockerfile.api -t agetic-cdd-api:latest .
+
+FROM python:3.12-slim-bookworm AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    AGETIC_CDD_HOST=0.0.0.0 \
+    AGETIC_CDD_PORT=4600
+
+WORKDIR /app
+
+# System libs sometimes needed by reportlab / cryptography wheels
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pinned runtime dependencies first (better layer cache)
+COPY apps/api/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip \
+    && pip install -r /tmp/requirements.txt
+
+# Install the API package (source)
+COPY apps/api/pyproject.toml apps/api/README.md /app/apps/api/
+COPY apps/api/src /app/apps/api/src
+RUN pip install --no-deps /app/apps/api
+
+# Persistent deal / VDR storage (mount a volume in compose / Cloud Run)
+RUN mkdir -p /data/deals \
+    && useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /data /app
+ENV AGETIC_CDD_DEALS_STORAGE_PATH=/data/deals \
+    AGETIC_CDD_DATABASE_URL=sqlite:////data/agetic_cdd.db
+
+USER appuser
+EXPOSE 4600
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${AGETIC_CDD_PORT}/api/v1/health" || exit 1
+
+CMD ["sh", "-c", "uvicorn agetic_cdd_api.app:app --host ${AGETIC_CDD_HOST} --port ${AGETIC_CDD_PORT}"]

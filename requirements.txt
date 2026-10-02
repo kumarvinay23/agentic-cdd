@@ -1,1 +1,12 @@
-# Install with: pip install -e ".[dev]"
+# Runtime dependencies for Agentic CDD API (Docker / pip)
+#
+# Prefer installing the editable package during local dev:
+#   cd apps/api && pip install -e ".[dev]"
+#
+# For container builds, use the pinned lock export:
+#   apps/api/requirements.txt
+#
+# Regenerate:
+#   cd apps/api && uv export --no-dev --no-emit-project --no-hashes -o requirements.txt
+
+-r apps/api/requirements.txt

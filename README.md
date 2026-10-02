@@ -39,6 +39,22 @@ npm run dev
 Sign in chrome: http://127.0.0.1:3000/login  
 Status: http://127.0.0.1:3000/status
 
+### Docker (pre-compiled containers + Artifact Registry)
+
+See:
+
+- **[docs/architecture/APPLICATION_ARCHITECTURE.md](docs/architecture/APPLICATION_ARCHITECTURE.md)** — full system design + flowcharts  
+- **[docs/deploy/DOCKER_ARTIFACT_REGISTRY.md](docs/deploy/DOCKER_ARTIFACT_REGISTRY.md)** — build, run, push images  
+- **[docs/deploy/GCP_ARCHITECTURE.md](docs/deploy/GCP_ARCHITECTURE.md)** — Google Cloud deploy paths  
+
+```bash
+cp .env.docker.example .env.docker   # set AGETIC_CDD_JWT_SECRET
+docker compose --env-file .env.docker up -d --build
+# Push to Google Artifact Registry:
+#   ./scripts/deploy-artifact-registry.sh
+#   ./scripts/deploy-artifact-registry.sh --cloud
+```
+
 ### Legacy prototype (optional)
 
 ```bash

@@ -19,12 +19,13 @@ export function DecisionChainPanel({
   readonly entries: ReportDecisionChainEntry[];
   readonly sectionAgents: string[];
 }) {
-  const rows = useMemo(() => {
+  const rows = useMemo((): ReportDecisionChainEntry[] => {
     if (entries.length) return entries;
     return sectionAgents.map((agent) => ({
       agent,
       available: false,
       status: "missing",
+      sources: [],
       chain: {
         plain_english: `No decision-chain data for ${agentLabel(agent)}.`,
         inputs: [],
