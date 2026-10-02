@@ -269,6 +269,96 @@ def _parse_shareholders(corpus: str, *, limit: int = 5) -> str | None:
     return "; ".join(hits) if hits else None
 
 
+_LEDGER_SHARE_QTY = re.compile(
+    r"(?i)(?<![.\d])([\d]{1,3}(?:,\d{3})+|\d{3,})\s+"
+    r"(?:(?:common|option|equity/option|equity)\s+)?shares?\b"
+)
+_STATED_SHARE_TOTAL = re.compile(
+    r"(?i)(?P<prefix>shows?\s+|equal(?:s|ing)?\s+|total(?:ing)?\s+)"
+    r"(?P<total>[\d]{1,3}(?:,\d{3})+|\d{4,})\s+"
+    r"(?P<mid>(?:outstanding\s+)?(?:common\s+)?(?:equity/option\s+)?)shares?"
+)
+
+
+def _ledger_share_quantities(text: str) -> list[int]:
+    """Pull discrete share quantities from a securities-ledger narrative."""
+    out: list[int] = []
+    seen: set[int] = set()
+    for m in _LEDGER_SHARE_QTY.finditer(text or ""):
+        raw = m.group(1).replace(",", "")
+        try:
+            n = int(raw)
+        except ValueError:
+            continue
+        if n < 10 or n in seen:
+            continue
+        seen.add(n)
+        out.append(n)
+    return out
+
+
+def _canonicalize_cap_table_text(text: str | None) -> str | None:
+    """Ensure ownership narrative carries a correctly summed share total when components exist."""
+    if not text or str(text).startswith("Information"):
+        return text
+    raw = str(text).strip()
+    qtys = _ledger_share_quantities(raw)
+    if len(qtys) < 2:
+        return raw
+
+    # Prefer component grants over a stated total that sits near "outstanding"
+    stated = None
+    sm = _STATED_SHARE_TOTAL.search(raw)
+    if sm:
+        try:
+            stated = int(sm.group("total").replace(",", ""))
+        except ValueError:
+            stated = None
+    components = [n for n in qtys if stated is None or n != stated]
+    if len(components) < 2:
+        components = list(qtys)
+    # Drop any quantity that equals the sum of the remaining (already a total)
+    for n in list(components):
+        others = [x for x in components if x != n]
+        if len(others) >= 2 and n == sum(others):
+            components = others
+            break
+    if len(components) < 2:
+        return raw
+    total = sum(components)
+    total_fmt = f"{total:,}"
+    if sm is not None:
+        mid = sm.group("mid") or ""
+        return (
+            raw[: sm.start()]
+            + f"{sm.group('prefix')}{total_fmt} {mid}shares"
+            + raw[sm.end() :]
+        )
+    if total_fmt in raw and raw.strip().startswith("Total evidenced"):
+        return raw
+    parts = " + ".join(f"{n:,}" for n in components)
+    # Lead with the total so clipped findings / slide bullets keep the correct figure
+    body = raw
+    if total_fmt in body:
+        # Already has total mid/end — still lead with it for clip-safety
+        return (
+            f"Total evidenced common equity/option shares: {total_fmt} ({parts}). {body}"
+        )
+    return (
+        f"Total evidenced common equity/option shares: {total_fmt} ({parts}). "
+        f"{body.rstrip('. ')}."
+    )
+
+
+def _sanitize_legal_name(raw: Any, *, company: str) -> str:
+    """Strip invented jurisdiction / cap-table parentheticals from a legal name."""
+    from agetic_cdd_api.report_builder_base import _clean_legal_name
+
+    cleaned = _clean_legal_name(raw, fallback=company)
+    if not cleaned:
+        return company
+    return cleaned.rstrip(" .")
+
 def _parse_sector(
     corpus: str,
     entity: dict[str, Any],
@@ -631,15 +721,21 @@ def _heuristic_company_background_spec(
 ) -> dict[str, Any]:
     sents = _sentences(corpus)
     sector = _parse_sector(corpus, entity, company=company)
-    legal = entity.get("legal_name") or company
+    legal = _sanitize_legal_name(entity.get("legal_name") or company, company=company)
     legal_m = _LEGAL_NAME.search(corpus)
     if legal_m and (not entity.get("legal_name") or company == "Target"):
-        legal = _clean(legal_m.group(1), 80)
+        legal = _sanitize_legal_name(_clean(legal_m.group(1), 80), company=company)
 
     hq = entity.get("jurisdiction")
+    if isinstance(hq, str) and re.search(r"(?i)jurisdiction|organized in|Maryland\s*/\s*D\.?C", hq):
+        if not re.search(r"(?i)headquarters|registered office|HQ\b", hq):
+            hq = None
     if not hq:
         hq_m = _HQ.search(corpus)
         hq = _clean(hq_m.group(1), 80) if hq_m else None
+        if isinstance(hq, str) and re.search(r"(?i)jurisdiction|organized in|Maryland\s*/\s*D\.?C", hq):
+            if not re.search(r"(?i)headquarters|registered office|HQ\b", hq):
+                hq = None
     founded = entity.get("incorporation_date")
     if not founded:
         fm = _FOUNDED.search(corpus)
@@ -844,7 +940,14 @@ def _heuristic_company_background_spec(
             "reason": "No functional headcount split in the HR pack",
         })
 
-    ownership_text = _parse_shareholders(corpus)
+    ownership_text = _canonicalize_cap_table_text(_parse_shareholders(corpus))
+    # Prefer securities-ledger narrative from corpus when present (richer than % list)
+    ledger_m = re.search(
+        r"(?i)(?:Common Stock outstanding|Securities ledger|Stock Option Plan).{0,500}",
+        corpus[:80_000],
+    )
+    if ledger_m:
+        ownership_text = _canonicalize_cap_table_text(ledger_m.group(0)) or ownership_text
     history = _parse_ma_events(corpus)
     founded_m = founded
     if founded_m:
@@ -1114,20 +1217,23 @@ def _normalise_llm_spec(
 
     llm["primary_sources"] = sources[:16]
     llm["composer"] = "llm_v1"
-    # Sanitize legal name — LLMs sometimes append cap-table parentheticals
+    # Sanitize legal name — LLMs sometimes append cap-table / jurisdiction parentheticals
     raw_legal = ownership.get("legal_entities") or entity.get("legal_name") or company
-    clean_legal = re.sub(
-        r"\s*\((?:issuing|grant(?:ing)?|under).{0,80}(?:stock\s+option|equity|option\s+plan)[^)]*\)\s*",
-        "",
-        str(raw_legal or ""),
-        flags=re.I,
-    ).strip() or company
-    if re.search(r"(?i)issuing common|stock option plan", clean_legal):
-        clean_legal = company
+    clean_legal = _sanitize_legal_name(raw_legal, company=company)
     ownership["legal_entities"] = clean_legal
+    # Canonicalize share totals — LLM arithmetic on the ledger is unstable across runs
+    ownership["ownership_or_cap_table"] = _canonicalize_cap_table_text(
+        ownership.get("ownership_or_cap_table")
+    ) or ownership.get("ownership_or_cap_table")
     llm["ownership"] = ownership
     llm["legal_name"] = clean_legal
-    llm["jurisdiction"] = ownership.get("headquarters") or entity.get("jurisdiction")
+    # Do not invent jurisdiction when the data room leaves it open
+    hq = ownership.get("headquarters") or entity.get("jurisdiction")
+    if isinstance(hq, str) and re.search(r"(?i)jurisdiction|organized in|Maryland\s*/\s*D\.?C", hq):
+        # Soft claim without incorporation evidence → treat as HQ footprint only if explicit HQ
+        if not re.search(r"(?i)headquarters|registered office|HQ\b", hq):
+            hq = None
+    llm["jurisdiction"] = hq
     llm["incorporation_date"] = ownership.get("founded") or entity.get("incorporation_date")
     llm["entity_type"] = entity.get("entity_type")
     llm["governance_notes"] = entity.get("governance_notes") or []

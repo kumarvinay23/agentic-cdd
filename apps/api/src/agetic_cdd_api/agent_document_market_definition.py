@@ -88,17 +88,25 @@ def gather_market_definition_corpus(
         "operations": 4,
         "financial": 5,
     }
+    geo_boost = re.compile(
+        r"(?i)Philadelphia|Washington\s*,?\s*D\.?C|DMV|Northern\s+Virginia|Maryland|"
+        r"geography|metropolitan|service\s+area|operating\s+footprint"
+    )
     docs = [d for d in (index.get("documents") or []) if isinstance(d, dict)]
-    ranked = sorted(
-        docs,
-        key=lambda d: (
+
+    def _rank(d: dict[str, Any]) -> tuple:
+        excerpt = str(d.get("excerpt") or d.get("filename") or "")
+        boost = 0 if geo_boost.search(excerpt) else 1
+        return (
+            boost,
             prefer.get(str(d.get("cdl_category") or ""), 9),
             str(d.get("filename") or ""),
-        ),
-    )
+        )
+
+    ranked = sorted(docs, key=_rank)
     blobs: list[str] = []
     sources: list[str] = []
-    for doc in ranked[:12]:
+    for doc in ranked[:16]:
         filename = str(doc.get("filename") or "")
         if not filename:
             continue
@@ -113,7 +121,7 @@ def gather_market_definition_corpus(
             continue
         blobs.append(f"### {filename}\n{text[:14_000]}")
         sources.append(filename)
-        if sum(len(b) for b in blobs) > 56_000:
+        if sum(len(b) for b in blobs) > 64_000:
             break
     return "\n\n".join(blobs), sources
 
@@ -124,48 +132,110 @@ def _money(m: re.Match[str] | None) -> str:
     return f"{_fmt_num(m.group(1), m.group(2))} {_DOC_CITE}"
 
 
+def _is_polluted_service(text: str) -> bool:
+    """Reject growth-thesis / foundation soft-fill splices as 'service sold'."""
+    t = text or ""
+    if re.search(r"(?i)Foundation\s*·|Uses\s+\w+|Insight Snapshot", t):
+        return True
+    if re.search(r"(?i)plan relies on|investment thesis|series\s*b|must be true", t):
+        return True
+    if "…" in t or "\u2026" in t:
+        if re.search(r"(?i)Foundation|municipal contract|F-\d{2}", t):
+            return True
+    # KPI / retention consistency blurbs are not a market perimeter axis
+    if re.search(r"(?i)\b(LTV|ARPU|YTD|Consistency\s*--|98\.\d%\s*→)", t):
+        return True
+    # CIM / teaser marketing blurbs are not a service / customer / chain definition
+    if re.search(
+        r"(?i)vertically-integrated|closed-?\s*loop|active locations|"
+        r"tons diverted|Metro Region|composting leader",
+        t,
+    ):
+        return True
+    # Product SKU / price-list lines are not a value-chain stage
+    if re.search(r"(?i)\b(cubic\s+yard|1cft|\d+\s*lb\s+bag|Farm Feast)", t):
+        return True
+    return False
+
+
+def _clean_framing_list(raw: Any, *, perimeter: dict[str, str]) -> list[str]:
+    """Prefer perimeter service; drop polluted legacy / foundation / KPI clips."""
+    out: list[str] = []
+    if isinstance(raw, list):
+        for item in raw:
+            s = str(item or "").strip()
+            if not s or s.startswith("Information") or _is_polluted_service(s):
+                continue
+            out.append(_clean(s, 280))
+            if len(out) >= 2:
+                break
+    elif isinstance(raw, str) and raw.strip() and not _is_polluted_service(raw):
+        out.append(_clean(raw, 280))
+    if not out:
+        for key in ("service",):
+            val = str(perimeter.get(key) or "").strip()
+            if val and not val.startswith("Information") and not _is_polluted_service(val):
+                out.append(_clean(val, 280))
+        cust = str(perimeter.get("customer_types") or "").strip()
+        if (
+            cust
+            and not cust.startswith("Information")
+            and not _is_polluted_service(cust)
+            and len(out) < 2
+        ):
+            out.append(_clean(cust, 280))
+    return out
+
+
 def _perimeter(corpus: str, prior: dict[str, Any] | None) -> dict[str, str]:
     sents = _sentences(corpus)
+
     service = _pick_sentences(
         sents,
         keywords=(
-            "product", "sells", "offering", "scooter", "vehicle", "software",
-            "service", "platform", "manufactur",
+            "product", "sells", "offering", "compost", "organic waste", "hauling",
+            "collection", "soil amendment", "service", "platform",
         ),
-        limit=2,
+        limit=4,
     )
+    service = [s for s in service if not _is_polluted_service(s)]
     customer = _pick_sentences(
         sents,
         keywords=(
             "customer", "b2c", "b2b", "retail", "fleet", "consumer",
-            "end-user", "segment", "icp",
+            "residential", "commercial", "municipal", "end-user", "segment", "icp",
         ),
         limit=2,
     )
+    customer = [c for c in customer if not _is_polluted_service(c)]
     geography = _pick_sentences(
         sents,
         keywords=(
-            "india", "geography", "region", "export", "state", "metro",
-            "reachable", "presence", "market share by",
+            "geography", "region", "export", "state", "metro",
+            "reachable", "presence", "market share by", "washington", "philadelphia",
         ),
         limit=2,
     )
     value_chain = _pick_sentences(
         sents,
         keywords=(
-            "vertical", "manufactur", "assembly", "retail", "distribution",
-            "oem", "value chain", "battery", "cell", "software",
+            "vertical", "collection", "processing", "composting", "hauling",
+            "manufactur", "assembly", "retail", "distribution",
+            "oem", "value chain",
         ),
         limit=2,
     )
+    value_chain = [v for v in value_chain if not _is_polluted_service(v)]
 
-    # Prefer prior F-05 / company background style fields when present
+    # Prefer prior F-05 / company background offers over keyword hits from thesis packs
     if isinstance(prior, dict):
         offers = prior.get("offers") if isinstance(prior.get("offers"), dict) else {}
-        if offers.get("sells") and not service:
-            service = [str(offers["sells"])]
-        if offers.get("to_whom") and not customer:
-            customer = [str(offers["to_whom"])]
+        sells = str(offers.get("sells") or "").strip()
+        if sells and not _is_polluted_service(sells):
+            service = [sells] + [s for s in service if s != sells]
+        who = str(offers.get("who_pays") or offers.get("to_whom") or "").strip()
+        if who and not _is_polluted_service(who):
+            customer = [who] + [c for c in customer if c != who]
 
     geos = []
     for m in _GEO_SHARE.finditer(corpus[:30_000]):
@@ -210,26 +280,38 @@ def _perimeter(corpus: str, prior: dict[str, Any] | None) -> dict[str, str]:
             elif ordered:
                 geos.append(_clean(", ".join(ordered), 160) + f" {_DOC_CITE}")
 
+    service_txt = (
+        _clean(service[0], 280) + (f" {_DOC_CITE}" if "DOC:" not in service[0] else "")
+        if service
+        else _info_request("service sold — from operating footprint, not industry label")
+    )
+    if _is_polluted_service(service_txt):
+        service_txt = _info_request("service sold — from operating footprint, not industry label")
+
+    customer_txt = (
+        _clean(customer[0], 280) + (f" {_DOC_CITE}" if customer and "DOC:" not in customer[0] else "")
+        if customer
+        else _info_request("customer types actually served")
+    )
+    if customer and _is_polluted_service(customer_txt):
+        customer_txt = _info_request("customer types actually served")
+
+    chain_txt = (
+        _clean(value_chain[0], 280) + f" {_DOC_CITE}"
+        if value_chain
+        else _info_request("stage of the value chain occupied")
+    )
+    if value_chain and _is_polluted_service(chain_txt):
+        chain_txt = _info_request("stage of the value chain occupied")
+
     return {
-        "service": (
-            _clean(service[0], 280) + f" {_DOC_CITE}"
-            if service
-            else _info_request("service sold — from operating footprint, not industry label")
-        ),
-        "customer_types": (
-            _clean(customer[0], 280) + f" {_DOC_CITE}"
-            if customer
-            else _info_request("customer types actually served")
-        ),
+        "service": service_txt,
+        "customer_types": customer_txt,
         "geography": (
             ("; ".join(geos) if geos else (_clean(geography[0], 280) + f" {_DOC_CITE}" if geography else ""))
             or _info_request("geography actually reachable from operating footprint")
         ),
-        "value_chain_stage": (
-            _clean(value_chain[0], 280) + f" {_DOC_CITE}"
-            if value_chain
-            else _info_request("stage of the value chain occupied")
-        ),
+        "value_chain_stage": chain_txt,
         "footprint_basis": (
             "Perimeter drawn from operating footprint in opened packs — not a sector label alone."
         ),
@@ -544,8 +626,35 @@ def _heuristic_market_definition_spec(
         f"(gate={gate['status']}). Broader industry figures are context, not the market."
     )
 
-    # Preserve legacy DD-02 fields for report consumers
+    # Preserve legacy DD-02 fields for report consumers — but never keep polluted
+    # growth-thesis / Foundation soft-fill clips that leaked into prior runs.
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
+    framing = _clean_framing_list(legacy.get("market_framing"), perimeter=perimeter)
+    geo_perim = str(perimeter.get("geography") or "").strip()
+    legacy_geos = legacy.get("geographies") if isinstance(legacy.get("geographies"), list) else []
+
+    def _geo_tokens(text: str) -> set[str]:
+        keys = (
+            "philadelphia", "washington", "maryland", "virginia", "nova", "dmv",
+            "metropolitan",
+        )
+        low = text.lower()
+        return {k for k in keys if k in low}
+
+    geos: list[str] = []
+    perim_tokens = _geo_tokens(geo_perim) if geo_perim and not geo_perim.startswith("Information") else set()
+    for g in legacy_geos:
+        s = str(g or "").strip()
+        if not s or s.startswith("Information") or _is_polluted_service(s):
+            continue
+        # Prefer the fuller perimeter footprint when legacy dropped metros (e.g. Philly)
+        if perim_tokens and perim_tokens - _geo_tokens(s):
+            continue
+        if geo_perim and len(geo_perim) > len(s) + 10 and not _is_polluted_service(geo_perim):
+            continue
+        geos.append(_clean(s, 220))
+    if not geos and geo_perim and not geo_perim.startswith("Information"):
+        geos = [_clean(geo_perim, 220)]
     return {
         "insight_snapshot": insight,
         "perimeter": perimeter,
@@ -568,16 +677,11 @@ def _heuristic_market_definition_spec(
         # Legacy Macro Environment fields
         "document": "Market Definition",
         "dd_code": legacy.get("dd_code") or "DD-02",
-        "market_framing": legacy.get("market_framing") or [
-            perimeter.get("service"),
-            perimeter.get("customer_types"),
-        ],
+        "market_framing": framing,
         "segments": legacy.get("segments") or [],
         "macro_drivers": legacy.get("macro_drivers") or [],
         "policy_context": legacy.get("policy_context") or [],
-        "geographies": legacy.get("geographies") or (
-            [perimeter["geography"]] if perimeter.get("geography") else []
-        ),
+        "geographies": geos,
     }
 
 
@@ -595,6 +699,33 @@ def _normalise_llm_spec(
             "value_chain_stage": _info_request("value-chain stage"),
             "footprint_basis": "Use operating footprint, not an industry label.",
         }
+    perim = llm["perimeter"]
+    for axis in ("service", "customer_types", "geography", "value_chain_stage"):
+        val = str(perim.get(axis) or "").strip()
+        if val and _is_polluted_service(val):
+            perim[axis] = _info_request(axis.replace("_", " "))
+    llm["perimeter"] = perim
+    # Prefer clean perimeter over polluted legacy / LLM market_framing clips
+    framing_raw = llm.get("market_framing")
+    if framing_raw is None and isinstance(legacy_spec, dict):
+        framing_raw = legacy_spec.get("market_framing")
+    llm["market_framing"] = _clean_framing_list(framing_raw, perimeter=perim)
+    legacy_geos = []
+    if isinstance(legacy_spec, dict) and isinstance(legacy_spec.get("geographies"), list):
+        legacy_geos = legacy_spec["geographies"]
+    geos_in = llm.get("geographies") if isinstance(llm.get("geographies"), list) else legacy_geos
+    geos: list[str] = []
+    geo_perim = str(perim.get("geography") or "").strip()
+    for g in geos_in or []:
+        s = str(g or "").strip()
+        if not s or s.startswith("Information") or _is_polluted_service(s):
+            continue
+        if geo_perim and len(geo_perim) > len(s) + 20 and not _is_polluted_service(geo_perim):
+            continue
+        geos.append(_clean(s, 220))
+    if not geos and geo_perim and not geo_perim.startswith("Information"):
+        geos = [_clean(geo_perim, 220)]
+    llm["geographies"] = geos
     for key in ("double_count_streams", "exclusions", "assumptions", "published_figures"):
         if not isinstance(llm.get(key), list):
             llm[key] = []

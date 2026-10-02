@@ -764,20 +764,42 @@ def _compose_market_risk(styles: dict, ctx: BuildContext, section: StorylineSect
 
     mspec = _spec(mdef)
     framing = mspec.get("market_framing") or mspec.get("document")
+    if isinstance(framing, list):
+        framing_bits = [
+            str(x) for x in framing
+            if x and "Foundation ·" not in str(x) and "plan relies" not in str(x).lower()
+            and not str(x).startswith("Information")
+        ]
+        framing = "; ".join(framing_bits) if framing_bits else None
+    elif isinstance(framing, str) and (
+        "Foundation ·" in framing or "plan relies" in framing.lower()
+    ):
+        framing = None
+    perim = mspec.get("perimeter") if isinstance(mspec.get("perimeter"), dict) else {}
+    if not framing:
+        svc = str(perim.get("service") or "").strip()
+        if svc and not svc.startswith("Information") and "Foundation ·" not in svc and "plan relies" not in svc.lower():
+            framing = svc
     segs = mspec.get("segments")
     macros = _as_list(mspec.get("macro_drivers"), 6) or _as_list(mspec.get("policy_context"), 4)
     if framing or segs or macros or _findings(mdef, 1):
         out.append(Paragraph("1.1.7 Market perimeter & framing", styles["h3"]))
         if framing:
             out.append(Paragraph(_esc(_clean(str(framing), 700)), styles["body"]))
+        elif perim.get("geography"):
+            out.append(Paragraph(_esc(_clean(str(perim.get("geography")), 400)), styles["body"]))
         if isinstance(segs, list) and segs:
             out.extend(_bullets(styles, [
                 _clean(str(s) if not isinstance(s, dict) else str(s.get("name") or s.get("note") or s), 320)
                 for s in segs[:6]
+                if "Foundation ·" not in str(s) and "plan relies" not in str(s).lower()
             ]))
-        elif isinstance(segs, str) and segs.strip():
+        elif isinstance(segs, str) and segs.strip() and "Foundation ·" not in segs:
             out.append(Paragraph(_esc(_clean(segs, 600)), styles["body"]))
-        out.extend(_bullets(styles, macros or _findings(mdef, 5)))
+        out.extend(_bullets(styles, macros or [
+            f for f in _findings(mdef, 5)
+            if "Foundation ·" not in f and "plan relies" not in f.lower()
+        ]))
 
     out.extend(_section_close(styles, section_agents))
     return out
@@ -850,11 +872,19 @@ def _compose_internal_risk(styles: dict, ctx: BuildContext, section: StorylineSe
         out.extend(_bullets(styles, scale))
 
     er = _spec(exec_risk)
-    if er.get("overall_human_capital_risk_1_10") is not None or _findings(exec_risk):
+    mq = _resolve(ctx, "management_quality")
+    ir = _resolve(ctx, "internal_risk")
+    mq_kps = _spec(mq).get("key_persons") if isinstance(_spec(mq).get("key_persons"), list) else []
+    ir_kps = _spec(ir).get("key_person_exposure") if isinstance(_spec(ir).get("key_person_exposure"), list) else []
+    # Prefer management / internal-risk maps (shared SoT) over execution_risk counts
+    # that can invent a different headcount in the same run.
+    kp_count = len(mq_kps) or len(ir_kps) or er.get("key_person_count")
+    if er.get("overall_human_capital_risk_1_10") is not None or _findings(exec_risk) or kp_count:
         out.append(Paragraph("1.2.3 Key-person / retention", styles["h3"]))
         out.append(Paragraph(
             f"Overall human capital risk: {er.get('overall_human_capital_risk_1_10', 'n/a')}/10 · "
-            f"key persons: {er.get('key_person_count', 'n/a')} · high flight risk: {er.get('high_flight_risk_count', 'n/a')}.",
+            f"key persons: {kp_count if kp_count is not None else 'n/a'} · "
+            f"high flight risk: {er.get('high_flight_risk_count', 'n/a')}.",
             styles["body"],
         ))
         execs = er.get("executives")

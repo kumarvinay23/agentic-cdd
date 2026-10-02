@@ -21,7 +21,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Inches, Pt
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt
+from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -585,7 +585,7 @@ def _slide_scope(prs: Presentation, ctx: BuildContext, page: int, total: int) ->
         ["VDR inventory", f"{vdr_n} files indexed in deal data room", "ingest"],
         ["Agent coverage", f"{agent_n} workflow outputs consumed", "outputs/*.json"],
         ["Methodology", (_findings(scope, 1) or ["Scope & methodology agent"])[0][:120], "scope_and_methodology"],
-        ["Corporate ID", _fmt_metric(_spec(bg).get("legal_name")) or company, "company_background"],
+        ["Corporate ID", _recover_legal_name(_spec(bg).get("legal_name")) or company, "company_background"],
     ]
     _add_table(slide, Inches(0.45), Inches(1.7), Inches(12.4), Inches(4.5),
                ["Parameter", "Scope", "Source"], rows)
@@ -637,19 +637,34 @@ def _slide_market_primer(prs: Presentation, ctx: BuildContext, page: int, total:
         framing_text = "; ".join(str(x) for x in framing[:3] if x)
     else:
         framing_text = str(framing) if framing else ""
-    insight = framing_text.strip() or (_findings(mdef, 1) or [f"Market perimeter for {company}."])[0]
+    perim = spec.get("perimeter") if isinstance(spec.get("perimeter"), dict) else {}
+    service = str(perim.get("service") or "").strip()
+    if service.startswith("Information") or "Foundation ·" in service or "plan relies" in service.lower():
+        service = ""
+    insight = (
+        service
+        or framing_text.strip()
+        or (_findings(mdef, 1) or [f"Market perimeter for {company}."])[0]
+    )
+    if "Foundation ·" in insight or "plan relies" in insight.lower():
+        insight = f"Organics collection / composting footprint for {company}."
     _insight_banner(slide, insight, top=1.7)
     segs = _as_list(spec.get("segments"), 2) or _as_list(_spec(seg).get("segments"), 2)
+    segs = [s for s in segs if s and "Foundation ·" not in str(s) and "plan relies" not in str(s).lower()]
     geos = _as_list(spec.get("geographies"), 2)
     if not geos:
-        perim = spec.get("perimeter") if isinstance(spec.get("perimeter"), dict) else {}
         geo = perim.get("geography")
         if isinstance(geo, str) and geo.strip() and "Information request" not in geo:
             geos = [_clean(geo, 200)]
     macros = _as_list(spec.get("macro_drivers"), 2) or _as_list(spec.get("policy_context"), 2)
+    primary = (
+        _clean(service, 140)
+        if service
+        else (segs[0] if segs else _clean(insight, 120))
+    )
     rows = [
-        ["Primary Market", segs[0] if segs else _clean(insight, 120), "market_definition"],
-        ["Adjacent / segments", segs[1] if len(segs) > 1 else (_sector_display(ctx) + " adjacencies"), "market_definition"],
+        ["Primary Market", primary, "market_definition"],
+        ["Adjacent / segments", segs[0] if segs else (_sector_display(ctx) + " adjacencies"), "market_definition"],
         ["Geographic Focus", geos[0] if geos else "As framed in market_definition", "market_definition"],
         ["In-Scope Drivers", macros[0] if macros else (_findings(buy, 1) or ["Structural demand drivers."])[0], "market_definition"],
         ["Buying behaviour", (_findings(buy, 1) or ["See buying_behavior agent."])[0][:140], "buying_behavior"],

@@ -448,29 +448,35 @@ def _build_market_output(
 
         legacy = payload.get("spec") if isinstance(payload.get("spec"), dict) else {}
         prior_seed = None
-        for code in ("F-05", "F-01"):
-            entry = (foundation or {}).get(code) if isinstance(foundation, dict) else None
-            if isinstance(entry, dict) and isinstance(entry.get("spec"), dict):
-                prior_seed = entry["spec"]
-                break
-        # Reuse extractor prose — avoid a second full VDR load inside the 24-agent run.
-        corpus_bits: list[str] = []
-        for key in ("market_framing", "segments", "macro_drivers", "policy_context", "geographies"):
-            for item in (legacy.get(key) or []):
-                if isinstance(item, str) and item.strip():
-                    corpus_bits.append(item.strip())
-        for finding in (payload.get("findings") or [])[:8]:
-            if isinstance(finding, str) and finding.strip():
-                corpus_bits.append(finding.strip())
-        corpus = "\n".join(corpus_bits) or None
-        # Pipeline stays heuristic unless deep_dive_llm is enabled (avoids blocking 24-agent runs).
+        # Prefer company_background offers (service sold) over F-05 soft-fill clips
+        for code in ("company_background", "F-05", "F-01"):
+            if code.startswith("F-"):
+                entry = (foundation or {}).get(code) if isinstance(foundation, dict) else None
+            else:
+                entry = prior.get(code) if isinstance(prior, dict) else None
+                if not entry:
+                    try:
+                        from agetic_cdd_api.services_pipeline import read_agent_output_file
+                        entry = read_agent_output_file(deal, agent_key=code)
+                    except Exception:
+                        entry = None
+            if isinstance(entry, dict):
+                seed = entry.get("spec") if isinstance(entry.get("spec"), dict) else entry
+                if isinstance(seed, dict) and (
+                    isinstance(seed.get("offers"), dict) or seed.get("perimeter")
+                ):
+                    prior_seed = seed
+                    break
+        # Do NOT feed a thin findings-only corpus — that splices clipped Foundation
+        # soft-fill / growth-thesis lines into perimeter.service (e.g.
+        # "DC municipal contract… Foundation · F-05: …"). Gather VDR text instead.
         md_spec = build_market_definition_spec(
             deal,
             index=index,
             company=str(payload.get("target_company") or deal.company or deal.name),
             prior_spec=prior_seed,
             legacy_spec=legacy,
-            corpus=corpus,
+            corpus=None,
             sources=list(payload.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )

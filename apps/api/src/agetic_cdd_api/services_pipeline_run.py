@@ -190,6 +190,16 @@ def execute_pipeline_keys_background(*, org_id: str, deal_id: str, agent_keys: l
         db.close()
 
 
+def _analysis_agent_keys() -> list[str]:
+    """Phases 1–4 only — report builders stay on the Reports Generate path."""
+    return [
+        *PHASE1_AGENT_KEYS,
+        *PHASE2_AGENT_KEYS,
+        *PHASE3_AGENT_KEYS,
+        *PHASE4_AGENT_KEYS,
+    ]
+
+
 def schedule_pipeline_run(
     db: Session,
     *,
@@ -197,6 +207,7 @@ def schedule_pipeline_run(
     deal_id: str,
     phase_id: str | None = None,
     agent_key: str | None = None,
+    restart: bool = False,
 ) -> dict:
     deal = get_deal(db, org_id=org_id, deal_id=deal_id)
     if is_pipeline_busy(db, deal=deal):
@@ -206,7 +217,15 @@ def schedule_pipeline_run(
     target_phase_id: str | None = phase_id
     cascade_plan: dict | None = None
 
-    if agent_key:
+    if restart:
+        if not list_vdr_docs(deal):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Upload documents before re-running the workflow",
+            )
+        queued = _analysis_agent_keys()
+        target_phase_id = "data_ingestion"
+    elif agent_key:
         meta = get_agent_meta(agent_key)
         if not meta:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown agent")
@@ -253,10 +272,12 @@ def schedule_pipeline_run(
     for key in queued:
         queued_meta = get_agent_meta(key) or {}
         queued_phase_ids.append((queued_meta.get("phase") or {}).get("phase_id"))
-    if target_phase_id == "deep_dive" or "deep_dive" in queued_phase_ids:
-        assert_deep_dive_context(deal)
-    if target_phase_id == "final_verdict" or "final_verdict" in queued_phase_ids:
-        assert_verdict_context(deal)
+    # Full restart rebuilds Foundations → Deep Dive → Verdict in order; skip gate checks.
+    if not restart:
+        if target_phase_id == "deep_dive" or "deep_dive" in queued_phase_ids:
+            assert_deep_dive_context(deal)
+        if target_phase_id == "final_verdict" or "final_verdict" in queued_phase_ids:
+            assert_verdict_context(deal)
 
     for index, key in enumerate(queued):
         upsert_run(
@@ -276,6 +297,8 @@ def schedule_pipeline_run(
         "agent_keys": queued,
         "started_at": utc_now_iso(),
     }
+    if restart:
+        response["restart"] = True
     if cascade_plan is not None:
         response["cascade"] = cascade_plan
     return response
