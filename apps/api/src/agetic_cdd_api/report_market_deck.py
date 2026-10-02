@@ -600,20 +600,35 @@ def _slide_perimeter(prs: Presentation, ctx: BuildContext, page: int, total: int
         framing_text = "; ".join(str(x) for x in framing[:3] if x)
     else:
         framing_text = str(framing) if framing else ""
-    insight = framing_text.strip() or (_findings(mdef, 1) or [f"Market perimeter for {company}."])[0]
+    perim = spec.get("perimeter") if isinstance(spec.get("perimeter"), dict) else {}
+    service = str(perim.get("service") or "").strip()
+    if service.startswith("Information") or "Foundation ·" in service or "plan relies" in service.lower():
+        service = ""
+    insight = (
+        service
+        or framing_text.strip()
+        or (_findings(mdef, 1) or [f"Market perimeter for {company}."])[0]
+    )
+    if "Foundation ·" in insight or "plan relies" in insight.lower():
+        insight = f"Organics collection / composting footprint for {company}."
     _insight_banner(slide, insight, top=1.7)
 
     segs = _as_list(spec.get("segments"), 2) or _as_list(_spec(seg).get("segments"), 2)
+    segs = [s for s in segs if s and "Foundation ·" not in str(s) and "plan relies" not in str(s).lower()]
     geos = _as_list(spec.get("geographies"), 2)
     if not geos:
-        perim = spec.get("perimeter") if isinstance(spec.get("perimeter"), dict) else {}
         geo = perim.get("geography")
         if isinstance(geo, str) and geo.strip() and "Information request" not in geo:
             geos = [_clean(geo, 200)]
     macros = _as_list(spec.get("macro_drivers"), 2) or _as_list(spec.get("policy_context"), 2)
+    primary = (
+        _clean(service, 140)
+        if service
+        else (segs[0] if segs else _clean(insight, 120))
+    )
     rows = [
-        ["Primary Market", segs[0] if segs else _clean(insight, 120), "market_definition"],
-        ["Adjacent / segments", segs[1] if len(segs) > 1 else (_sector_display(ctx) + " adjacencies"), "market_definition"],
+        ["Primary Market", primary, "market_definition"],
+        ["Adjacent / segments", segs[0] if segs else (_sector_display(ctx) + " adjacencies"), "market_definition"],
         ["Geographic Focus", geos[0] if geos else "As framed in market_definition / segmentation", "market_definition"],
         ["In-Scope Drivers", macros[0] if macros else (_findings(buy, 1) or ["Structural demand drivers from agents."])[0], "market_definition"],
         ["Out-of-Scope", f"Non-core segments outside {_sector_display(ctx)} primary focus", "market_definition"],

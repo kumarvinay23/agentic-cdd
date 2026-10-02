@@ -106,7 +106,7 @@ def _is_placeholder_company(name: str, slug: str) -> bool:
 
 
 def _clean_legal_name(raw: Any, *, fallback: str | None = None) -> str | None:
-    """Keep a corporate legal name — strip cap-table / option-plan parentheticals."""
+    """Keep a corporate legal name — strip cap-table / invented jurisdiction parentheticals."""
     if raw is None:
         text = ""
     else:
@@ -120,9 +120,20 @@ def _clean_legal_name(raw: Any, *, fallback: str | None = None) -> str | None:
         text,
         flags=re.I,
     ).strip()
-    text = re.sub(r"\s+", " ", text).strip(" ·|-")
+    # "Compost Crew (operating entity under Maryland / D.C. jurisdictions)" — not evidenced
+    text = re.sub(
+        r"\s*\([^)]*(?:operating entity|organized in|under .{0,40}jurisdiction)[^)]*\)\s*",
+        "",
+        text,
+        flags=re.I,
+    ).strip()
+    text = re.sub(r"\s*\(DOC:\s*\[[^\]]+\]\)\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\s+", " ", text).strip(" ·|-.,;")
     # Reject if it still looks like a prose clause, not a name
-    if re.search(r"(?i)issuing common|stock option plan|outstanding shares", text):
+    if re.search(
+        r"(?i)issuing common|stock option plan|outstanding shares|jurisdiction|organized in",
+        text,
+    ):
         return fallback
     if len(text) < 2 or len(text) > 120:
         return fallback

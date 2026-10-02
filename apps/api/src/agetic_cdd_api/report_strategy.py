@@ -23,7 +23,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt
+from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -917,7 +917,19 @@ def _compose_framing(doc: Document, ctx: BuildContext, section: StorylineSection
 
     market_spec = _spec(market)
     framing = _as_str_list(market_spec.get("market_framing"), limit=4) or _findings(market, limit=4)
+    framing = [
+        f for f in framing
+        if f and "Foundation ·" not in f and "plan relies" not in f.lower()
+        and not str(f).startswith("Information")
+    ]
+    perim = market_spec.get("perimeter") if isinstance(market_spec.get("perimeter"), dict) else {}
+    if not framing:
+        svc = str(perim.get("service") or "").strip()
+        if svc and not svc.startswith("Information") and "Foundation ·" not in svc:
+            framing = [svc]
     geos = _as_str_list(market_spec.get("geographies"), limit=5)
+    if not geos and perim.get("geography"):
+        geos = [str(perim["geography"])]
     if framing or geos:
         _add_heading(doc, "1.1.3 Market perimeter signals", level=3)
         if framing:
@@ -1020,7 +1032,7 @@ def _compose_company(doc: Document, ctx: BuildContext, section: StorylineSection
     bg_spec = _spec(company_bg)
     src = _agent_sources(company_bg)
     snapshot_fields: list[tuple[str, Any]] = [
-        ("Legal name", bg_spec.get("legal_name")),
+        ("Legal name", _recover_legal_name(bg_spec.get("legal_name")) or bg_spec.get("legal_name")),
         ("Entity type", bg_spec.get("entity_type")),
         ("Incorporated", bg_spec.get("incorporation_date")),
         ("Jurisdiction", bg_spec.get("jurisdiction")),

@@ -286,12 +286,14 @@ export function DealWorkflow({
     return () => window.clearInterval(timer);
   }, [active, refresh]);
 
-  async function runPhase(phaseId?: string) {
+  async function runPhase(phaseId?: string, opts?: { restart?: boolean }) {
     if (!accessToken) return;
     setRunning(true);
     onError(null);
     try {
-      if (phaseId === "deep_dive") {
+      if (opts?.restart) {
+        await pipelineRunRequest(accessToken, dealId, { restart: true });
+      } else if (phaseId === "deep_dive") {
         await pipelinePhaseRunStream(accessToken, dealId, phaseId, {
           onEvent: () => {
             void refresh();
@@ -366,11 +368,28 @@ export function DealWorkflow({
             </button>
             <button
               type="button"
-              disabled={busy || !pipeline.next_phase_id}
-              onClick={() => void runPhase()}
+              disabled={busy}
+              title={
+                busy
+                  ? "Wait for the current run to finish"
+                  : pipeline.next_phase_id
+                    ? `Run next phase (${pipeline.next_phase_name ?? pipeline.next_phase_id})`
+                    : "Re-run all analysis agents from Data Ingestion"
+              }
+              onClick={() => {
+                if (!pipeline.next_phase_id) {
+                  const ok = window.confirm(
+                    "Re-run the full analysis workflow from the start?\n\nThis re-runs Data Ingestion through Final Verdict and overwrites existing agent outputs. Report files are not regenerated here — use the Reports tab for those.",
+                  );
+                  if (!ok) return;
+                  void runPhase(undefined, { restart: true });
+                  return;
+                }
+                void runPhase();
+              }}
               className="rounded-lg bg-[#1e3a5f] px-3 py-2 text-[13px] font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
             >
-              {busy ? "Running…" : "Run all"}
+              {busy ? "Running…" : pipeline.next_phase_id ? "Run all" : "Re-run all"}
             </button>
           </div>
         </div>

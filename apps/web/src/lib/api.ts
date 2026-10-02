@@ -687,9 +687,9 @@ export async function pipelineRequest(accessToken: string, dealId: string) {
 export async function pipelineRunRequest(
   accessToken: string,
   dealId: string,
-  body: { phase_id?: string; agent_key?: string } = {},
+  body: { phase_id?: string; agent_key?: string; restart?: boolean } = {},
 ) {
-  return apiRequest<ApiSuccess<{ queued: boolean; phase_id?: string; agent_keys: string[] }>>(
+  return apiRequest<ApiSuccess<{ queued: boolean; phase_id?: string; agent_keys: string[]; restart?: boolean }>>(
     ENDPOINTS.pipelineRun(dealId),
     { method: "POST", accessToken, body: JSON.stringify(body) },
   );

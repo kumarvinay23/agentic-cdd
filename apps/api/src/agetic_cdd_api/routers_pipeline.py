@@ -40,6 +40,8 @@ router = APIRouter(tags=["pipeline"])
 class PipelineRunBody(BaseModel):
     phase_id: str | None = None
     agent_key: str | None = None
+    # Re-queue analysis agents from Data Ingestion onward (ignores next_phase).
+    restart: bool = False
 
 
 def _sse_pack(event: dict) -> str:
@@ -82,6 +84,7 @@ def pipeline_run(
         deal_id=deal_id,
         phase_id=body.phase_id if body else None,
         agent_key=body.agent_key if body else None,
+        restart=bool(body.restart) if body else False,
     )
     background_tasks.add_task(
         execute_pipeline_keys_background,
