@@ -7,6 +7,8 @@ import re
 from collections import defaultdict, deque
 from typing import Any
 
+from agetic_cdd_api.models import Deal
+from agetic_cdd_api.services_databook_dual import dual_extract_table
 from agetic_cdd_api.services_databook_extract import (
     _detect_year_headers,
     _is_year_only_caption,
@@ -36,6 +38,10 @@ def is_total_caption(caption: str) -> bool:
     text = normalize_caption(caption)
     if not text:
         return False
+    # Any "Total …" line wins over components in within-doc conflicts
+    # (e.g. Total Cost of Operations, Total Selling, General, & Administrative).
+    if text.lower().startswith("total "):
+        return True
     return bool(_TOTAL_CAPTION_RE.search(text))
 
 
@@ -93,12 +99,13 @@ def detect_blocks_from_table(
     rel_tol = max(float((params or DealDatabookParams()).block_tie_rel_tol), 0.0)
 
     # Partition body into segments ending at total captions.
-    # Each line keeps its body index so row_ids align with rows_from_table.
+    # line_idx is the absolute grid row (same as rows_from_table / SourceRef.row).
     segments: list[tuple[list[tuple[int, list[str]]], list[str] | None, int | None]] = []
     pending: list[tuple[int, list[str]]] = []
-    for line_idx, row in enumerate(body):
+    for idx, row in enumerate(body):
         if not row:
             continue
+        line_idx = idx + body_start
         caption = normalize_caption(row[0] if row else "")
         if not caption or _is_year_only_caption(caption):
             continue
@@ -120,7 +127,13 @@ def detect_blocks_from_table(
 
     claimed: set[str] = set()
 
-    def _claim(caption: str, year: int | None, value: float, line_idx: int | None) -> ExtractedRow | None:
+    def _claim(
+        caption: str,
+        year: int | None,
+        value: float,
+        line_idx: int | None,
+        col_idx: int | None,
+    ) -> ExtractedRow | None:
         rid = _row_id(
             doc_id=doc_id,
             table=table_name,
@@ -128,6 +141,7 @@ def detect_blocks_from_table(
             year=year,
             value=value,
             line_idx=line_idx,
+            col_idx=col_idx,
         )
         match = row_by_id.get(rid)
         if match is not None and match.row_id not in claimed:
@@ -173,7 +187,7 @@ def detect_blocks_from_table(
                 value = _parse_number(line[col_idx])
                 if value is None or not caption:
                     continue
-                match = _claim(caption, year, value, line_idx)
+                match = _claim(caption, year, value, line_idx, col_idx)
                 rid = match.row_id if match else _row_id(
                     doc_id=doc_id,
                     table=table_name,
@@ -181,6 +195,7 @@ def detect_blocks_from_table(
                     year=year,
                     value=value,
                     line_idx=line_idx,
+                    col_idx=col_idx,
                 )
                 line_ids.append(rid)
                 line_values.append(match.value if match else value)
@@ -192,7 +207,7 @@ def detect_blocks_from_table(
                 printed = _parse_number(total_row[col_idx])
                 t_caption = normalize_caption(total_row[0] if total_row else "")
                 if printed is not None and t_caption:
-                    total_match = _claim(t_caption, year, printed, total_idx)
+                    total_match = _claim(t_caption, year, printed, total_idx, col_idx)
                     _attach(total_match, bid)
 
             if total_row is None:
@@ -352,9 +367,34 @@ def annotate_and_detect_blocks(
     doc_id: str,
     table: dict[str, Any],
     params: DealDatabookParams | None = None,
+    deal: Deal | None = None,
+    page_register: Any | None = None,
 ) -> tuple[list[ExtractedRow], list[StatementBlock]]:
-    """Extract rows then detect blocks; annotates row.block_id on the returned list."""
-    rows = rows_from_table(source_name=source_name, doc_id=doc_id, table=table)
+    """Extract rows (dual Method A+B) then detect blocks; annotates row.block_id."""
+    rows = dual_extract_table(
+        source_name=source_name,
+        doc_id=doc_id,
+        table=table,
+        params=params,
+        deal=deal,
+        page_register=page_register,
+    )
+    sheet_idx = table.get("sheet_index")
+    if sheet_idx is not None:
+        try:
+            page_no = int(sheet_idx)
+        except (TypeError, ValueError):
+            page_no = None
+        if page_no is not None:
+            stamped: list[ExtractedRow] = []
+            for row in rows:
+                ref = row.source_ref
+                if ref is not None and ref.page is None:
+                    ref = ref.model_copy(update={"page": page_no})
+                    stamped.append(row.model_copy(update={"source_ref": ref}))
+                else:
+                    stamped.append(row)
+            rows = stamped
     blocks = detect_blocks_from_table(
         source_name=source_name,
         doc_id=doc_id,

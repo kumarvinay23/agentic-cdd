@@ -1,0 +1,607 @@
+{
+  "golden_id": "deal_a",
+  "deal_slug": "acme-co",
+  "deal_name": "Acme Co",
+  "company": "Acme Industries",
+  "sector_pack": "generic",
+  "currency": "INR",
+  "scale": "Cr",
+  "expected_min_proven": 8,
+  "coverage_keys": [
+    "revenue",
+    "ebitda",
+    "gross_profit",
+    "gross_margin",
+    "yoy_growth"
+  ],
+  "coverage_years": [
+    2023,
+    2024
+  ],
+  "forbid_sources": [
+    "Budget_Forecast_Model_FY2026.xlsx"
+  ],
+  "expect_missing_docs": [
+    "management_accounts"
+  ],
+  "expected_page_classes": [
+    {
+      "table_name": "Income Statement INR Cr",
+      "page_class": "income_statement"
+    },
+    {
+      "table_name": "Balance Sheet INR Cr",
+      "page_class": "balance_sheet"
+    },
+    {
+      "table_name": "Cash Flow INR Cr",
+      "page_class": "cash_flow"
+    }
+  ],
+  "expect_prove_ok": [
+    "equity_roll",
+    "cash_roll",
+    "bs_balance",
+    "ni_cross"
+  ],
+  "expected_cells": [
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2023,
+      "status": "proven",
+      "value": 2800.0
+    },
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2024,
+      "status": "proven",
+      "value": 3140.0
+    },
+    {
+      "metric_key": "ebitda",
+      "fiscal_year": 2024,
+      "status": "doubtful",
+      "value": 620.0
+    },
+    {
+      "metric_key": "gross_profit",
+      "fiscal_year": 2024,
+      "status": "doubtful",
+      "value": 1400.0
+    }
+  ],
+  "documents": [
+    {
+      "filename": "Acme_Audited_Financial_Statements_2024.pdf",
+      "excerpt": "Independent auditor report for Acme Industries",
+      "cdl_category": "financial",
+      "tables": [
+        {
+          "name": "Income Statement INR Cr",
+          "rows": [
+            [
+              "Metric",
+              "FY2020",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Revenue",
+              "2100",
+              "2300",
+              "2550",
+              "2800",
+              "3140"
+            ],
+            [
+              "Gross Profit",
+              "900",
+              "1000",
+              "1100",
+              "1200",
+              "1400"
+            ],
+            [
+              "EBITDA",
+              "350",
+              "400",
+              "450",
+              "500",
+              "620"
+            ],
+            [
+              "Net Income",
+              "220",
+              "260",
+              "300",
+              "350",
+              "400"
+            ]
+          ]
+        },
+        {
+          "name": "Balance Sheet INR Cr",
+          "rows": [
+            [
+              "Metric",
+              "FY2020",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Cash",
+              "250",
+              "300",
+              "350",
+              "400",
+              "520"
+            ],
+            [
+              "Total Assets",
+              "3800",
+              "4210",
+              "4660",
+              "5210",
+              "5810"
+            ],
+            [
+              "Total Liabilities",
+              "1700",
+              "1850",
+              "2000",
+              "2200",
+              "2400"
+            ],
+            [
+              "Total Equity",
+              "2100",
+              "2360",
+              "2660",
+              "3010",
+              "3410"
+            ]
+          ]
+        },
+        {
+          "name": "Cash Flow INR Cr",
+          "rows": [
+            [
+              "Metric",
+              "FY2024"
+            ],
+            [
+              "Net change in cash",
+              "120"
+            ],
+            [
+              "Net Income",
+              "400"
+            ]
+          ]
+        },
+        {
+          "name": "Appendix Operating Detail INR Cr",
+          "rows": [
+            [
+              "Metric",
+              "FY2020",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "OpEx line 001",
+              "108",
+              "111",
+              "114",
+              "117",
+              "120"
+            ],
+            [
+              "OpEx line 002",
+              "116",
+              "119",
+              "122",
+              "125",
+              "128"
+            ],
+            [
+              "OpEx line 003",
+              "124",
+              "127",
+              "130",
+              "133",
+              "136"
+            ],
+            [
+              "OpEx line 004",
+              "132",
+              "135",
+              "138",
+              "141",
+              "144"
+            ],
+            [
+              "OpEx line 005",
+              "135",
+              "138",
+              "141",
+              "144",
+              "147"
+            ],
+            [
+              "OpEx line 006",
+              "143",
+              "146",
+              "149",
+              "152",
+              "155"
+            ],
+            [
+              "OpEx line 007",
+              "151",
+              "154",
+              "157",
+              "160",
+              "163"
+            ],
+            [
+              "OpEx line 008",
+              "159",
+              "162",
+              "165",
+              "168",
+              "171"
+            ],
+            [
+              "OpEx line 009",
+              "167",
+              "170",
+              "173",
+              "176",
+              "179"
+            ],
+            [
+              "OpEx line 010",
+              "170",
+              "173",
+              "176",
+              "179",
+              "182"
+            ],
+            [
+              "OpEx line 011",
+              "178",
+              "181",
+              "184",
+              "187",
+              "190"
+            ],
+            [
+              "OpEx line 012",
+              "186",
+              "189",
+              "192",
+              "195",
+              "198"
+            ],
+            [
+              "OpEx line 013",
+              "194",
+              "197",
+              "200",
+              "203",
+              "206"
+            ],
+            [
+              "OpEx line 014",
+              "202",
+              "205",
+              "208",
+              "211",
+              "214"
+            ],
+            [
+              "OpEx line 015",
+              "205",
+              "208",
+              "211",
+              "214",
+              "217"
+            ],
+            [
+              "OpEx line 016",
+              "213",
+              "216",
+              "219",
+              "222",
+              "225"
+            ],
+            [
+              "OpEx line 017",
+              "221",
+              "224",
+              "227",
+              "230",
+              "233"
+            ],
+            [
+              "OpEx line 018",
+              "229",
+              "232",
+              "235",
+              "238",
+              "241"
+            ],
+            [
+              "OpEx line 019",
+              "237",
+              "240",
+              "243",
+              "246",
+              "249"
+            ],
+            [
+              "OpEx line 020",
+              "240",
+              "243",
+              "246",
+              "249",
+              "252"
+            ],
+            [
+              "OpEx line 021",
+              "248",
+              "251",
+              "254",
+              "257",
+              "260"
+            ],
+            [
+              "OpEx line 022",
+              "256",
+              "259",
+              "262",
+              "265",
+              "268"
+            ],
+            [
+              "OpEx line 023",
+              "264",
+              "267",
+              "270",
+              "273",
+              "276"
+            ],
+            [
+              "OpEx line 024",
+              "272",
+              "275",
+              "278",
+              "281",
+              "284"
+            ],
+            [
+              "OpEx line 025",
+              "275",
+              "278",
+              "281",
+              "284",
+              "287"
+            ],
+            [
+              "OpEx line 026",
+              "283",
+              "286",
+              "289",
+              "292",
+              "295"
+            ],
+            [
+              "OpEx line 027",
+              "291",
+              "294",
+              "297",
+              "300",
+              "303"
+            ],
+            [
+              "OpEx line 028",
+              "299",
+              "302",
+              "305",
+              "308",
+              "311"
+            ],
+            [
+              "OpEx line 029",
+              "307",
+              "310",
+              "313",
+              "316",
+              "319"
+            ],
+            [
+              "OpEx line 030",
+              "310",
+              "313",
+              "316",
+              "319",
+              "322"
+            ],
+            [
+              "OpEx line 031",
+              "318",
+              "321",
+              "324",
+              "327",
+              "330"
+            ],
+            [
+              "OpEx line 032",
+              "326",
+              "329",
+              "332",
+              "335",
+              "338"
+            ],
+            [
+              "OpEx line 033",
+              "334",
+              "337",
+              "340",
+              "343",
+              "346"
+            ],
+            [
+              "OpEx line 034",
+              "342",
+              "345",
+              "348",
+              "351",
+              "354"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "filename": "04_Commercial_Due_Diligence.pdf",
+      "excerpt": "Acme commercial due diligence pack",
+      "cdl_category": "commercial",
+      "tables": [
+        {
+          "name": "Income Statement INR Cr",
+          "rows": [
+            [
+              "Metric",
+              "FY2020",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Revenue",
+              "2100",
+              "2300",
+              "2550",
+              "2800",
+              "3140"
+            ],
+            [
+              "Gross Profit",
+              "900",
+              "1000",
+              "1100",
+              "1200",
+              "1400"
+            ],
+            [
+              "EBITDA",
+              "350",
+              "400",
+              "450",
+              "500",
+              "620"
+            ],
+            [
+              "Net Income",
+              "220",
+              "260",
+              "300",
+              "350",
+              "400"
+            ]
+          ]
+        },
+        {
+          "name": "Commercial KPI Bridge INR Cr",
+          "rows": [
+            [
+              "Metric",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Commercial line 001",
+              "508",
+              "511",
+              "514"
+            ],
+            [
+              "Commercial line 002",
+              "516",
+              "519",
+              "522"
+            ],
+            [
+              "Commercial line 003",
+              "524",
+              "527",
+              "530"
+            ],
+            [
+              "Commercial line 004",
+              "532",
+              "535",
+              "538"
+            ],
+            [
+              "Commercial line 005",
+              "535",
+              "538",
+              "541"
+            ],
+            [
+              "Commercial line 006",
+              "543",
+              "546",
+              "549"
+            ],
+            [
+              "Commercial line 007",
+              "551",
+              "554",
+              "557"
+            ],
+            [
+              "Commercial line 008",
+              "559",
+              "562",
+              "565"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "filename": "Budget_Forecast_Model_FY2026.xlsx",
+      "excerpt": "management budget forecast year 1 year 2",
+      "tables": [
+        {
+          "name": "plan",
+          "rows": [
+            [
+              "Metric",
+              "Year 1",
+              "Year 2"
+            ],
+            [
+              "Revenue",
+              "9999",
+              "12000"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "expected_min_figures": 195
+}

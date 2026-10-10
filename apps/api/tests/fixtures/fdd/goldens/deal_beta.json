@@ -1,0 +1,149 @@
+{
+  "golden_id": "deal_beta",
+  "deal_slug": "fdd-beta",
+  "company": "Beta Retail Group",
+  "currency": "USD",
+  "scale": "M",
+  "release_id": "rel_beta_v1",
+  "release_version": 1,
+  "expect_draft_mode": false,
+  "expect_g6_allowed": true,
+  "expect_g5_ready": true,
+  "expect_exhibits": [
+    "ex_db_is",
+    "ex_m1_trading",
+    "ex_m2_margin",
+    "ex_m7_cash",
+    "ex_m8_bs",
+    "ex_m5_nwc",
+    "ex_m6_net_debt",
+    "ex_qoe_bridge"
+  ],
+  "expect_sections_unheld": ["SEC-B", "SEC-C", "SEC-E", "SEC-F", "SEC-G", "SEC-H", "SEC-I"],
+  "expect_facts": [
+    {"metric_key": "revenue", "fiscal_year": 2025, "value": 1450.0, "status": "proven"},
+    {"metric_key": "ebitda", "fiscal_year": 2025, "value": 120.0, "status": "proven"},
+    {"metric_key": "gross_profit", "fiscal_year": 2025, "value": 580.0, "status": "proven"},
+    {"metric_key": "operating_cash_flow", "fiscal_year": 2025, "value": 90.0, "status": "proven"},
+    {"metric_key": "capex", "fiscal_year": 2025, "value": 30.0, "status": "proven"}
+  ],
+  "expect_model_cells": [
+    {"exhibit_id": "ex_m2_margin", "metric_key": "gross_margin", "value": 40.0},
+    {"exhibit_id": "ex_m2_margin", "metric_key": "ebitda_margin", "value": 8.2759},
+    {"exhibit_id": "ex_m7_cash", "metric_key": "free_cash_flow", "value": 60.0},
+    {"exhibit_id": "ex_m7_cash", "metric_key": "cash_conversion", "value": 75.0},
+    {"exhibit_id": "ex_m6_net_debt", "metric_key": "net_debt", "value": 85.0},
+    {"exhibit_id": "ex_m5_nwc", "metric_key": "nwc", "value": 42.0}
+  ],
+  "expect_qoe": {
+    "mode": "worked_example",
+    "adjusted_ebitda_diligence": 101.3,
+    "adjusted_ebitda_management": 109.8,
+    "sensitivity_low": 99.3,
+    "sensitivity_high": 104.1,
+    "pro_forma_ebitda": 108.8,
+    "materiality_m": 7.25,
+    "checks_passed": true
+  },
+  "release_cells": [
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2025,
+      "value": 1450.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "ebitda",
+      "fiscal_year": 2025,
+      "value": 120.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "gross_profit",
+      "fiscal_year": 2025,
+      "value": 580.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "operating_cash_flow",
+      "fiscal_year": 2025,
+      "value": 90.0,
+      "status": "proven",
+      "statement": "CF",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "capex",
+      "fiscal_year": 2025,
+      "value": 30.0,
+      "status": "proven",
+      "statement": "CF",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "cash",
+      "fiscal_year": 2025,
+      "value": 15.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "gross_debt",
+      "fiscal_year": 2025,
+      "value": 100.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "accounts_receivable",
+      "fiscal_year": 2025,
+      "value": 55.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "inventory",
+      "fiscal_year": 2025,
+      "value": 22.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "accounts_payable",
+      "fiscal_year": 2025,
+      "value": 35.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "total_assets",
+      "fiscal_year": 2025,
+      "value": 420.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    }
+  ]
+}

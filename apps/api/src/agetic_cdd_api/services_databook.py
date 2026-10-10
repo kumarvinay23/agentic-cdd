@@ -22,11 +22,13 @@ from agetic_cdd_api.services_databook_models import (
     RowStatus,
 )
 from agetic_cdd_api.services_databook_resolve import (
+    apply_scale_step_guard,
     apply_series_drops,
     apply_statuses_and_promote,
     assumption_issues_from_rows,
     build_data_quality_items,
     detect_conflicts,
+    unmapped_issues_from_rows,
 )
 from agetic_cdd_api.services_databook_store import (
     load_blocks,
@@ -37,6 +39,7 @@ from agetic_cdd_api.services_databook_store import (
     save_blocks,
     save_issues,
     save_meta,
+    save_notes,
     save_promoted,
     save_rows,
 )
@@ -52,16 +55,29 @@ def _params_from_env(base: DealDatabookParams | None = None) -> DealDatabookPara
 
 def _summary_from_store(deal: Deal) -> DatabookSummary:
     from agetic_cdd_api.services_databook_excel import databook_freshness
+    from agetic_cdd_api.services_databook_release import release_summary_dict
+    from agetic_cdd_api.services_databook_store import (
+        load_current_release,
+        load_file_register,
+        load_notes,
+    )
 
     meta = load_meta(deal)
     rows = load_rows(deal)
     items = load_issues(deal)
     promoted = load_promoted(deal)
     blocks = load_blocks(deal)
+    current = load_current_release(deal)
+    register = load_file_register(deal)
+    notes_store = load_notes(deal)
+    reg_counts = (register.counts if register else {}) or {}
     flags = {
         "dropped": sum(1 for i in items if i.get("kind") == "dropped"),
         "conflict": sum(1 for i in items if i.get("kind") == "conflict"),
         "failed_check": sum(1 for i in items if i.get("kind") == "failed_check"),
+        "scale_step": sum(1 for i in items if i.get("kind") == "scale_step"),
+        "unmapped": sum(1 for i in items if i.get("kind") == "unmapped"),
+        "prove_check": sum(1 for i in items if i.get("kind") == "prove_check"),
         "held_out": meta.held_out_count,
         "promoted": meta.promoted_count or len(promoted),
         "assumption": sum(1 for r in rows if r.assumption and r.status.value not in {"dropped"}),
@@ -69,13 +85,46 @@ def _summary_from_store(deal: Deal) -> DatabookSummary:
         "checks_passed": sum(1 for b in blocks if b.outcome == "pass"),
         "checks_failed": sum(1 for b in blocks if b.outcome == "fail"),
         "no_table": sum(1 for b in blocks if b.outcome == "no_table"),
+        "notes": int(notes_store.count if notes_store else 0),
+        "release_proven": (current.counts.get("proven", 0) if current else 0),
+        "release_doubtful": (current.counts.get("doubtful", 0) if current else 0),
+        "release_missing": (current.counts.get("missing", 0) if current else 0),
+        "set_aside": int(reg_counts.get("set_aside") or 0),
+        "forecast_only": int(reg_counts.get("forecast_only") or 0),
+        "history_source": int(reg_counts.get("history_source") or 0),
+        "mapping_memory": int(meta.mapping_memory_count or 0),
+        "traps": int(meta.trap_count or 0),
     }
+    pack_summary = None
+    try:
+        from agetic_cdd_api.services_databook_pack import validation_pack_summary
+
+        pack_summary = validation_pack_summary(deal)
+    except Exception:  # noqa: BLE001
+        pack_summary = None
+    page_summary = None
+    try:
+        from agetic_cdd_api.services_databook_pages import page_register_summary
+        from agetic_cdd_api.services_databook_store import load_page_register
+
+        page_summary = page_register_summary(load_page_register(deal))
+    except Exception:  # noqa: BLE001
+        page_summary = None
     return DatabookSummary(
         deal_id=deal.id,
         meta=meta,
         flags=flags,
         promoted_preview=promoted[:20],
         freshness=databook_freshness(deal),
+        release=release_summary_dict(current),
+        file_register={
+            "generated_at": register.generated_at if register else None,
+            "counts": reg_counts,
+        }
+        if register
+        else None,
+        page_register=page_summary,
+        validation_pack=pack_summary,
     )
 
 
@@ -84,15 +133,31 @@ def rescan_databook(deal: Deal) -> DatabookSummary:
     meta = load_meta(deal)
     params = _params_from_env(meta.params)
 
-    rows, raw_blocks = extract_from_library(deal, params=params)
+    rows, raw_blocks, notes = extract_from_library(deal, params=params)
     blocks, block_fail_ids, failed_check_issues = reconcile_blocks(raw_blocks, params=params)
 
     rows, dropped_issues = apply_series_drops(rows, params=params)
+    rows, scale_hold_ids, scale_step_issues = apply_scale_step_guard(rows, params=params)
     conflict_issues, hold_ids = detect_conflicts(rows)
+    hold_ids = set(hold_ids) | set(scale_hold_ids)
+
+    from agetic_cdd_api.services_databook_prove import run_prove_pipeline
+
+    rows, prove_holds, prove_issues = run_prove_pipeline(
+        rows,
+        blocks=blocks,
+        block_fail_ids=block_fail_ids,
+        hold_ids=hold_ids,
+        params=params,
+        notes=notes,
+    )
+    hold_ids = set(hold_ids) | set(prove_holds)
+
     rows, auto_promoted = apply_statuses_and_promote(
         rows,
         hold_ids=hold_ids,
         block_fail_ids=block_fail_ids,
+        params=params,
     )
 
     # Replay reviewer decisions on top of auto pipeline
@@ -146,9 +211,13 @@ def rescan_databook(deal: Deal) -> DatabookSummary:
         failed_checks=filtered_fails,
         assumed=assumption_issues_from_rows(rows),
     )
+    extras = [*scale_step_issues, *unmapped_issues_from_rows(rows), *prove_issues]
+    if extras:
+        items = [*items, *extras]
 
     save_rows(deal, rows)
     save_blocks(deal, blocks)
+    save_notes(deal, notes)
     save_issues(deal, items)
     save_promoted(deal, promoted)
 
@@ -165,8 +234,19 @@ def rescan_databook(deal: Deal) -> DatabookSummary:
         promoted_count=len(promoted),
         held_out_count=by_status.get("held_out", 0),
         issue_count=len(items),
+        current_release_id=meta.current_release_id,
+        current_release_version=meta.current_release_version,
+        last_release_at=meta.last_release_at,
+        release_stale=True,
+        mapping_memory_count=meta.mapping_memory_count,
+        trap_count=meta.trap_count,
+        last_validation_pack_at=meta.last_validation_pack_at,
     )
     save_meta(deal, meta)
+
+    from agetic_cdd_api.services_databook_release import create_release
+
+    create_release(deal, source="rescan", note="Auto-release after rescan")
     return _summary_from_store(deal)
 
 
@@ -225,19 +305,40 @@ def list_databook_rows(
 
 
 _TRIAGE_RANK = {
-    "assumption": 0,
-    "failed_check": 0,
-    "sources_disagree": 1,
-    "unread": 2,
-    "not_landed": 3,
+    "document_request": 0,
+    "set_aside": 0,
+    "forecast_only": 0,
+    "assumption": 1,
+    "failed_check": 1,
+    "sources_disagree": 2,
+    "unread": 3,
+    "not_landed": 4,
 }
 
 
 def list_databook_findings(deal: Deal) -> list[dict[str, Any]]:
-    """Per-file trust ledger: check pass/fail counts, held-out, triage flags."""
+    """Per-file trust ledger: check pass/fail counts, held-out, triage flags, classify role.
+
+    G2 also prepends open document requests from the current release / expected-docs.
+    """
+    from agetic_cdd_api.services_databook_store import (
+        load_current_release,
+        load_expected_docs,
+        load_file_register,
+        load_page_register,
+    )
+
     rows = load_rows(deal)
     items = load_issues(deal)
     blocks = load_blocks(deal)
+    register = load_file_register(deal)
+    page_reg = load_page_register(deal)
+    reg_by_name = {e.filename: e for e in (register.entries if register else [])}
+    unread_pages_by_file: dict[str, int] = {}
+    if page_reg is not None:
+        for pe in page_reg.entries:
+            if pe.unread:
+                unread_pages_by_file[pe.filename] = unread_pages_by_file.get(pe.filename, 0) + 1
     index = load_library_index(deal) or {}
     entries = index.get("documents") if isinstance(index, dict) else []
     if not isinstance(entries, list):
@@ -266,6 +367,16 @@ def list_databook_findings(deal: Deal) -> list[dict[str, Any]]:
                 "flags": [],
                 "triage": None,
                 "note": "",
+                "relevance": None,
+                "role": None,
+                "basis": None,
+                "ladder_score": None,
+                "actual_forecast": None,
+                "set_aside_reason": None,
+                "unread_pages": 0,
+                "page_classes": {},
+                "page_class_unknown": 0,
+                "page_class_mismatch": 0,
             },
         )
 
@@ -288,6 +399,15 @@ def list_databook_findings(deal: Deal) -> list[dict[str, Any]]:
             slot["assumptions"] += 1
         if row.metric_key is None and row.status.value not in {"dropped"}:
             slot["unmapped"] += 1
+        pc = getattr(row, "page_class", None)
+        if pc is not None:
+            key = pc.value if hasattr(pc, "value") else str(pc)
+            classes = slot["page_classes"]
+            classes[key] = int(classes.get(key) or 0) + 1
+            if key == "unknown":
+                slot["page_class_unknown"] += 1
+        if getattr(row, "statement_mismatch", False):
+            slot["page_class_mismatch"] += 1
 
     for block in blocks:
         slot = _slot(block.source_name, block.doc_id)
@@ -310,22 +430,55 @@ def list_databook_findings(deal: Deal) -> list[dict[str, Any]]:
                     by_doc[src]["conflicts"] += 1
 
     for slot in by_doc.values():
+        reg = reg_by_name.get(slot["source_name"])
+        if reg is not None:
+            slot["relevance"] = reg.relevance.value
+            slot["role"] = reg.role.value
+            slot["basis"] = reg.basis.value
+            slot["ladder_score"] = reg.ladder_score
+            slot["actual_forecast"] = reg.actual_forecast.value
+            slot["set_aside_reason"] = reg.set_aside_reason
+
+        unread_n = int(unread_pages_by_file.get(slot["source_name"]) or 0)
+        slot["unread_pages"] = unread_n
+
         flags: list[str] = []
+        if reg is not None and reg.relevance.value == "set_aside":
+            flags.append("set_aside")
+        if reg is not None and reg.role.value == "forecast_only":
+            flags.append("forecast_only")
         if slot["assumptions"]:
             flags.append("assumption")
         if slot["conflicts"]:
             flags.append("sources_disagree")
         if slot["checks_failed"]:
             flags.append("failed_check")
-        if slot["no_table"] or (slot["checks_total"] == 0 and slot["row_count"] == 0):
+        if unread_n > 0 and slot["row_count"] == 0:
             flags.append("unread")
+        elif slot["no_table"] or (slot["checks_total"] == 0 and slot["row_count"] == 0):
+            if "set_aside" not in flags and "forecast_only" not in flags:
+                flags.append("unread")
         elif slot["row_count"] and slot["promoted"] == 0 and slot["vouched"] == 0 and (
             slot["unmapped"] or slot["held_out"]
         ):
             flags.append("not_landed")
+        if slot.get("page_class_mismatch"):
+            flags.append("page_class_mismatch")
+        if slot.get("page_class_unknown") and slot["row_count"]:
+            flags.append("page_class_unknown")
 
         triage = None
-        for key in ("assumption", "failed_check", "sources_disagree", "unread", "not_landed"):
+        for key in (
+            "set_aside",
+            "forecast_only",
+            "page_class_mismatch",
+            "assumption",
+            "failed_check",
+            "sources_disagree",
+            "unread",
+            "page_class_unknown",
+            "not_landed",
+        ):
             if key in flags:
                 triage = key
                 break
@@ -335,10 +488,16 @@ def list_databook_findings(deal: Deal) -> list[dict[str, Any]]:
         passed = slot["checks_passed"]
         failed = slot["checks_failed"]
         total = slot["checks_total"]
-        if total:
+        if "set_aside" in flags:
+            slot["note"] = reg.set_aside_reason if reg and reg.set_aside_reason else "Set aside — zero history facts"
+        elif "forecast_only" in flags:
+            slot["note"] = "Forecast/budget only — excluded from history FY columns"
+        elif total:
             slot["note"] = f"{failed}/{total} checks failed · {slot['held_out']} rows held out"
         elif slot["no_table"]:
             slot["note"] = "No financial table found — silence is not a pass."
+        elif unread_n > 0 and slot["row_count"] == 0:
+            slot["note"] = f"{unread_n} unread page(s) — scan/image/OCR gap"
         elif slot["row_count"] and total == 0:
             slot["note"] = (
                 f"{slot['row_count']} rows · no statement-block checks "
@@ -346,6 +505,15 @@ def list_databook_findings(deal: Deal) -> list[dict[str, Any]]:
             )
         else:
             slot["note"] = "No extracted rows yet."
+        pc_summary = slot.get("page_classes") or {}
+        if pc_summary:
+            parts = [f"{k}={v}" for k, v in sorted(pc_summary.items()) if k != "unknown"]
+            if parts:
+                slot["note"] = f"{slot['note']} · page_class: {', '.join(parts)}"
+            if slot.get("page_class_mismatch"):
+                slot["note"] = f"{slot['note']} · header/page-class mismatch"
+        if reg is not None and reg.basis.value != "unknown" and "set_aside" not in flags:
+            slot["note"] = f"{slot['note']} · basis={reg.basis.value} (ladder {reg.ladder_score})"
 
         slot["checks_passed"] = passed if total else None
         slot["checks_failed"] = failed if total else None
@@ -362,7 +530,75 @@ def list_databook_findings(deal: Deal) -> list[dict[str, Any]]:
             d["source_name"],
         )
 
-    return sorted(by_doc.values(), key=sort_key)
+    file_findings = sorted(by_doc.values(), key=sort_key)
+
+    # G2 — first-class document requests (AR-5) at the top of Findings.
+    request_findings: list[dict[str, Any]] = []
+    release = load_current_release(deal)
+    requests = list(release.request_list) if release is not None else []
+    if not requests:
+        assessment = load_expected_docs(deal)
+        if assessment is not None:
+            from agetic_cdd_api.services_databook_coverage import requests_for_absent_docs
+
+            requests = requests_for_absent_docs(assessment)
+    for req in requests:
+        if getattr(req, "status", "open") != "open":
+            continue
+        years = ", ".join(str(y) for y in (req.fiscal_years or [])) or "—"
+        metrics = ", ".join(req.metric_keys or []) or "—"
+        request_findings.append(
+            {
+                "source_name": f"[Request] {req.label}",
+                "doc_id": req.request_id,
+                "row_count": 0,
+                "held_out": 0,
+                "promoted": 0,
+                "dropped": 0,
+                "vouched": 0,
+                "conflicts": 0,
+                "assumptions": 0,
+                "unmapped": 0,
+                "checks_passed": None,
+                "checks_failed": None,
+                "checks_total": 0,
+                "no_table": False,
+                "flags": ["document_request"],
+                "triage": "document_request",
+                "note": f"{req.reason} · metrics: {metrics} · years: {years}",
+                "relevance": None,
+                "role": None,
+                "basis": None,
+                "ladder_score": None,
+                "actual_forecast": None,
+                "set_aside_reason": None,
+                "unread_pages": 0,
+                "page_classes": {},
+                "page_class_unknown": 0,
+                "page_class_mismatch": 0,
+                "request_id": req.request_id,
+                "doc_kind": req.doc_kind,
+                "priority": req.priority,
+            }
+        )
+    return [*request_findings, *file_findings]
+
+
+def get_file_register(deal: Deal, *, ensure: bool = False) -> dict[str, Any] | None:
+    """Return the Phase 1 file register; optionally rebuild from the library index."""
+    from agetic_cdd_api.services_databook_classify import build_file_register
+    from agetic_cdd_api.services_databook_store import load_expected_docs, load_file_register
+
+    register = load_file_register(deal)
+    if register is None and ensure:
+        register = build_file_register(deal)
+    if register is None:
+        return None
+    payload = register.model_dump(mode="json")
+    expected = load_expected_docs(deal)
+    if expected is not None:
+        payload["expected_docs"] = expected.model_dump(mode="json")
+    return payload
 
 def _reingest_vdr_file(db: Session, deal: Deal, filename: str, *, rebuild_search: bool = True) -> str:
     """Discard cached library text for one VDR file and re-extract from the original."""

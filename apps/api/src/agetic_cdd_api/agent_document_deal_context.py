@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from agetic_cdd_api.models import Deal
+from agetic_cdd_api.report_builder_base import sanitize_report_prose
 
 _WHITESPACE = re.compile(r"\s+")
 _JUNK = re.compile(r"[■▪●◆□◦\x7f]+")
@@ -76,6 +77,7 @@ _COMPUTED = "(COMPUTED FACTS)"
 def _clean(text: Any, max_chars: int = 420) -> str:
     t = _JUNK.sub(" ", str(text or ""))
     t = _WHITESPACE.sub(" ", t).strip()
+    t = sanitize_report_prose(t)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t

@@ -95,6 +95,19 @@ def _generate_background(deal_slug: str, report_type: str) -> None:
         for evt in builder.generate():
             with _buf_lock:
                 _event_buffers.setdefault(job_key, []).append(evt)
+    except Exception as exc:
+        # generate() usually yields an error event then re-raises; keep the
+        # worker thread quiet and ensure SSE still gets a terminal error.
+        with _buf_lock:
+            buf = _event_buffers.setdefault(job_key, [])
+            if not any(e.get("stage") == "error" for e in buf):
+                buf.append(
+                    {
+                        "stage": "error",
+                        "message": str(exc),
+                        "level": "error",
+                    }
+                )
     finally:
         with _buf_lock:
             _event_done[job_key] = True
@@ -199,7 +212,13 @@ def report_status(
         "started_at": meta.get("started_at"),
         "ready_at": meta.get("ready_at"),
         "error": meta.get("error"),
+        "artifact_path": meta.get("artifact_path"),
+        "content_sha256": meta.get("content_sha256"),
+        "artifact_bytes": meta.get("artifact_bytes"),
         "storyline_count": len(meta.get("storyline", [])),
+        "stale_databook": bool(meta.get("stale_databook")),
+        "stale_release_id": meta.get("stale_release_id"),
+        "stale_reason": meta.get("stale_reason"),
         **(REPORT_TYPES.get(report_type, {})),
     }
 
@@ -213,7 +232,7 @@ def download_report(
 ):
     deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
     meta = get_report(deal.slug, report_type)
-    if not meta or meta.get("status") != "ready":
+    if not meta or meta.get("status") not in {"ready", "stale"}:
         raise HTTPException(status_code=404, detail="Report not ready for download.")
 
     artifact = meta.get("artifact_path")
@@ -236,6 +255,13 @@ def download_report(
         path=str(filepath),
         media_type=media_map.get(export_fmt, "application/octet-stream"),
         filename=filepath.name,
+        headers={
+            # Prevent browsers / proxies from serving a prior IC Memo (or any report)
+            # after regeneration — especially PDFs which are often aggressively cached.
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
 
@@ -252,7 +278,7 @@ def preview_report(
 
     deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
     meta = get_report(deal.slug, report_type)
-    if not meta or meta.get("status") != "ready":
+    if not meta or meta.get("status") not in {"ready", "stale"}:
         raise HTTPException(status_code=404, detail="Report not ready for preview.")
 
     artifact = meta.get("artifact_path")

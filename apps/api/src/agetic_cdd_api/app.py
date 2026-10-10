@@ -17,11 +17,13 @@ from agetic_cdd_api.routers_deals import router as deals_router
 from agetic_cdd_api.routers_documents import router as documents_router
 from agetic_cdd_api.routers_pipeline import router as pipeline_router
 from agetic_cdd_api.routers_reports import router as reports_router
+from agetic_cdd_api.routers_fdd import router as fdd_router
 import agetic_cdd_api.report_ops_dashboard as _ops_dashboard  # noqa: F401  register builder
 import agetic_cdd_api.report_strategy as _strategy_report  # noqa: F401  register builder
 import agetic_cdd_api.report_ic_memo as _ic_memo  # noqa: F401  register builder
 import agetic_cdd_api.report_market_deck as _market_deck  # noqa: F401  register builder
 import agetic_cdd_api.report_cdd_deck as _cdd_deck  # noqa: F401  register builder
+import agetic_cdd_api.report_fdd as _fdd  # noqa: F401  register fdd_report + fdd_deck
 from agetic_cdd_api.seed import seed_admin
 from agetic_cdd_api.settings import settings
 
@@ -58,6 +60,7 @@ app.include_router(dealroom_router, prefix=settings.api_prefix)
 app.include_router(documents_router, prefix=settings.api_prefix)
 app.include_router(pipeline_router, prefix=settings.api_prefix)
 app.include_router(reports_router, prefix=settings.api_prefix)
+app.include_router(fdd_router, prefix=settings.api_prefix)
 
 
 @app.get("/api/v1/health")

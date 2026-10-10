@@ -1,0 +1,15 @@
+{"trap_id":"t01","kind":"typed_figure","check":"typed_figure","text":"Revenue was 3140 in FY24A.","expect_fail":true,"note":"Raw digits outside tokens must fail AS-2"}
+{"trap_id":"t02","kind":"typed_figure","check":"typed_figure","text":"Revenue was {{ex:ex_db_is.revenue_fy2024}} in FY24A.","expect_fail":false,"note":"Tokenised prose is clean"}
+{"trap_id":"t03","kind":"model_formula","check":"net_debt_formula","lines":[{"metric_key":"term_loan","value":10},{"metric_key":"cash","value":3},{"metric_key":"lease_liability","value":2}],"expect_net_debt":7.0,"expect_lease_beside":2.0,"note":"Net debt = debt − cash; leases beside"}
+{"trap_id":"t04","kind":"model_formula","check":"nwc_formula","lines":[{"metric_key":"accounts_receivable","value":5},{"metric_key":"inventory","value":2},{"metric_key":"accounts_payable","value":4}],"expect_nwc":3.0,"note":"NWC = AR + inv − AP"}
+{"trap_id":"t05","kind":"token_match","check":"matches","norm_key":"bank_charge","bucket":"cash","expect":false,"note":"Short cash tokens must not hitch onto bank_charge"}
+{"trap_id":"t06","kind":"token_match","check":"matches","norm_key":"bank_balance","bucket":"cash","expect":true}
+{"trap_id":"t07","kind":"exhibit_route","check":"exhibit_meta","metric_key":"board_member_lease_expense","expect_bs":false,"note":"P&L lease expense must not route to SEC-F"}
+{"trap_id":"t08","kind":"exhibit_route","check":"exhibit_meta","metric_key":"cash_and_equivalents","expect_bs":true}
+{"trap_id":"t09","kind":"status","check":"worst_status","statuses":["proven","draft","doubtful"],"expect":"draft"}
+{"trap_id":"t10","kind":"format","check":"format_number","value":10000000000.05,"expect":"10,000,000,000.05"}
+{"trap_id":"t11","kind":"qoe","check":"qoe_worked_example","note":"PDF §5 worked example bridge invariants"}
+{"trap_id":"t12","kind":"pin","check":"release_pin_version","note":"allow_pinned_release still enforces pin↔artefact version"}
+{"trap_id":"t13","kind":"model_formula","check":"trading_yoy","lines":[{"metric_key":"revenue","fiscal_year":2023,"value":80},{"metric_key":"revenue","fiscal_year":2024,"value":100},{"metric_key":"ebitda","fiscal_year":2023,"value":10},{"metric_key":"ebitda","fiscal_year":2024,"value":12}],"expect_revenue_yoy":25.0,"expect_ebitda_yoy":20.0,"year":2024,"note":"M1 YoY = (curr−prior)/|prior|×100"}
+{"trap_id":"t14","kind":"model_formula","check":"cash_conversion","lines":[{"metric_key":"operating_cash_flow","value":9},{"metric_key":"capex","value":-3},{"metric_key":"ebitda","value":12}],"expect_fcf":6.0,"expect_cash_conversion":75.0,"note":"M7 FCF=OCF−|capex|; conversion=OCF÷EBITDA×100"}
+{"trap_id":"t15","kind":"model_formula","check":"margin_walk","lines":[{"metric_key":"revenue","fiscal_year":2023,"value":80},{"metric_key":"revenue","fiscal_year":2024,"value":100},{"metric_key":"gross_profit","fiscal_year":2023,"value":28},{"metric_key":"gross_profit","fiscal_year":2024,"value":40},{"metric_key":"ebitda","fiscal_year":2023,"value":10},{"metric_key":"ebitda","fiscal_year":2024,"value":12}],"expect_gross_margin":40.0,"expect_gm_delta_pp":5.0,"expect_em_delta_pp":-0.5,"year":2024,"note":"M2 GM%=GP÷rev; Δpp=curr−prior"}

@@ -38,11 +38,12 @@ def test_expand_zip_flattens_and_skips_junk(tmp_path: Path) -> None:
     )
     names = set(result["extracted"])
     assert any(n.endswith(".txt") for n in names)
-    assert not any(n.endswith(".png") for n in names)
+    # Map/photo PNGs stay in the VDR inventory even when not text-extractable.
+    assert any(n.endswith(".png") for n in names)
     assert (dest / next(n for n in names if n.endswith(".txt"))).read_text() == "hello diligence"
     skipped_reasons = {s["reason"] for s in result["skipped"]}
     assert "junk" in skipped_reasons
-    assert any(r.startswith("unsupported") for r in skipped_reasons)
+    assert not any(r.startswith("unsupported") for r in skipped_reasons)
 
 
 def test_expand_zip_handles_name_collisions(tmp_path: Path) -> None:

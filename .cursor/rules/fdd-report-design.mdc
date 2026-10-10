@@ -1,0 +1,28 @@
+---
+description: DiligenceIQ FDD report/deck design contract — numbers from databook only; follow phased plan
+globs: docs/plans/fdd-*.md,**/services_fdd*.py,**/fdd_*.py,**/report_fdd*.py
+alwaysApply: false
+---
+
+# FDD Report & Deck
+
+Authoritative design:
+
+- PDF: `DiligenceIQ_FDD_Report_and_Deck_Creation_Design.pdf`
+- Requirements: `docs/plans/fdd-report-design-requirements-matrix.md`
+- Implementation: `docs/plans/fdd-report-implementation.md`
+- Product context: `CONTEXT.md` § FDD Report & Deck
+
+## Non-negotiable
+
+1. Exhibit numbers only from approved databook (via versioned models) — never agent figures.
+2. VDR finds re-enter databook; never patch the report directly.
+3. Humans approve judgements (G1 scope, G4 QoE, G6 partner) — not arithmetic.
+4. One `report_spec` renders report + deck with identical figures.
+5. Number tokens in commentary; no typed figures in prose.
+
+## Build order
+
+Critical path: Phase **0 → 1 → 3 → 5a (QoE) → 6 → 8**. Do not start full narrative/deck polish before exhibit store + databook bridge + QoE.
+
+Until databook meets contract: **draft mode**; G6 unavailable.

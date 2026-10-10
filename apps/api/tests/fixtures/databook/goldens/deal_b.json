@@ -1,0 +1,702 @@
+{
+  "golden_id": "deal_b",
+  "deal_slug": "bright-saas",
+  "deal_name": "Bright SaaS",
+  "company": "Bright Software",
+  "sector_pack": "saas",
+  "currency": "USD",
+  "scale": "millions",
+  "expected_min_proven": 10,
+  "coverage_keys": [
+    "revenue",
+    "ebitda",
+    "nrr",
+    "grr",
+    "gross_margin"
+  ],
+  "coverage_years": [
+    2022,
+    2023,
+    2024
+  ],
+  "forbid_sources": [
+    "Personal_Brokerage_Letter.pdf"
+  ],
+  "expect_missing_docs": [
+    "cohort_retention"
+  ],
+  "expected_page_classes": [
+    {
+      "table_name": "P&L USD millions",
+      "page_class": "income_statement"
+    },
+    {
+      "table_name": "Balance Sheet USD millions",
+      "page_class": "balance_sheet"
+    },
+    {
+      "table_name": "Cash Flow USD millions",
+      "page_class": "cash_flow"
+    }
+  ],
+  "expected_cells": [
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2022,
+      "status": "proven",
+      "value": 40.0
+    },
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2023,
+      "status": "proven",
+      "value": 55.0
+    },
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2024,
+      "status": "proven",
+      "value": 72.0
+    },
+    {
+      "metric_key": "nrr",
+      "fiscal_year": 2024,
+      "status": "proven",
+      "value": 118.0
+    },
+    {
+      "metric_key": "ebitda",
+      "fiscal_year": 2024,
+      "status": "doubtful",
+      "value": 18.0
+    }
+  ],
+  "documents": [
+    {
+      "filename": "Bright_Audited_Financial_Statements_2024.pdf",
+      "excerpt": "Independent auditor report Bright Software",
+      "cdl_category": "financial",
+      "tables": [
+        {
+          "name": "P&L USD millions",
+          "rows": [
+            [
+              "Metric",
+              "FY2019",
+              "FY2020",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Revenue",
+              "18",
+              "24",
+              "32",
+              "40",
+              "55",
+              "72"
+            ],
+            [
+              "EBITDA",
+              "2",
+              "4",
+              "6",
+              "8",
+              "12",
+              "18"
+            ],
+            [
+              "Net Revenue Retention (NRR)",
+              "102",
+              "105",
+              "108",
+              "110",
+              "115",
+              "118"
+            ],
+            [
+              "Gross Revenue Retention (GRR)",
+              "90",
+              "91",
+              "92",
+              "93",
+              "94",
+              "95"
+            ],
+            [
+              "Net Income",
+              "1",
+              "2",
+              "3",
+              "5",
+              "8",
+              "11"
+            ]
+          ]
+        },
+        {
+          "name": "Balance Sheet USD millions",
+          "rows": [
+            [
+              "Metric",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Cash",
+              "12",
+              "18",
+              "27"
+            ],
+            [
+              "Total Assets",
+              "80",
+              "98",
+              "124"
+            ],
+            [
+              "Total Liabilities",
+              "30",
+              "40",
+              "55"
+            ],
+            [
+              "Total Equity",
+              "50",
+              "58",
+              "69"
+            ]
+          ]
+        },
+        {
+          "name": "Cash Flow USD millions",
+          "rows": [
+            [
+              "Metric",
+              "FY2024"
+            ],
+            [
+              "Net change in cash",
+              "9"
+            ],
+            [
+              "Net Income",
+              "11"
+            ]
+          ]
+        },
+        {
+          "name": "SaaS Cohort Detail USD millions",
+          "rows": [
+            [
+              "Metric",
+              "FY2019",
+              "FY2020",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Cohort line 001",
+              "708",
+              "711",
+              "714",
+              "717",
+              "720",
+              "723"
+            ],
+            [
+              "Cohort line 002",
+              "716",
+              "719",
+              "722",
+              "725",
+              "728",
+              "731"
+            ],
+            [
+              "Cohort line 003",
+              "724",
+              "727",
+              "730",
+              "733",
+              "736",
+              "739"
+            ],
+            [
+              "Cohort line 004",
+              "732",
+              "735",
+              "738",
+              "741",
+              "744",
+              "747"
+            ],
+            [
+              "Cohort line 005",
+              "735",
+              "738",
+              "741",
+              "744",
+              "747",
+              "750"
+            ],
+            [
+              "Cohort line 006",
+              "743",
+              "746",
+              "749",
+              "752",
+              "755",
+              "758"
+            ],
+            [
+              "Cohort line 007",
+              "751",
+              "754",
+              "757",
+              "760",
+              "763",
+              "766"
+            ],
+            [
+              "Cohort line 008",
+              "759",
+              "762",
+              "765",
+              "768",
+              "771",
+              "774"
+            ],
+            [
+              "Cohort line 009",
+              "767",
+              "770",
+              "773",
+              "776",
+              "779",
+              "782"
+            ],
+            [
+              "Cohort line 010",
+              "770",
+              "773",
+              "776",
+              "779",
+              "782",
+              "785"
+            ],
+            [
+              "Cohort line 011",
+              "778",
+              "781",
+              "784",
+              "787",
+              "790",
+              "793"
+            ],
+            [
+              "Cohort line 012",
+              "786",
+              "789",
+              "792",
+              "795",
+              "798",
+              "801"
+            ],
+            [
+              "Cohort line 013",
+              "794",
+              "797",
+              "800",
+              "803",
+              "806",
+              "809"
+            ],
+            [
+              "Cohort line 014",
+              "802",
+              "805",
+              "808",
+              "811",
+              "814",
+              "817"
+            ],
+            [
+              "Cohort line 015",
+              "805",
+              "808",
+              "811",
+              "814",
+              "817",
+              "820"
+            ],
+            [
+              "Cohort line 016",
+              "813",
+              "816",
+              "819",
+              "822",
+              "825",
+              "828"
+            ],
+            [
+              "Cohort line 017",
+              "821",
+              "824",
+              "827",
+              "830",
+              "833",
+              "836"
+            ],
+            [
+              "Cohort line 018",
+              "829",
+              "832",
+              "835",
+              "838",
+              "841",
+              "844"
+            ],
+            [
+              "Cohort line 019",
+              "837",
+              "840",
+              "843",
+              "846",
+              "849",
+              "852"
+            ],
+            [
+              "Cohort line 020",
+              "840",
+              "843",
+              "846",
+              "849",
+              "852",
+              "855"
+            ],
+            [
+              "Cohort line 021",
+              "848",
+              "851",
+              "854",
+              "857",
+              "860",
+              "863"
+            ],
+            [
+              "Cohort line 022",
+              "856",
+              "859",
+              "862",
+              "865",
+              "868",
+              "871"
+            ],
+            [
+              "Cohort line 023",
+              "864",
+              "867",
+              "870",
+              "873",
+              "876",
+              "879"
+            ],
+            [
+              "Cohort line 024",
+              "872",
+              "875",
+              "878",
+              "881",
+              "884",
+              "887"
+            ],
+            [
+              "Cohort line 025",
+              "875",
+              "878",
+              "881",
+              "884",
+              "887",
+              "890"
+            ],
+            [
+              "Cohort line 026",
+              "883",
+              "886",
+              "889",
+              "892",
+              "895",
+              "898"
+            ],
+            [
+              "Cohort line 027",
+              "891",
+              "894",
+              "897",
+              "900",
+              "903",
+              "906"
+            ],
+            [
+              "Cohort line 028",
+              "899",
+              "902",
+              "905",
+              "908",
+              "911",
+              "914"
+            ],
+            [
+              "Cohort line 029",
+              "907",
+              "910",
+              "913",
+              "916",
+              "919",
+              "922"
+            ],
+            [
+              "Cohort line 030",
+              "910",
+              "913",
+              "916",
+              "919",
+              "922",
+              "925"
+            ],
+            [
+              "Cohort line 031",
+              "918",
+              "921",
+              "924",
+              "927",
+              "930",
+              "933"
+            ],
+            [
+              "Cohort line 032",
+              "926",
+              "929",
+              "932",
+              "935",
+              "938",
+              "941"
+            ],
+            [
+              "Cohort line 033",
+              "934",
+              "937",
+              "940",
+              "943",
+              "946",
+              "949"
+            ],
+            [
+              "Cohort line 034",
+              "942",
+              "945",
+              "948",
+              "951",
+              "954",
+              "957"
+            ],
+            [
+              "Cohort line 035",
+              "945",
+              "948",
+              "951",
+              "954",
+              "957",
+              "960"
+            ],
+            [
+              "Cohort line 036",
+              "953",
+              "956",
+              "959",
+              "962",
+              "965",
+              "968"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "filename": "Bright_Management_Accounts_2024.pdf",
+      "excerpt": "Bright management accounts",
+      "cdl_category": "financial",
+      "tables": [
+        {
+          "name": "P&L USD millions",
+          "rows": [
+            [
+              "Metric",
+              "FY2019",
+              "FY2020",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "Revenue",
+              "18",
+              "24",
+              "32",
+              "40",
+              "55",
+              "72"
+            ],
+            [
+              "EBITDA",
+              "2",
+              "4",
+              "6",
+              "8",
+              "12",
+              "18"
+            ],
+            [
+              "Net Income",
+              "1",
+              "2",
+              "3",
+              "5",
+              "8",
+              "11"
+            ]
+          ]
+        },
+        {
+          "name": "Management Operating Pack USD millions",
+          "rows": [
+            [
+              "Metric",
+              "FY2021",
+              "FY2022",
+              "FY2023",
+              "FY2024"
+            ],
+            [
+              "MgmtOp line 001",
+              "908",
+              "911",
+              "914",
+              "917"
+            ],
+            [
+              "MgmtOp line 002",
+              "916",
+              "919",
+              "922",
+              "925"
+            ],
+            [
+              "MgmtOp line 003",
+              "924",
+              "927",
+              "930",
+              "933"
+            ],
+            [
+              "MgmtOp line 004",
+              "932",
+              "935",
+              "938",
+              "941"
+            ],
+            [
+              "MgmtOp line 005",
+              "935",
+              "938",
+              "941",
+              "944"
+            ],
+            [
+              "MgmtOp line 006",
+              "943",
+              "946",
+              "949",
+              "952"
+            ],
+            [
+              "MgmtOp line 007",
+              "951",
+              "954",
+              "957",
+              "960"
+            ],
+            [
+              "MgmtOp line 008",
+              "959",
+              "962",
+              "965",
+              "968"
+            ],
+            [
+              "MgmtOp line 009",
+              "967",
+              "970",
+              "973",
+              "976"
+            ],
+            [
+              "MgmtOp line 010",
+              "970",
+              "973",
+              "976",
+              "979"
+            ],
+            [
+              "MgmtOp line 011",
+              "978",
+              "981",
+              "984",
+              "987"
+            ],
+            [
+              "MgmtOp line 012",
+              "986",
+              "989",
+              "992",
+              "995"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "filename": "Personal_Brokerage_Letter.pdf",
+      "excerpt": "personal brokerage introduction",
+      "tables": [
+        {
+          "name": "x",
+          "rows": [
+            [
+              "Metric",
+              "FY2024"
+            ],
+            [
+              "Revenue",
+              "1"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "expected_min_figures": 252,
+  "expect_prove_ok": [
+    "equity_roll",
+    "cash_roll",
+    "bs_balance",
+    "ni_cross"
+  ]
+}

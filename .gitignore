@@ -40,6 +40,9 @@ htmlcov/
 data/
 apps/api/data/
 
+# Databook cross-process lock sidecars (also covered by data/)
+*.lock
+
 # Node / Next.js
 node_modules/
 .next/

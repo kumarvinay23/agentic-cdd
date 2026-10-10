@@ -1,0 +1,195 @@
+{
+  "golden_id": "deal_alpha",
+  "deal_slug": "fdd-alpha",
+  "company": "Alpha Industries",
+  "currency": "USD",
+  "scale": "M",
+  "release_id": "rel_alpha_v1",
+  "release_version": 1,
+  "expect_draft_mode": false,
+  "expect_g6_allowed": true,
+  "expect_g5_ready": true,
+  "expect_exhibits": [
+    "ex_db_is",
+    "ex_m1_trading",
+    "ex_m2_margin",
+    "ex_m7_cash",
+    "ex_m8_bs",
+    "ex_m5_nwc",
+    "ex_m6_net_debt",
+    "ex_qoe_bridge"
+  ],
+  "expect_sections_unheld": ["SEC-B", "SEC-C", "SEC-E", "SEC-F", "SEC-G", "SEC-H", "SEC-I"],
+  "expect_facts": [
+    {"metric_key": "revenue", "fiscal_year": 2023, "value": 80.0, "status": "proven"},
+    {"metric_key": "revenue", "fiscal_year": 2024, "value": 100.0, "status": "proven"},
+    {"metric_key": "ebitda", "fiscal_year": 2024, "value": 12.0, "status": "proven"},
+    {"metric_key": "gross_profit", "fiscal_year": 2024, "value": 40.0, "status": "proven"},
+    {"metric_key": "operating_cash_flow", "fiscal_year": 2024, "value": 9.0, "status": "proven"},
+    {"metric_key": "capex", "fiscal_year": 2024, "value": 3.0, "status": "proven"},
+    {"metric_key": "cash", "fiscal_year": 2024, "value": 3.0, "status": "proven"},
+    {"metric_key": "term_loan", "fiscal_year": 2024, "value": 10.0, "status": "proven"}
+  ],
+  "expect_model_cells": [
+    {"exhibit_id": "ex_m1_trading", "metric_key": "revenue", "value": 100.0},
+    {"exhibit_id": "ex_m1_trading", "metric_key": "revenue_yoy", "value": 25.0},
+    {"exhibit_id": "ex_m2_margin", "metric_key": "gross_margin", "value": 40.0},
+    {"exhibit_id": "ex_m2_margin", "metric_key": "gross_margin_delta_pp", "value": 5.0},
+    {"exhibit_id": "ex_m2_margin", "metric_key": "ebitda_margin_delta_pp", "value": -0.5},
+    {"exhibit_id": "ex_m7_cash", "metric_key": "free_cash_flow", "value": 6.0},
+    {"exhibit_id": "ex_m7_cash", "metric_key": "cash_conversion", "value": 75.0},
+    {"exhibit_id": "ex_m6_net_debt", "metric_key": "net_debt", "value": 7.0},
+    {"exhibit_id": "ex_m5_nwc", "metric_key": "nwc", "value": 3.0}
+  ],
+  "expect_qoe": {
+    "mode": "from_facts",
+    "adjusted_ebitda_diligence": 12.0,
+    "checks_passed": true
+  },
+  "release_cells": [
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2023,
+      "value": 80.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "revenue",
+      "fiscal_year": 2024,
+      "value": 100.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "ebitda",
+      "fiscal_year": 2023,
+      "value": 10.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "ebitda",
+      "fiscal_year": 2024,
+      "value": 12.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "gross_profit",
+      "fiscal_year": 2023,
+      "value": 28.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "gross_profit",
+      "fiscal_year": 2024,
+      "value": 40.0,
+      "status": "proven",
+      "statement": "IS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "operating_cash_flow",
+      "fiscal_year": 2024,
+      "value": 9.0,
+      "status": "proven",
+      "statement": "CF",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "capex",
+      "fiscal_year": 2024,
+      "value": 3.0,
+      "status": "proven",
+      "statement": "CF",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "cash",
+      "fiscal_year": 2024,
+      "value": 3.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "term_loan",
+      "fiscal_year": 2024,
+      "value": 10.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "lease_liability",
+      "fiscal_year": 2024,
+      "value": 2.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "accounts_receivable",
+      "fiscal_year": 2024,
+      "value": 5.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "inventory",
+      "fiscal_year": 2024,
+      "value": 2.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "accounts_payable",
+      "fiscal_year": 2024,
+      "value": 4.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "total_assets",
+      "fiscal_year": 2024,
+      "value": 40.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    },
+    {
+      "metric_key": "total_equity",
+      "fiscal_year": 2024,
+      "value": 18.0,
+      "status": "proven",
+      "statement": "BS",
+      "currency": "USD",
+      "scale": "M"
+    }
+  ]
+}

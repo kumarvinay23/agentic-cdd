@@ -22,7 +22,36 @@ import {
 } from "@/lib/api";
 import { DecisionChainPanel } from "@/components/deal/DecisionChainPanel";
 
-const IMPLEMENTED_REPORTS = new Set(["ops_dashboard", "strategy_report", "ic_memo", "market_deck", "cdd_deck"]);
+const IMPLEMENTED_REPORTS = new Set([
+  "ops_dashboard",
+  "strategy_report",
+  "ic_memo",
+  "market_deck",
+  "cdd_deck",
+  "fdd_report",
+  "fdd_deck",
+]);
+
+/** Surface FDD first so Phase 0–1 stubs are easy to find in the catalog. */
+const CATALOG_ORDER = [
+  "fdd_report",
+  "fdd_deck",
+  "cdd_deck",
+  "ic_memo",
+  "market_deck",
+  "strategy_report",
+  "ops_dashboard",
+];
+
+function sortCatalog(entries: ReportCatalogEntry[]): ReportCatalogEntry[] {
+  const rank = new Map(CATALOG_ORDER.map((id, i) => [id, i]));
+  return [...entries].sort((a, b) => {
+    const ra = rank.get(a.report_type) ?? 100;
+    const rb = rank.get(b.report_type) ?? 100;
+    if (ra !== rb) return ra - rb;
+    return a.report_type.localeCompare(b.report_type);
+  });
+}
 
 type ReportTab = "preview" | "storyline" | "sources";
 type ViewMode = "catalog" | "detail";
@@ -578,6 +607,8 @@ export function DealReports({
     [catalog, selected],
   );
 
+  const catalogView = useMemo(() => sortCatalog(catalog), [catalog]);
+
   const refreshCatalog = useCallback(async () => {
     if (!accessToken) return;
     const res = await reportsCatalogRequest(accessToken, dealId);
@@ -787,7 +818,7 @@ export function DealReports({
   const badge = selectedReport ? statusBadge(selectedReport.status) : statusBadge("not_generated");
   const isImplemented = selected ? IMPLEMENTED_REPORTS.has(selected) : false;
 
-  // ----- Catalog view (5 report cards) -----
+  // ----- Catalog view -----
   if (view === "catalog") {
     return (
       <div className="space-y-6">
@@ -801,7 +832,8 @@ export function DealReports({
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight text-text-primary">Reports</h1>
             <p className="mt-1 max-w-2xl text-[13px] text-text-secondary">
-              Institutional deliverables generated from this deal&apos;s VDR + web research — pick a format and build.
+              Institutional deliverables from this deal — including FDD Report (Word/PDF) and FDD IC Deck.
+              Open a card, then click Generate.
             </p>
           </div>
         </div>
@@ -809,10 +841,11 @@ export function DealReports({
         {loading ? <p className="text-[13px] text-text-secondary">Loading report catalog…</p> : null}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {catalog.map((report) => {
+          {catalogView.map((report) => {
             const itemBadge = statusBadge(report.status);
             const ready = report.status === "ready";
             const implemented = IMPLEMENTED_REPORTS.has(report.report_type);
+            const isFdd = report.report_type.startsWith("fdd_");
             return (
               <button
                 key={report.report_type}
@@ -827,9 +860,16 @@ export function DealReports({
                   <span className="inline-grid h-10 w-10 place-items-center rounded-lg bg-[#eef3f8] text-[#1e3a5f] transition group-hover:bg-[#dbeafe] group-hover:text-[#1d4ed8]">
                     <ReportTypeIcon format={report.format} />
                   </span>
-                  <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${itemBadge.className}`}>
-                    {itemBadge.label}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    {isFdd ? (
+                      <span className="rounded-full bg-[#eff6ff] px-2.5 py-0.5 text-[11px] font-semibold text-[#1d4ed8] ring-1 ring-[#bfdbfe]">
+                        New · FDD
+                      </span>
+                    ) : null}
+                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${itemBadge.className}`}>
+                      {itemBadge.label}
+                    </span>
+                  </div>
                 </div>
                 <h2 className="text-[16px] font-semibold text-text-primary group-hover:text-[#1e3a5f]">
                   {report.label}
