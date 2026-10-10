@@ -32,11 +32,11 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt
+from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _data_room_inventory, _evt, sanitize_report_prose
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
-from agetic_cdd_api.services_deals import deals_root, resolve_sector, sector_label
+from agetic_cdd_api.services_deals import resolve_sector, sector_label
 
 _NAVY = colors.HexColor("#1F3864")
 _SLATE = colors.HexColor("#4B5563")
@@ -105,6 +105,7 @@ def _agent_sources(agent: dict[str, Any], limit: int = 2) -> str:
 
 def _clean(text: str, max_chars: int = 400) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip()).replace("\x7f", " ")
+    t = sanitize_report_prose(t)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
@@ -526,13 +527,8 @@ def _basis(styles: dict, ctx: BuildContext) -> list:
     company = _company(ctx)
     sector = _sector_display(ctx)
     n_agents = len([k for k, v in ctx.agent_outputs.items() if isinstance(v, dict) and v])
-    inv = []
-    docs_dir = deals_root() / ctx.deal_slug / "documents"
-    if docs_dir.is_dir():
-        inv = sorted(
-            f.name for f in docs_dir.iterdir()
-            if f.is_file() and not f.name.startswith(".")
-        )
+    inv_meta = _data_room_inventory(ctx.deal_slug)
+    inv = list(inv_meta.get("files") or [])
     out: list = [
         Paragraph("Basis of Preparation", styles["h1"]),
         Paragraph(
@@ -546,7 +542,8 @@ def _basis(styles: dict, ctx: BuildContext) -> list:
         _insight(
             styles,
             f"Workflow coverage: {n_agents} agent output(s) available · "
-            f"{len(inv)} VDR document(s) in the deal room · sector resolved as {sector}.",
+            f"{inv_meta.get('count', len(inv))} VDR document(s) in the deal room · "
+            f"sector resolved as {sector}.",
         ),
         Spacer(1, 10),
         Paragraph("Preparation principles", styles["h3"]),
@@ -876,9 +873,20 @@ def _compose_internal_risk(styles: dict, ctx: BuildContext, section: StorylineSe
     ir = _resolve(ctx, "internal_risk")
     mq_kps = _spec(mq).get("key_persons") if isinstance(_spec(mq).get("key_persons"), list) else []
     ir_kps = _spec(ir).get("key_person_exposure") if isinstance(_spec(ir).get("key_person_exposure"), list) else []
-    # Prefer management / internal-risk maps (shared SoT) over execution_risk counts
-    # that can invent a different headcount in the same run.
-    kp_count = len(mq_kps) or len(ir_kps) or er.get("key_person_count")
+    # Deduplicate by person name across management + internal-risk SoTs.
+    kp_names: list[str] = []
+    seen_kp: set[str] = set()
+    for raw in (*mq_kps, *ir_kps):
+        if isinstance(raw, dict):
+            name = str(raw.get("name") or raw.get("person") or raw.get("executive") or "").strip()
+        else:
+            name = str(raw or "").strip()
+        key = name.lower()
+        if not name or key in seen_kp:
+            continue
+        seen_kp.add(key)
+        kp_names.append(name)
+    kp_count = len(kp_names) or er.get("key_person_count")
     if er.get("overall_human_capital_risk_1_10") is not None or _findings(exec_risk) or kp_count:
         out.append(Paragraph("1.2.3 Key-person / retention", styles["h3"]))
         out.append(Paragraph(
@@ -887,6 +895,8 @@ def _compose_internal_risk(styles: dict, ctx: BuildContext, section: StorylineSe
             f"high flight risk: {er.get('high_flight_risk_count', 'n/a')}.",
             styles["body"],
         ))
+        if kp_names:
+            out.extend(_bullets(styles, [f"Key-person exposure — {n}." for n in kp_names[:6]]))
         execs = er.get("executives")
         if isinstance(execs, list) and execs:
             erows = []
@@ -1574,10 +1584,35 @@ def _compose_appendices(styles: dict, ctx: BuildContext, section: StorylineSecti
         if len(rows) > 50:
             out.append(Paragraph(f"…and {len(rows) - 50} additional agents omitted.", styles["muted"]))
 
+    # P0/G1: surface released databook financial history (proven / doubtful / missing).
+    try:
+        from agetic_cdd_api.services_databook_consume import released_pl_display_rows
+
+        hist = _resolve(ctx, "historical_performance")
+        hist_pl = (
+            list(_spec(hist).get("pl_lines") or [])
+            if isinstance(_spec(hist).get("pl_lines"), list)
+            else []
+        )
+        fin_rows, _, footnote = released_pl_display_rows(ctx.deal_slug, hist_pl, limit=12)
+        if fin_rows:
+            out.append(Paragraph("3.3.1b Databook financial history (released)", styles["h3"]))
+            out.append(_data_table(
+                styles,
+                ["Line", "FY values", "Unit", "Status"],
+                fin_rows,
+                [1.8 * inch, 2.6 * inch, 0.9 * inch, 1.0 * inch],
+            ))
+            if footnote:
+                out.append(Paragraph(footnote, styles["muted"]))
+    except Exception:
+        pass
+
     out.append(Paragraph("3.3.2 Scope & methodology notes", styles["h3"]))
     out.extend(_bullets(styles, _findings(scope, 8) or _as_list(_spec(scope).get("notes"), 6) or [
         "Memo synthesises Verdict Store + Deep Dive agents; no independent re-modelling.",
         "Web research not required for this build path.",
+        "Material financial history prefers the current Databook release (proven / doubtful / missing).",
     ]))
 
     out.append(Paragraph("3.3.3 Storyline coverage", styles["h3"]))
@@ -1754,6 +1789,10 @@ class ICMemoBuilder(ReportBuilder):
         filename = f"{safe}_IC_Memo.pdf"
         path = out_dir / filename
 
+        # Always rewrite — never leave a stale PDF if composition is unchanged.
+        if path.exists():
+            path.unlink(missing_ok=True)
+
         doc = SimpleDocTemplate(
             str(path),
             pagesize=A4,
@@ -1763,8 +1802,11 @@ class ICMemoBuilder(ReportBuilder):
             bottomMargin=0.65 * inch,
             title=f"IC Memo — {company}",
             author="Agentic CDD",
+            subject=f"Generated {date.today().isoformat()} · sector {_sector_display(ctx)}",
         )
         doc.build(story, onFirstPage=_header_footer(company), onLaterPages=_header_footer(company))
+
+        from agetic_cdd_api.services_deals import deals_root
 
         deal_root = deals_root() / ctx.deal_slug
         try:

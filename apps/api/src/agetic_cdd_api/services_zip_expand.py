@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 # Formats the library / extract pipeline can parse today.
 _EXTRACTABLE_SUFFIXES = frozenset({".pdf", ".docx", ".xlsx", ".pptx", ".xls", ".csv", ".txt", ".md"})
+# Keep in the data-room inventory even when not text-extractable (maps, photos, scans).
+_INVENTORY_SUFFIXES = frozenset({
+    *_EXTRACTABLE_SUFFIXES,
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".tif", ".tiff",
+    ".bmp", ".svg",
+})
 _ARCHIVE_SUFFIXES = frozenset({".zip"})
 
 _SKIP_NAME_PARTS = ("__macosx", ".ds_store", "thumbs.db")
@@ -132,7 +138,8 @@ def expand_zip_archive(
             suffix = Path(name).suffix.lower()
             is_archive = suffix in _ARCHIVE_SUFFIXES
             is_extractable = suffix in _EXTRACTABLE_SUFFIXES
-            if not is_extractable and not (is_archive and depth < _MAX_NESTED_DEPTH):
+            is_inventory = suffix in _INVENTORY_SUFFIXES
+            if not is_inventory and not (is_archive and depth < _MAX_NESTED_DEPTH):
                 skipped.append({"name": name, "reason": f"unsupported:{suffix or 'none'}"})
                 continue
 

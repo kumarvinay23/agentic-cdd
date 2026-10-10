@@ -1,21 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataQualityReview } from "@/components/deal/DataQualityReview";
+import {
+  DEFAULT_PAGE_SIZE,
+  ListPagination,
+  useClientPagination,
+} from "@/components/deal/ListPagination";
+import { ValidationPackReview } from "@/components/deal/ValidationPackReview";
 import {
   ApiError,
   databookAcceptConflictRequest,
+  databookConfirmRequest,
   databookCorrectRequest,
   databookDeepRequest,
   databookDropRequest,
+  databookExcludeRequest,
   databookExportExcelRequest,
   databookExportPromotedCsv,
   databookFindingsRequest,
   databookImportExcelRequest,
+  databookReleaseRequest,
+  databookRemapRequest,
   databookRescanRequest,
   databookRereadRequest,
   databookRowsRequest,
   databookSummaryRequest,
+  databookValidationPackRequest,
   databookVouchRequest,
   dataQualityRequest,
   type DatabookFinding,
@@ -24,9 +35,11 @@ import {
   type DataQualityCandidate,
   type DataQualityItem,
   type DataQualityPayload,
+  type ValidationCard,
+  type ValidationPack,
 } from "@/lib/api";
 
-type Tab = "files" | "derived" | "findings" | "quality";
+type Tab = "files" | "derived" | "findings" | "quality" | "pack";
 
 export function DealDatabook({
   dealId,
@@ -42,9 +55,11 @@ export function DealDatabook({
   const [rows, setRows] = useState<DatabookRow[]>([]);
   const [findings, setFindings] = useState<DatabookFinding[]>([]);
   const [quality, setQuality] = useState<DataQualityPayload | null>(null);
+  const [pack, setPack] = useState<ValidationPack | null>(null);
   const [loading, setLoading] = useState(true);
   const [rescanning, setRescanning] = useState(false);
   const [deepRunning, setDeepRunning] = useState(false);
+  const [releasing, setReleasing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
@@ -58,16 +73,18 @@ export function DealDatabook({
     setLoading(true);
     onError(null);
     try {
-      const [sum, dq, rowRes, findRes] = await Promise.all([
+      const [sum, dq, rowRes, findRes, packRes] = await Promise.all([
         databookSummaryRequest(accessToken, dealId),
         dataQualityRequest(accessToken, dealId),
         databookRowsRequest(accessToken, dealId, { material: materialOnly }),
         databookFindingsRequest(accessToken, dealId),
+        databookValidationPackRequest(accessToken, dealId).catch(() => null),
       ]);
       setSummary(sum.data);
       setQuality(dq);
       setRows(rowRes.data.items);
       setFindings(findRes.data.items);
+      setPack(packRes?.data ?? null);
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Failed to load Databook");
     } finally {
@@ -115,6 +132,21 @@ export function DealDatabook({
       onError(err instanceof ApiError ? err.message : "Deep re-extract failed");
     } finally {
       setDeepRunning(false);
+    }
+  };
+
+  const onRelease = async () => {
+    if (!accessToken) return;
+    setReleasing(true);
+    onError(null);
+    try {
+      const res = await databookReleaseRequest(accessToken, dealId);
+      setSummary(res.data.summary);
+      await refresh();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Release failed");
+    } finally {
+      setReleasing(false);
     }
   };
 
@@ -231,6 +263,45 @@ export function DealDatabook({
     );
   };
 
+  const onConfirmCard = async (card: ValidationCard) => {
+    const why = requireReason();
+    if (!why || !accessToken || !card.row_id) return;
+    await runAction(() => databookConfirmRequest(accessToken, dealId, card.row_id!, why));
+  };
+
+  const onExcludeCard = async (card: ValidationCard) => {
+    const why = requireReason();
+    if (!why || !accessToken || !card.row_id) return;
+    await runAction(() => databookExcludeRequest(accessToken, dealId, card.row_id!, why));
+  };
+
+  const onRemapCard = async (card: ValidationCard) => {
+    const why = requireReason();
+    if (!why || !accessToken || !card.row_id) return;
+    const metric = window.prompt("Remap to metric_key", card.metric_key || "revenue");
+    if (metric == null || !metric.trim()) return;
+    await runAction(() =>
+      databookRemapRequest(accessToken, dealId, card.row_id!, {
+        reason: why,
+        metric_key: metric.trim(),
+      }),
+    );
+  };
+
+  const onAcceptAltCard = async (card: ValidationCard, value: number, rowId?: string) => {
+    const why = requireReason();
+    if (!why || !accessToken) return;
+    await runAction(() =>
+      databookAcceptConflictRequest(accessToken, dealId, {
+        reason: why,
+        metric_key: card.metric_key,
+        fiscal_year: card.fiscal_year,
+        value,
+        row_id: rowId || card.row_id || undefined,
+      }),
+    );
+  };
+
   const onReread = async () => {
     const filename = rereadFile.trim();
     if (!filename || !accessToken) {
@@ -260,9 +331,21 @@ export function DealDatabook({
 
   const flags = summary?.flags || {};
   const needsReview = quality?.summary?.needs_review ?? 0;
+  const packTotal = pack?.counts?.total ?? summary?.validation_pack?.counts?.total ?? 0;
   const heldRows = rows.filter((r) => r.status === "held_out" || r.status === "candidate");
   const freshness = summary?.freshness;
   const upToDate = freshness?.up_to_date === true;
+
+  const [derivedPageSize, setDerivedPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [findingsPageSize, setFindingsPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [filesPageSize, setFilesPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const derivedPager = useClientPagination(rows, derivedPageSize);
+  const findingsPager = useClientPagination(findings, findingsPageSize);
+  const filesSorted = useMemo(
+    () => [...findings].sort((a, b) => triageRank(a.triage) - triageRank(b.triage)),
+    [findings],
+  );
+  const filesPager = useClientPagination(filesSorted, filesPageSize);
 
   return (
     <div className="space-y-5">
@@ -270,9 +353,28 @@ export function DealDatabook({
         <div>
           <h2 className="text-[22px] font-semibold tracking-tight text-[#0f172a]">Databook</h2>
           <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[#64748b]">
-            Proven financial history only. Export to Excel, edit offline, then Import edited Excel.
-            Update databook when the library or VDR is newer than the last Rescan.
+            Working store for review; reports consume the <em>released</em> snapshot (proven /
+            doubtful / missing). Rescan and HITL decisions auto-publish a new release.
           </p>
+          {summary?.release ? (
+            <p className="mt-1 text-[12px] text-[#0f172a]">
+              Current release{" "}
+              <span className="font-medium">{summary.release.release_id}</span>
+              {" · "}
+              {summary.release.counts?.proven ?? 0} proven
+              {" · "}
+              {summary.release.counts?.doubtful ?? 0} doubtful
+              {" · "}
+              {summary.release.counts?.missing ?? 0} missing
+              {(summary.release.request_count ?? summary.release.counts?.requests ?? 0) > 0
+                ? ` · ${summary.release.request_count ?? summary.release.counts?.requests} open requests`
+                : null}
+            </p>
+          ) : (
+            <p className="mt-1 text-[12px] text-[#b45309]">
+              No release yet — reports will withhold material agent figures until Rescan or Release.
+            </p>
+          )}
           {freshness?.stale_reason ? (
             <p className="mt-1 text-[12px] text-[#b45309]">{freshness.stale_reason}</p>
           ) : summary?.meta?.last_rescan_at || summary?.meta?.last_deep_at ? (
@@ -280,6 +382,7 @@ export function DealDatabook({
               {summary.meta.last_rescan_at ? `Last Rescan ${summary.meta.last_rescan_at}` : null}
               {summary.meta.last_rescan_at && summary.meta.last_deep_at ? " · " : null}
               {summary.meta.last_deep_at ? `Last Deep ${summary.meta.last_deep_at}` : null}
+              {summary.release?.created_at ? ` · Released ${summary.release.created_at}` : null}
             </p>
           ) : null}
         </div>
@@ -336,6 +439,15 @@ export function DealDatabook({
           </button>
           <button
             type="button"
+            onClick={() => void onRelease()}
+            disabled={releasing || rescanning || deepRunning || !accessToken}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#0f766e] bg-white px-3 py-2 text-[13px] font-medium text-[#0f766e] hover:bg-[#f0fdfa] disabled:opacity-60"
+            title="Publish an immutable release from the working store for reports"
+          >
+            {releasing ? "Releasing…" : "Release"}
+          </button>
+          <button
+            type="button"
             onClick={() => void onDeep()}
             disabled={deepRunning || rescanning || !accessToken}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[#1e3a5f] bg-white px-3 py-2 text-[13px] font-medium text-[#1e3a5f] hover:bg-[#f1f5f9] disabled:opacity-60"
@@ -383,6 +495,7 @@ export function DealDatabook({
         {(
           [
             ["quality", `Needs review (${needsReview})`],
+            ["pack", `Validation pack (${packTotal})`],
             ["derived", `Derived data (${rows.length})`],
             ["findings", `Findings (${findings.length})`],
             ["files", "Uploaded files"],
@@ -430,50 +543,81 @@ export function DealDatabook({
         </section>
       ) : null}
 
+      {!loading && tab === "pack" ? (
+        <section className="space-y-3">
+          <p className="text-[13px] text-[#64748b]">
+            Post-run review only — confirm, remap, or exclude after Release. Enter a reason above
+            first. Calibration cards check that proven cells still look right.
+          </p>
+          <ValidationPackReview
+            pack={pack}
+            busy={busy}
+            accessToken={accessToken}
+            dealId={dealId}
+            onConfirm={(card) => void onConfirmCard(card)}
+            onExclude={(card) => void onExcludeCard(card)}
+            onRemap={(card) => void onRemapCard(card)}
+            onAcceptAlt={(card, value, rowId) => void onAcceptAltCard(card, value, rowId)}
+          />
+        </section>
+      ) : null}
+
       {!loading && tab === "derived" ? (
         <section className="space-y-3">
           <p className="text-[13px] text-[#64748b]">
             Select a held-out / candidate row, then Correct, Drop, or Vouch with a reason above.
           </p>
-          <table className="w-full text-left text-[13px]">
-            <thead className="border-b border-[#e5e7eb] text-[11px] uppercase tracking-wide text-[#94a3b8]">
-              <tr>
-                <th className="py-2 pr-2 font-medium" />
-                <th className="py-2 pr-3 font-medium">Caption</th>
-                <th className="py-2 pr-3 font-medium">Metric</th>
-                <th className="py-2 pr-3 font-medium">FY</th>
-                <th className="py-2 pr-3 font-medium">Value</th>
-                <th className="py-2 pr-3 font-medium">Status</th>
-                <th className="py-2 font-medium">Source</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#e5e7eb]">
-              {rows.slice(0, 200).map((row) => (
-                <tr
-                  key={row.row_id}
-                  className={selectedRowId === row.row_id ? "bg-[#f8fafc]" : undefined}
-                  onClick={() => setSelectedRowId(row.row_id)}
-                >
-                  <td className="py-2 pr-2">
-                    <input
-                      type="radio"
-                      name="databook-row"
-                      checked={selectedRowId === row.row_id}
-                      onChange={() => setSelectedRowId(row.row_id)}
-                    />
-                  </td>
-                  <td className="py-2 pr-3 text-[#0f172a]">{row.caption}</td>
-                  <td className="py-2 pr-3 text-[#64748b]">{row.metric_key || "—"}</td>
-                  <td className="py-2 pr-3">{row.fiscal_year ?? "—"}</td>
-                  <td className="py-2 pr-3 font-medium">{formatNum(row.value)}</td>
-                  <td className="py-2 pr-3">
-                    <StatusPill status={row.status} />
-                  </td>
-                  <td className="py-2 text-[#64748b]">{row.source_name}</td>
+          <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-white">
+            <table className="w-full text-left text-[13px]">
+              <thead className="border-b border-[#e5e7eb] text-[11px] uppercase tracking-wide text-[#94a3b8]">
+                <tr>
+                  <th className="px-3 py-2 pr-2 font-medium" />
+                  <th className="py-2 pr-3 font-medium">Caption</th>
+                  <th className="py-2 pr-3 font-medium">Metric</th>
+                  <th className="py-2 pr-3 font-medium">FY</th>
+                  <th className="py-2 pr-3 font-medium">Value</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Source</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[#e5e7eb]">
+                {derivedPager.pageItems.map((row) => (
+                  <tr
+                    key={row.row_id}
+                    className={selectedRowId === row.row_id ? "bg-[#f8fafc]" : undefined}
+                    onClick={() => setSelectedRowId(row.row_id)}
+                  >
+                    <td className="px-3 py-2 pr-2">
+                      <input
+                        type="radio"
+                        name="databook-row"
+                        checked={selectedRowId === row.row_id}
+                        onChange={() => setSelectedRowId(row.row_id)}
+                      />
+                    </td>
+                    <td className="py-2 pr-3 text-[#0f172a]">{row.caption}</td>
+                    <td className="py-2 pr-3 text-[#64748b]">{row.metric_key || "—"}</td>
+                    <td className="py-2 pr-3">{row.fiscal_year ?? "—"}</td>
+                    <td className="py-2 pr-3 font-medium">{formatNum(row.value)}</td>
+                    <td className="py-2 pr-3">
+                      <StatusPill status={row.status} />
+                    </td>
+                    <td className="py-2 pr-3 text-[#64748b]">{row.source_name}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <ListPagination
+              page={derivedPager.page}
+              pageCount={derivedPager.pageCount}
+              total={derivedPager.total}
+              from={derivedPager.from}
+              to={derivedPager.to}
+              pageSize={derivedPageSize}
+              onPageChange={derivedPager.setPage}
+              onPageSizeChange={setDerivedPageSize}
+            />
+          </div>
           {selectedRowId ? (
             <div className="flex flex-wrap gap-2">
               <button
@@ -519,51 +663,76 @@ export function DealDatabook({
       {!loading && tab === "findings" ? (
         <section className="space-y-2">
           <p className="text-[13px] text-[#64748b]">
-            Trust ledger by file. Silence is not a pass — a file with no statement-block checks is not cleared.
+            Trust ledger by file (Phase 1 classify: set-aside, forecast-only, source basis / ladder). Silence is
+            not a pass — a file with no statement-block checks is not cleared.
           </p>
+          {(flags.set_aside || flags.forecast_only) ? (
+            <p className="text-[12px] text-[#b45309]">
+              {flags.set_aside || 0} set aside · {flags.forecast_only || 0} forecast-only ·{" "}
+              {flags.history_source || 0} history sources
+            </p>
+          ) : null}
           {findings.length === 0 ? (
             <p className="py-8 text-center text-[13px] text-[#64748b]">No findings yet.</p>
           ) : (
-            findings.map((f) => (
-              <div key={f.source_name} className="rounded-lg border border-[#e5e7eb] bg-white px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium text-[#0f172a]">{f.source_name}</div>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setRereadFile(f.source_name);
-                      setTab("files");
-                    }}
-                    className="text-[12px] font-medium text-[#1e3a5f] hover:underline"
-                  >
-                    Re-read…
-                  </button>
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {(f.flags || []).map((flag) => (
-                    <span
-                      key={flag}
-                      className="rounded bg-[#f8fafc] px-1.5 py-0.5 text-[11px] font-medium text-[#475569]"
-                    >
-                      {triageLabel(flag)}
-                    </span>
-                  ))}
-                  {f.triage ? (
-                    <span className="rounded bg-[#fef3c7] px-1.5 py-0.5 text-[11px] font-medium text-[#92400e]">
-                      Triage: {triageLabel(f.triage)}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-1 text-[12px] text-[#64748b]">
-                  {f.checks_total
-                    ? `${f.checks_failed ?? 0}/${f.checks_total} checks failed`
-                    : "No checks"}{" "}
-                  · {f.held_out} held out · {f.promoted} promoted · {f.conflicts} conflicts
-                </p>
-                <p className="mt-1 text-[11px] text-[#94a3b8]">{f.note}</p>
+            <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-white">
+              <div className="divide-y divide-[#e5e7eb]">
+                {findingsPager.pageItems.map((f) => (
+                  <div key={f.source_name} className="px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium text-[#0f172a]">{f.source_name}</div>
+                      {f.triage === "document_request" ? null : (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setRereadFile(f.source_name);
+                            setTab("files");
+                          }}
+                          className="text-[12px] font-medium text-[#1e3a5f] hover:underline"
+                        >
+                          Re-read…
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {(f.flags || []).map((flag) => (
+                        <span
+                          key={flag}
+                          className="rounded bg-[#f8fafc] px-1.5 py-0.5 text-[11px] font-medium text-[#475569]"
+                        >
+                          {triageLabel(flag)}
+                        </span>
+                      ))}
+                      {f.triage ? (
+                        <span className="rounded bg-[#fef3c7] px-1.5 py-0.5 text-[11px] font-medium text-[#92400e]">
+                          Triage: {triageLabel(f.triage)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-[12px] text-[#64748b]">
+                      {f.checks_total
+                        ? `${f.checks_failed ?? 0}/${f.checks_total} checks failed`
+                        : "No checks"}{" "}
+                      · {f.held_out} held out · {f.promoted} promoted · {f.conflicts} conflicts
+                      {f.basis ? ` · ${f.basis}` : ""}
+                      {f.ladder_score != null ? ` (ladder ${f.ladder_score})` : ""}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#94a3b8]">{f.note}</p>
+                  </div>
+                ))}
               </div>
-            ))
+              <ListPagination
+                page={findingsPager.page}
+                pageCount={findingsPager.pageCount}
+                total={findingsPager.total}
+                from={findingsPager.from}
+                to={findingsPager.to}
+                pageSize={findingsPageSize}
+                onPageChange={findingsPager.setPage}
+                onPageSizeChange={setFindingsPageSize}
+              />
+            </div>
           )}
         </section>
       ) : null}
@@ -571,16 +740,15 @@ export function DealDatabook({
       {!loading && tab === "files" ? (
         <section className="space-y-3">
           <p className="text-[13px] text-[#64748b]">
-            Uploaded-files queue in triage order (assumption → failed check → sources disagree → unread → not
-            landed). Re-read re-extracts one VDR file, then Rescans Databook.
+            Uploaded-files queue in triage order (set-aside → forecast → assumption → failed check → sources
+            disagree → unread → not landed). Re-read re-extracts one VDR file, then Rescans Databook.
           </p>
-          <div className="space-y-2">
-            {[...findings]
-              .sort((a, b) => triageRank(a.triage) - triageRank(b.triage))
-              .map((f) => (
+          <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-white">
+            <div className="divide-y divide-[#e5e7eb]">
+              {filesPager.pageItems.map((f) => (
                 <div
                   key={`file-${f.source_name}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#e5e7eb] bg-white px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
                 >
                   <div>
                     <div className="font-medium text-[#0f172a]">{f.source_name}</div>
@@ -598,6 +766,17 @@ export function DealDatabook({
                   </button>
                 </div>
               ))}
+            </div>
+            <ListPagination
+              page={filesPager.page}
+              pageCount={filesPager.pageCount}
+              total={filesPager.total}
+              from={filesPager.from}
+              to={filesPager.to}
+              pageSize={filesPageSize}
+              onPageChange={filesPager.setPage}
+              onPageSizeChange={setFilesPageSize}
+            />
           </div>
           <div className="flex flex-wrap gap-2 rounded-lg border border-[#e5e7eb] bg-white px-4 py-4">
             <input
@@ -623,6 +802,12 @@ export function DealDatabook({
 
 function triageLabel(flag: string): string {
   switch (flag) {
+    case "document_request":
+      return "Document request";
+    case "set_aside":
+      return "Set aside";
+    case "forecast_only":
+      return "Forecast only";
     case "assumption":
       return "Assumption made";
     case "sources_disagree":
@@ -639,7 +824,15 @@ function triageLabel(flag: string): string {
 }
 
 function triageRank(triage: string | null | undefined): number {
-  const order = ["assumption", "failed_check", "sources_disagree", "unread", "not_landed"];
+  const order = [
+    "set_aside",
+    "forecast_only",
+    "assumption",
+    "failed_check",
+    "sources_disagree",
+    "unread",
+    "not_landed",
+  ];
   if (!triage) return 99;
   const idx = order.indexOf(triage);
   return idx >= 0 ? idx : 50;

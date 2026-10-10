@@ -1,4 +1,4 @@
-"""Storyline model and default configs for all 5 report types.
+"""Storyline model and default configs for report types.
 
 A *storyline* is an ordered list of sections that define the structure of
 a generated report.  Each section has a title, kind, include flag, optional
@@ -184,12 +184,28 @@ _CDD_DECK_SECTIONS: list[dict] = [
      "agents": ["scope_and_methodology", "appendices", "company_background"]},
 ]
 
+_FDD_REPORT_SECTIONS: list[dict] = [
+    {"idx": 1, "title": "Historical trading (stub)", "kind": "section",
+     "agents": ["historical_performance"]},
+    {"idx": 2, "title": "Exhibit footnotes", "kind": "appendix",
+     "agents": ["scope_and_methodology"]},
+]
+
+_FDD_DECK_SECTIONS: list[dict] = [
+    {"idx": 1, "title": "Historical revenue", "kind": "slide",
+     "agents": ["historical_performance"]},
+    {"idx": 2, "title": "One message", "kind": "message",
+     "agents": ["historical_performance"]},
+]
+
 DEFAULT_STORYLINES: dict[str, list[dict]] = {
     "ops_dashboard": _OPS_DASHBOARD_SECTIONS,
     "ic_memo": _IC_MEMO_SECTIONS,
     "strategy_report": _STRATEGY_REPORT_SECTIONS,
     "market_deck": _MARKET_DECK_SECTIONS,
     "cdd_deck": _CDD_DECK_SECTIONS,
+    "fdd_report": _FDD_REPORT_SECTIONS,
+    "fdd_deck": _FDD_DECK_SECTIONS,
 }
 
 

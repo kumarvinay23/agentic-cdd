@@ -21,6 +21,7 @@ from agetic_cdd_api.services_databook import (
     deep_databook,
     get_data_quality,
     get_databook_summary,
+    get_file_register,
     list_databook_findings,
     list_databook_rows,
     rescan_databook,
@@ -31,14 +32,20 @@ from agetic_cdd_api.services_databook_consume import (
     load_promoted_metrics,
     promoted_csv,
 )
+from agetic_cdd_api.services_databook_release import create_release, list_releases
+from agetic_cdd_api.services_databook_store import load_current_release
 from agetic_cdd_api.services_databook_excel import (
     build_editable_workbook,
     import_edited_workbook,
 )
 from agetic_cdd_api.services_databook_decisions import (
     accept_conflict,
+    confirm_row,
     correct_row,
     drop_row,
+    exclude_row,
+    load_decisions,
+    remap_row,
     vouch_row,
 )
 from agetic_cdd_api.services_databook_models import RowStatus
@@ -337,6 +344,70 @@ def cdd_databook_findings(
     return {"success": True, "data": {"items": findings, "total": len(findings)}}
 
 
+@router.get("/portfolios/{deal_id}/cdd/databook/file-register")
+def cdd_databook_file_register(
+    deal_id: str,
+    rebuild: bool = Query(default=False),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Phase 1 file register (relevance, basis, source ladder, set-aside)."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    register = get_file_register(deal, ensure=rebuild or True)
+    return {"success": True, "data": register}
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/release")
+def cdd_databook_current_release(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Current immutable released databook (proven / doubtful / missing cells)."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    release = load_current_release(deal)
+    return {
+        "success": True,
+        "data": release.model_dump(mode="json") if release else None,
+    }
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/releases")
+def cdd_databook_releases(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    items = list_releases(deal)
+    return {"success": True, "data": {"items": items, "total": len(items)}}
+
+
+class DatabookReleaseBody(BaseModel):
+    note: str | None = None
+
+
+@router.post("/portfolios/{deal_id}/cdd/databook/release")
+def cdd_databook_create_release(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+    body: DatabookReleaseBody = DatabookReleaseBody(),
+) -> dict:
+    """Publish a new immutable release from the working store (manual)."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    note = (body.note or "").strip() or None
+    release = create_release(deal, source="manual", note=note)
+    summary = get_databook_summary(deal, ensure=False)
+    return {
+        "success": True,
+        "data": {
+            "release": release.model_dump(mode="json"),
+            "summary": summary.model_dump(mode="json"),
+        },
+    }
+
+
 @router.get("/portfolios/{deal_id}/cdd/databook/promoted")
 def cdd_databook_promoted(
     deal_id: str,
@@ -516,6 +587,156 @@ def cdd_databook_vouch(
     deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
     result = vouch_row(deal, row_id, reason=body.reason, actor=auth.user.email)
     return {"success": True, "data": result}
+
+
+@router.post("/portfolios/{deal_id}/cdd/databook/rows/{row_id}/confirm")
+def cdd_databook_confirm(
+    deal_id: str,
+    row_id: str,
+    body: DatabookReasonBody,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """OL-3 confirm alias — vouch a doubtful / calibration card."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    result = confirm_row(deal, row_id, reason=body.reason, actor=auth.user.email)
+    return {"success": True, "data": result}
+
+
+@router.post("/portfolios/{deal_id}/cdd/databook/rows/{row_id}/exclude")
+def cdd_databook_exclude(
+    deal_id: str,
+    row_id: str,
+    body: DatabookReasonBody,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """OL-3 exclude alias — drop a row from the statement."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    result = exclude_row(deal, row_id, reason=body.reason, actor=auth.user.email)
+    return {"success": True, "data": result}
+
+
+class DatabookRemapBody(BaseModel):
+    reason: str
+    metric_key: str
+    value: float | None = None
+
+
+@router.post("/portfolios/{deal_id}/cdd/databook/rows/{row_id}/remap")
+def cdd_databook_remap(
+    deal_id: str,
+    row_id: str,
+    body: DatabookRemapBody,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """OL-3 remap — correct metric_key and seed mapping memory."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    result = remap_row(
+        deal,
+        row_id,
+        reason=body.reason,
+        actor=auth.user.email,
+        metric_key=body.metric_key,
+        value=body.value,
+    )
+    return {"success": True, "data": result}
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/validation-pack")
+def cdd_databook_validation_pack(
+    deal_id: str,
+    calibration: int = Query(5, ge=0, le=12),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """OL-1/OL-2/OL-4 — post-run validation cards (doubtful + calibration sample)."""
+    from agetic_cdd_api.services_databook_pack import build_validation_pack
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    pack = build_validation_pack(deal, calibration_limit=calibration)
+    return {"success": True, "data": pack.model_dump(mode="json")}
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/crops/{crop_ref}")
+def cdd_databook_crop(
+    deal_id: str,
+    crop_ref: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """AC-5 / G4 — serve a rendered page crop PNG/PDF for a validation card."""
+    from agetic_cdd_api.services_databook_crops import resolve_crop_path
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    path = resolve_crop_path(deal, crop_ref)
+    if path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Crop not found")
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return FileResponse(path, media_type=media_type, filename=path.name)
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/decisions")
+def cdd_databook_decisions(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """OL-5 — decision audit + release lineage."""
+    from agetic_cdd_api.services_databook_learn import load_lineage
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    decisions = load_decisions(deal)
+    lineage = [x.model_dump(mode="json") for x in load_lineage(deal)]
+    return {
+        "success": True,
+        "data": {
+            "decisions": decisions[-200:],
+            "lineage": lineage[-200:],
+            "count": len(decisions),
+        },
+    }
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/mapping-memory")
+def cdd_databook_mapping_memory(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """OL-7 — learned caption → metric remaps."""
+    from agetic_cdd_api.services_databook_learn import load_mapping_memory
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    entries = load_mapping_memory(deal)
+    return {
+        "success": True,
+        "data": {
+            "entries": [e.model_dump(mode="json") for e in entries],
+            "count": len(entries),
+        },
+    }
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/traps")
+def cdd_databook_traps(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """OL-6 — traps seeded from HITL decisions (feeds P7 harness)."""
+    from agetic_cdd_api.services_databook_learn import load_traps
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    traps = load_traps(deal)
+    return {
+        "success": True,
+        "data": {
+            "traps": [t.model_dump(mode="json") for t in traps],
+            "count": len(traps),
+        },
+    }
 
 
 @router.post("/portfolios/{deal_id}/cdd/databook/conflicts/accept")

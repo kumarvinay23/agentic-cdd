@@ -23,7 +23,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name
+from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name, sanitize_report_prose
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -130,9 +130,10 @@ def _sector(ctx: BuildContext) -> str:
 # Text cleaning / noise filters (logic-driven, no deal hardcoding)
 # ---------------------------------------------------------------------------
 
-def _clean_prose(text: str, max_chars: int = 1200) -> str:
+def _clean_prose(text: str, max_chars: int = 1200, *, company: str | None = None) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip())
     t = t.replace("\x7f", " ").replace("■", " ").replace("", " ")
+    t = sanitize_report_prose(t, company=company)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
@@ -1444,6 +1445,34 @@ def _compose_appendices(doc: Document, ctx: BuildContext) -> None:
     )
     if len(rows) > 40:
         _add_para(doc, f"…and {len(rows) - 40} additional agents omitted from the printed index.")
+
+    # G1 — released databook financial history (honest consume; never agent-only finals).
+    try:
+        from agetic_cdd_api.services_databook_consume import released_pl_display_rows
+
+        hist = _resolve_agent(ctx, "historical_performance")
+        hist_pl = (
+            list(_spec(hist).get("pl_lines") or [])
+            if isinstance(_spec(hist).get("pl_lines"), list)
+            else []
+        )
+        fin_rows, _, footnote = released_pl_display_rows(ctx.deal_slug, hist_pl, limit=12)
+        if fin_rows:
+            _add_heading(doc, "Appendix — Databook financial history (released)", level=2)
+            _add_para(
+                doc,
+                "Material company figures prefer the current Databook release "
+                "(proven / doubtful / missing). Unproven agent figures are not shown as final.",
+            )
+            _add_agent_source_table(
+                doc,
+                [tuple(r) for r in fin_rows],
+                col_headers=("Line", "FY values", "Unit", "Status"),
+            )
+            if footnote:
+                _add_para(doc, footnote)
+    except Exception:
+        pass
 
 
 _COMPOSERS = {

@@ -111,6 +111,32 @@ Maps onto our Phase 5 / Reports surface (IC Memo, Strategy Report, Market/CDD de
 
 **Shipped so far (Phase 0–4 + Excel HITL):** file-backed `databook/` store; dictionary metric map + family gates; series drop + conflicts; statement-block reconcile (fail → hold-out); HITL **Correct / Drop / Vouch / Accept proposal** (+ reason audit); Re-read one file / **Deep** all originals / **Refresh** UI-only; Findings trust ledger + uploaded-files triage; materiality filter + promoted CSV; **Export to Excel / Import edited Excel**; **Databook is up to date / Update databook** freshness control; `historical_performance` + ops dashboard / CDD deck prefer **promoted.json** (agent WARNs demoted when databook resolved); `GET/POST …/cdd/databook*` + `GET …/cdd/data-quality`; Deal nav **Databook** UI.
 
+**PDF design matrix (VDR→Databook contract):** [`docs/plans/databook-design-requirements-matrix.md`](docs/plans/databook-design-requirements-matrix.md).
+
+---
+
+## FDD Report & Deck — DiligenceIQ design (requirement context)
+
+> **Status:** Context / requirements + implementation plan — **Phase 0–3 landed 2026-10-07** (foundations + bridge + readiness/scope + claims ledger).  
+> **Source PDF:** [`DiligenceIQ_FDD_Report_and_Deck_Creation_Design.pdf`](DiligenceIQ_FDD_Report_and_Deck_Creation_Design.pdf) (Sep 28, 2026 · 71 pages).  
+> **Requirements matrix:** [`docs/plans/fdd-report-design-requirements-matrix.md`](docs/plans/fdd-report-design-requirements-matrix.md)  
+> **Step-by-step build plan:** [`docs/plans/fdd-report-implementation.md`](docs/plans/fdd-report-implementation.md)  
+> **Upstream:** Approved databook release only (R1). Release cells bridge into FDD facts/exhibits; **draft mode** + **G6 blocked** until contract complete.
+
+### Five rules (non-negotiable)
+
+1. Numbers only from the approved databook via versioned models.  
+2. Agents supply questions / leads / qualitative evidence — **never** exhibit figures.  
+3. VDR retrieval is for missing / doubtful / disputed; finds re-enter the **databook**, not the report.  
+4. People approve judgements (scope, material adjustments, conclusions) — not arithmetic.  
+5. One report specification feeds **both** the FDD report and the IC deck.
+
+### Critical path
+
+Phases **0 → 1 → 3 → 5a (QoE) → 6 → 8** (PDF §9). Start with exhibit store + number tokens; do **not** write report prose before QoE.
+
+> **Sequencing (2026-10-08):** Databook G1–G6 landed. **FDD Phase 0–3 + 5a + 5b (M1/M2/M7 + M8/M5/M6) + 6 + 7 + 8 + 9 (goldens/ship gate) landed**. Figure-integrity: workbook EBITDA basis + gap notes (size/source); aligned exhibit counts; empty model exhibits omitted (no “figures pending”); long-term liabilities / SBA CoA for net debt. Next: M3 / Phase 4 deepen / expand goldens. Track: [`docs/plans/fdd-report-implementation.md`](docs/plans/fdd-report-implementation.md).
+
 ---
 
 ## CDD Databook — DiligenceIQ review guide (requirement context)
@@ -1557,9 +1583,16 @@ Alongside the 43-agent pipeline, each portfolio has a **CDD generation engine**:
 
 ### FDD (Financial Due Diligence)
 
-- Org flag: `/portfolios/fdd/status` → `{enabled: true}`  
-- Per deal: capabilities / generate / result / report / outline  
-- Capability examples: receivables/creditors ageing, inventory quality, contingent liabilities, net-debt bridge, sustainable debt / DSCR, tax attributes  
+> **Design contract (build from these, not ad-hoc):**  
+> [`docs/plans/fdd-report-design-requirements-matrix.md`](docs/plans/fdd-report-design-requirements-matrix.md) ·  
+> [`docs/plans/fdd-report-implementation.md`](docs/plans/fdd-report-implementation.md) ·  
+> source PDF [`DiligenceIQ_FDD_Report_and_Deck_Creation_Design.pdf`](DiligenceIQ_FDD_Report_and_Deck_Creation_Design.pdf).
+
+- Live reference org flag: `/portfolios/fdd/status` → `{enabled: true}`  
+- Live reference per deal: capabilities / generate / result / report / outline  
+- Capability examples (live): receivables/creditors ageing, inventory quality, contingent liabilities, net-debt bridge, sustainable debt / DSCR, tax attributes  
+- **This repo target:** 10-stage workflow (P0–P10), gates G0–G7, models M1–M9 (QoE M4 first), one report_spec → report + deck; numbers only from approved databook
+- **Shipped (Phase 0–3):** run/exhibit/facts store; dual-render stubs; databook bridge + draft mode; G0/G1; **claims ledger** (agent→test vs facts, reliability, agent figure ban) (`/portfolios/{id}/fdd/runs/{run_id}/…`)
 
 ### Deal dashboard payload (what the UI needs)
 

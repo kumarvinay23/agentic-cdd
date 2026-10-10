@@ -1,0 +1,36 @@
+name: Databook ship gate
+
+on:
+  push:
+    paths:
+      - "apps/api/src/agetic_cdd_api/services_databook*.py"
+      - "apps/api/src/agetic_cdd_api/databook_ship_gate.py"
+      - "apps/api/tests/fixtures/databook/**"
+      - "apps/api/tests/test_databook*.py"
+      - ".github/workflows/databook-ship.yml"
+  pull_request:
+    paths:
+      - "apps/api/src/agetic_cdd_api/services_databook*.py"
+      - "apps/api/src/agetic_cdd_api/databook_ship_gate.py"
+      - "apps/api/tests/fixtures/databook/**"
+      - "apps/api/tests/test_databook*.py"
+      - ".github/workflows/databook-ship.yml"
+
+jobs:
+  ship-gate:
+    name: H-7 databook engine gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install API package
+        run: pip install -e ".[dev]"
+      - name: Databook ship gate (full-size goldens + traps)
+        run: python -m agetic_cdd_api.databook_ship_gate
+      - name: Pytest databook_ship marker
+        run: python -m pytest -m databook_ship -q --tb=short

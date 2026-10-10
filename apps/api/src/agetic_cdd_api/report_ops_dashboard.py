@@ -23,7 +23,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt
+from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, sanitize_report_prose
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.routers_reports import register_builder
 from agetic_cdd_api.services_deals import deals_root
@@ -42,7 +42,7 @@ _THIN_BORDER = Border(
     top=Side(style="thin"), bottom=Side(style="thin"),
 )
 
-_FY_KEY_RE = re.compile(r"^(?:fy)?(\d{4})(?:_value)?$", re.I)
+_FY_KEY_RE = re.compile(r"^fy(\d{4})_value$", re.I)
 _FY_IN_NAME_RE = re.compile(r"(?:^|_)(?:fy)?(\d{4})(?:_|$)", re.I)
 _SKIP_SPEC_KEYS = frozenset({
     "document", "dd_code", "sources", "empty", "slug", "track", "coverage",
@@ -71,6 +71,17 @@ def _safe_num(v: Any) -> Any:
         return float(v)
     except (ValueError, TypeError):
         return v
+
+
+def _approx_equal(a: float, b: float, *, rel: float = 0.001, abs_tol: float = 0.005) -> bool:
+    """True when databook and Full Metric Grid agree within a tight band.
+
+    QBO-vs-model gaps like 7.528 vs 7.558 (~40 bps) must flag as disagreement.
+    """
+    if a == b:
+        return True
+    scale = max(abs(a), abs(b), 1.0)
+    return abs(a - b) <= max(abs_tol, rel * scale)
 
 
 def _write_header_row(ws, row: int, headers: list[str]) -> None:
@@ -238,26 +249,32 @@ def harvest_metric_facts(ctx: BuildContext) -> list[MetricFact]:
     """Collect numeric facts across all agent specs for scorecard / validation / grid."""
     facts: list[MetricFact] = []
 
-    # Prefer Databook promoted metrics first (canonical FY history).
+    # Prefer Databook *released* metrics first (canonical FY history — P0).
     try:
         from agetic_cdd_api.services_databook_consume import (
-            load_promoted_metrics_for_slug,
-            promoted_as_metric_fact_dicts,
+            load_current_release_metrics_for_slug,
+            released_as_metric_fact_dicts,
         )
 
-        for d in promoted_as_metric_fact_dicts(load_promoted_metrics_for_slug(ctx.deal_slug)):
-            facts.append(
-                MetricFact(
-                    family=str(d["family"]),
-                    label=str(d["label"]),
-                    value=float(d["value"]),
-                    year=d.get("year"),
-                    unit=str(d.get("unit") or ""),
-                    agent_key="databook",
-                    agent_name="Databook",
-                    sources=list(d.get("sources") or []),
+        release = load_current_release_metrics_for_slug(ctx.deal_slug)
+        if release is not None:
+            for d in released_as_metric_fact_dicts(release):
+                status = str(d.get("databook_status") or "proven")
+                label = str(d["label"])
+                if status == "doubtful":
+                    label = f"{label} (doubtful)"
+                facts.append(
+                    MetricFact(
+                        family=str(d["family"]),
+                        label=label,
+                        value=float(d["value"]),
+                        year=d.get("year"),
+                        unit=str(d.get("unit") or ""),
+                        agent_key="databook",
+                        agent_name="Databook",
+                        sources=list(d.get("sources") or []),
+                    )
                 )
-            )
     except Exception:
         pass
 
@@ -416,9 +433,12 @@ def _rag_for_metric(family: str, value: float, *, yoy: float | None = None) -> s
 def derive_kpi_scorecard(facts: list[MetricFact], pl_lines: list[dict]) -> list[KpiRow]:
     """Build scorecard from P&L YoY logic + latest facts by family priority.
 
-    Headline P&L KPIs prefer the latest *actual* year when forecasts are present,
-    and always carry an FY…A/P period tag so plan figures are not read as current.
+    Headline P&L KPIs prefer agent-confirmed (non-databook) year series when
+    available, then tagged actuals, then near-term years — never the terminal
+    plan year when earlier actuals exist.
     """
+    from datetime import date
+
     kpis: list[KpiRow] = []
     seen: set[str] = set()
 
@@ -426,6 +446,20 @@ def derive_kpi_scorecard(facts: list[MetricFact], pl_lines: list[dict]) -> list[
     ebitda_by_year: dict[int, float] = {}
     gm_by_year: dict[int, float] = {}
     type_by_year: dict[int, str] = {}
+
+    # Prefer Full Metric Grid / agent facts for headline growth (confirmed series).
+    agent_rev_years: set[int] = set()
+    for fact in facts:
+        if fact.year is None or fact.agent_key == "databook":
+            continue
+        if fact.family == "revenue":
+            rev_by_year[fact.year] = fact.value
+            agent_rev_years.add(fact.year)
+        elif fact.family == "ebitda":
+            ebitda_by_year[fact.year] = fact.value
+        elif fact.family == "gross_margin":
+            gm_by_year[fact.year] = fact.value
+
     for line in pl_lines:
         if not isinstance(line, dict):
             continue
@@ -442,17 +476,73 @@ def derive_kpi_scorecard(facts: list[MetricFact], pl_lines: list[dict]) -> list[
                     if isinstance(pt, str) and pt.strip():
                         type_by_year.setdefault(yr, pt.strip().lower())
         fam = _canonical_family(item)
+        # Only fill gaps — do not overwrite agent-confirmed grid figures.
+        # When agent revenue history exists, do not extend with plan-only databook years.
         if fam == "revenue":
-            rev_by_year.update(years)
+            for yr, val in years.items():
+                if agent_rev_years and yr not in agent_rev_years and yr > max(agent_rev_years):
+                    continue
+                rev_by_year.setdefault(yr, val)
         elif fam == "ebitda" and "%" not in item:
-            ebitda_by_year.update(years)
+            for yr, val in years.items():
+                ebitda_by_year.setdefault(yr, val)
         elif fam == "gross_margin" or "gross margin" in item.lower():
-            gm_by_year.update(years)
+            for yr, val in years.items():
+                gm_by_year.setdefault(yr, val)
+
+    def _prefer_actual_years(by_year: dict[int, float], *, lock_years: set[int] | None = None) -> list[int]:
+        """Prefer tagged actuals over plan/forecast — never terminal plan year as 'Latest'.
+
+        Hard-cap at the latest closed calendar FY so Full Metric Grid plan years
+        (FY2026–FY2030) cannot flip the headline YoY even when mis-tagged actual
+        or when period_type tags were stripped by databook release overlays.
+        """
+        closed = date.today().year - 1
+        forecastish = {"forecast", "plan", "budget", "projected", "estimate"}
+        actualish = {"actual", "ltm", "last twelve months", "year to date", "ytd"}
+
+        def _is_forecast(y: int) -> bool:
+            return type_by_year.get(y) in forecastish
+
+        eligible = [y for y in by_year if not _is_forecast(y)]
+        # Prefer history through closed FY; only admit current calendar year if
+        # explicitly tagged actual/YTD (never bare untagged future plan years).
+        capped = [y for y in eligible if y <= closed]
+        if len(capped) < 2:
+            cur = date.today().year
+            capped = [
+                y for y in eligible
+                if y <= closed or (y == cur and type_by_year.get(y) in actualish)
+            ]
+        pool = capped if len(capped) >= 2 else (eligible if eligible else list(by_year))
+
+        actuals = sorted(y for y in pool if type_by_year.get(y) in actualish)
+        if len(actuals) >= 2:
+            return actuals
+        if len(actuals) == 1:
+            prior = sorted(y for y in pool if y < actuals[0])
+            if prior:
+                return [prior[-1], actuals[0]]
+            return actuals
+
+        if lock_years:
+            near = sorted(y for y in pool if y in lock_years)
+            if len(near) >= 2:
+                return near
+        near = sorted(pool)
+        if len(near) >= 2:
+            if near[-1] - near[0] > 4:
+                cluster_end = near[0] + 3
+                cluster = [y for y in near if y <= cluster_end]
+                if len(cluster) >= 2:
+                    return cluster
+            return near
+        return sorted(by_year)
 
     if len(rev_by_year) >= 2:
-        actuals = sorted(y for y in rev_by_year if type_by_year.get(y) == "actual")
-        if len(actuals) >= 2:
-            y0, y1 = actuals[-2], actuals[-1]
+        prefer = _prefer_actual_years(rev_by_year, lock_years=agent_rev_years or None)
+        if len(prefer) >= 2:
+            y0, y1 = prefer[-2], prefer[-1]
         else:
             ys = sorted(rev_by_year)
             y0, y1 = ys[-2], ys[-1]
@@ -469,8 +559,8 @@ def derive_kpi_scorecard(facts: list[MetricFact], pl_lines: list[dict]) -> list[
             seen.add("revenue_growth")
 
     if gm_by_year and "gross_margin" not in seen:
-        actuals = sorted(y for y in gm_by_year if type_by_year.get(y) == "actual")
-        yr = actuals[-1] if actuals else max(gm_by_year)
+        prefer = _prefer_actual_years(gm_by_year)
+        yr = prefer[-1] if prefer else max(gm_by_year)
         val = gm_by_year[yr]
         period = _period_tag(yr, type_by_year.get(yr))
         kpis.append(KpiRow(
@@ -483,8 +573,8 @@ def derive_kpi_scorecard(facts: list[MetricFact], pl_lines: list[dict]) -> list[
         seen.add("gross_margin")
 
     if ebitda_by_year:
-        actuals = sorted(y for y in ebitda_by_year if type_by_year.get(y) == "actual")
-        yr = actuals[-1] if actuals else max(ebitda_by_year)
+        prefer = _prefer_actual_years(ebitda_by_year)
+        yr = prefer[-1] if prefer else max(ebitda_by_year)
         ebitda = ebitda_by_year[yr]
         period = _period_tag(yr, type_by_year.get(yr))
         kpis.append(KpiRow(
@@ -680,10 +770,13 @@ def _build_exec_dashboard(wb: Workbook, ctx: BuildContext, facts: list[MetricFac
     pl_lines = _get_spec(ctx, "historical_performance").get("pl_lines", [])
     if not isinstance(pl_lines, list):
         pl_lines = []
+    # Keep agent period_type tags for KPI YoY (actual vs forecast). Databook release
+    # overlays strip those tags and previously pulled FY2030 into "Latest".
+    agent_pl_for_kpi = [dict(l) for l in pl_lines if isinstance(l, dict)]
     try:
-        from agetic_cdd_api.services_databook_consume import prefer_promoted_pl_lines
+        from agetic_cdd_api.services_databook_consume import prefer_released_pl_lines
 
-        pl_lines = prefer_promoted_pl_lines(ctx.deal_slug, pl_lines)
+        pl_lines = prefer_released_pl_lines(ctx.deal_slug, pl_lines)
     except Exception:
         pass
 
@@ -692,7 +785,7 @@ def _build_exec_dashboard(wb: Workbook, ctx: BuildContext, facts: list[MetricFac
     _write_header_row(ws, r, ["KPI", "Latest (period)", "YoY", "RAG Status"])
     r += 1
 
-    for kpi in derive_kpi_scorecard(facts, pl_lines):
+    for kpi in derive_kpi_scorecard(facts, agent_pl_for_kpi or pl_lines):
         _write_row(ws, r, [kpi.name, kpi.latest, kpi.yoy, kpi.rag])
         fill = _rag_fill(kpi.rag)
         if fill:
@@ -744,7 +837,12 @@ def _build_exec_dashboard(wb: Workbook, ctx: BuildContext, facts: list[MetricFac
         name = agent.get("agentName", agent_key.replace("_", " ").title())
         for finding in findings[:2]:
             rag = _finding_rag(str(finding))
-            _write_row(ws, r, [name, finding, src_str, rag])
+            cleaned = sanitize_report_prose(
+                str(finding),
+                company=company if isinstance(company, str) else None,
+                sources=sources if isinstance(sources, list) else None,
+            )
+            _write_row(ws, r, [name, cleaned, src_str, rag])
             fill = _rag_fill(rag)
             if fill:
                 ws.cell(row=r, column=4).fill = fill
@@ -1002,7 +1100,12 @@ def _build_ops_risk(wb: Workbook, ctx: BuildContext) -> None:
         name = agent.get("agentName", agent_key.replace("_", " ").title())
         for finding in findings[:2]:
             rag = _finding_rag(str(finding))
-            _write_row(ws, r, [name, finding, src_str, rag])
+            cleaned = sanitize_report_prose(
+                str(finding),
+                company=company if isinstance(company, str) else None,
+                sources=sources if isinstance(sources, list) else None,
+            )
+            _write_row(ws, r, [name, cleaned, src_str, rag])
             fill = _rag_fill(rag)
             if fill:
                 ws.cell(row=r, column=4).fill = fill
@@ -1023,12 +1126,15 @@ def _build_financial(wb: Workbook, ctx: BuildContext, facts: list[MetricFact]) -
     r += 2
 
     years, grid_rows = build_year_metric_grid(facts)
+    grid_by_family: dict[str, dict[int, float]] = {}
     if years and grid_rows:
         ws.cell(row=r, column=1, value="Financial Series — Full Metric Grid").font = _SUBHEADER_FONT
         r += 1
         _write_header_row(ws, r, ["Metric", *[str(y) for y in years]])
         r += 1
         for label, by_year in grid_rows:
+            fam = _canonical_family(str(label))
+            grid_by_family[fam] = dict(by_year)
             _write_row(ws, r, [label, *[_safe_num(by_year.get(y)) for y in years]])
             r += 1
         r += 1
@@ -1037,9 +1143,9 @@ def _build_financial(wb: Workbook, ctx: BuildContext, facts: list[MetricFact]) -
     if not isinstance(pl_lines, list):
         pl_lines = []
     try:
-        from agetic_cdd_api.services_databook_consume import prefer_promoted_pl_lines
+        from agetic_cdd_api.services_databook_consume import prefer_released_pl_lines
 
-        pl_lines = prefer_promoted_pl_lines(ctx.deal_slug, pl_lines)
+        pl_lines = prefer_released_pl_lines(ctx.deal_slug, pl_lines)
     except Exception:
         pass
     if isinstance(pl_lines, list) and pl_lines:
@@ -1057,21 +1163,58 @@ def _build_financial(wb: Workbook, ctx: BuildContext, facts: list[MetricFact]) -
                         seen_cols.add(key)
                         fy_cols.append(key)
         fy_cols = sorted(fy_cols, key=lambda x: x[0], reverse=True)
-        headers = ["Line Item", *[f"FY{y}" for y, _ in fy_cols], "Unit"]
-        ws.cell(row=r, column=1, value="Financial Series — Adjusted EBITDA Bridge").font = _SUBHEADER_FONT
+        headers = ["Line Item", *[f"FY{y}" for y, _ in fy_cols], "Unit", "Status"]
+        ws.cell(row=r, column=1, value="Financial Series — Databook release (P0)").font = _SUBHEADER_FONT
         r += 1
         _write_header_row(ws, r, headers)
         r += 1
         for line in pl_lines:
             if not isinstance(line, dict):
                 continue
-            vals = [line.get("line_item", "")]
-            for _, col in fy_cols:
-                vals.append(_safe_num(line.get(col)))
+            label = str(line.get("line_item", ""))
+            fam = _canonical_family(label)
+            fy_status = line.get("fy_status") if isinstance(line.get("fy_status"), dict) else {}
+            vals: list[Any] = [label]
+            for yr, col in fy_cols:
+                raw = line.get(col)
+                if raw is None and fy_status.get(str(yr)) == "missing":
+                    vals.append("missing")
+                    continue
+                if raw is None and (
+                    fy_status.get(str(yr)) == "doubtful" or yr in (line.get("doubtful_years") or [])
+                ):
+                    vals.append("doubtful †")
+                    continue
+                num = _safe_num(raw)
+                grid_val = (grid_by_family.get(fam) or {}).get(yr)
+                disagrees = (
+                    isinstance(num, (int, float))
+                    and isinstance(grid_val, (int, float))
+                    and not _approx_equal(float(num), float(grid_val))
+                )
+                if (
+                    fy_status.get(str(yr)) == "doubtful"
+                    or yr in (line.get("doubtful_years") or [])
+                    or disagrees
+                ):
+                    vals.append(f"{num} †" if num not in (None, "") else "doubtful †")
+                else:
+                    vals.append(num)
             vals.append(line.get("unit", ""))
+            vals.append(str(line.get("databook_status") or ("doubtful" if line.get("databook_provisional") else "proven")))
             _write_row(ws, r, vals)
             r += 1
         r += 1
+        ws.cell(
+            row=r,
+            column=1,
+            value=(
+                "† Doubtful — provisional, missing, or disagrees with Full Metric Grid. "
+                "Trust Financial Series — Full Metric Grid for confirmed figures. "
+                "Missing = no releasable evidence."
+            ),
+        ).font = Font(name="Calibri", size=9, italic=True, color="666666")
+        r += 2
 
         rev = next(
             (l for l in pl_lines if isinstance(l, dict) and _canonical_family(str(l.get("line_item", ""))) == "revenue"),

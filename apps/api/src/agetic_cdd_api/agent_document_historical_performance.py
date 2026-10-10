@@ -1155,14 +1155,15 @@ def build_historical_performance_spec(
             materiality=vars_.get("materiality"),
         )
         if llm:
-            return _normalise_llm_spec(
+            spec = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            return _apply_databook_release(deal, spec)
 
-    return _heuristic_historical_performance_spec(
+    spec = _heuristic_historical_performance_spec(
         company=target,
         corpus=corpus,
         sources=sources,
@@ -1170,6 +1171,17 @@ def build_historical_performance_spec(
         legacy_spec=legacy_spec,
         deal=deal,
     )
+    return _apply_databook_release(deal, spec)
+
+
+def _apply_databook_release(deal: Deal, spec: dict[str, Any]) -> dict[str, Any]:
+    """G1 — overlay released databook; never leave agent material figures as silent finals."""
+    try:
+        from agetic_cdd_api.services_databook_consume import merge_promoted_into_historical_spec
+
+        return merge_promoted_into_historical_spec(deal, spec)
+    except Exception:
+        return spec
 
 
 def _table(headers: list[str], rows: list[list[str]]) -> str:

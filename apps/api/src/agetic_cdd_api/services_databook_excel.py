@@ -287,6 +287,7 @@ def import_edited_workbook(
                 currency=patch.get("currency") if "currency" in patch else None,
                 scale=patch.get("scale") if "scale" in patch else None,
                 caption=patch.get("caption"),
+                publish_release=False,
             )
             applied.append(
                 {
@@ -304,6 +305,17 @@ def import_edited_workbook(
             logger.warning("Excel import failed for row %s: %s", row_id, exc)
             errors.append({"line": line_no, "row_id": row_id, "reason": str(exc)})
 
+    release_info = None
+    if applied:
+        try:
+            from agetic_cdd_api.services_databook_release import create_release, release_summary_dict
+
+            release_info = release_summary_dict(
+                create_release(deal, source="import", note="Auto-release after Excel import")
+            )
+        except Exception as exc:
+            logger.warning("Failed to publish release after Excel import: %s", exc)
+
     return {
         "applied": len(applied),
         "skipped": len(skipped),
@@ -312,4 +324,5 @@ def import_edited_workbook(
         "items_skipped": skipped[:50],
         "items_errors": errors[:50],
         "reason": import_reason,
+        "release": release_info,
     }

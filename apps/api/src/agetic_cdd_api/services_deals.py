@@ -66,6 +66,33 @@ def deals_root() -> Path:
     return root
 
 
+def storage_key_for_deal_like(deal: Any) -> str:
+    """Filesystem key for ORM Deal rows or slug-only stand-ins (DealLike).
+
+    New API-backed deals use ``{organization_id}/{slug}``. Slug-only workspaces
+    (tests, legacy data) are preferred when they already exist on disk.
+    """
+    slug = (getattr(deal, "slug", None) or getattr(deal, "id", None) or "").strip()
+    if not slug:
+        raise ValueError("Deal requires slug or id for storage")
+    org = getattr(deal, "organization_id", None)
+    org = (org or "").strip() if org else ""
+    if not org:
+        return slug
+    namespaced = f"{org}/{slug}"
+    root = deals_root()
+    if (root / namespaced).is_dir():
+        return namespaced
+    if (root / slug).is_dir():
+        return slug
+    return namespaced
+
+
+def resolve_deal_storage_key(deal: Deal) -> str:
+    """Org-scoped disk key for authenticated API routes."""
+    return storage_key_for_deal_like(deal)
+
+
 def ensure_deal_folder(slug: str) -> Path:
     path = deals_root() / slug
     (path / "documents").mkdir(parents=True, exist_ok=True)

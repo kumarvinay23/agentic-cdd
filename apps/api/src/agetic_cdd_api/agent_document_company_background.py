@@ -271,29 +271,68 @@ def _parse_shareholders(corpus: str, *, limit: int = 5) -> str | None:
 
 _LEDGER_SHARE_QTY = re.compile(
     r"(?i)(?<![.\d])([\d]{1,3}(?:,\d{3})+|\d{3,})\s+"
-    r"(?:(?:common|option|equity/option|equity)\s+)?shares?\b"
+    r"(?:(?:common|preferred|option|equity/option|equity)\s+)?"
+    r"(?:shares?|options?)\b"
+)
+_LEDGER_PAREN_SUM = re.compile(
+    r"\(([^)]{3,120})\)"
+)
+_LEDGER_NAME_QTY = re.compile(
+    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z'-]+)+)\s*[:\-]?\s*"
+    r"([\d]{1,3}(?:,\d{3})+|\d{3,})\b"
+)
+_LEDGER_QTY_NAME_PAREN = re.compile(
+    r"(?<![.\d])([\d]{1,3}(?:,\d{3})+|\d{3,})\s*\(\s*[A-Z][^)]{1,80}\)"
 )
 _STATED_SHARE_TOTAL = re.compile(
     r"(?i)(?P<prefix>shows?\s+|equal(?:s|ing)?\s+|total(?:ing)?\s+)"
     r"(?P<total>[\d]{1,3}(?:,\d{3})+|\d{4,})\s+"
     r"(?P<mid>(?:outstanding\s+)?(?:common\s+)?(?:equity/option\s+)?)shares?"
 )
+_TOTAL_EVIDENCED_PREFIX = re.compile(
+    r"(?i)^Total evidenced[^.]*?\.\s*"
+)
 
 
 def _ledger_share_quantities(text: str) -> list[int]:
-    """Pull discrete share quantities from a securities-ledger narrative."""
+    """Pull discrete share/option quantities from a securities-ledger narrative.
+
+    Accepts ``N shares``, ``N options``, parenthetical ``(a + b + c)`` sums,
+    ``Person Name N`` holdings, and ``N (Person Name)`` ledger rows so small
+    grants are not dropped from the total.
+    """
     out: list[int] = []
     seen: set[int] = set()
-    for m in _LEDGER_SHARE_QTY.finditer(text or ""):
-        raw = m.group(1).replace(",", "")
+
+    def _add(raw: str) -> None:
+        token = (raw or "").strip()
         try:
-            n = int(raw)
+            n = int(token.replace(",", ""))
         except ValueError:
-            continue
+            return
         if n < 10 or n in seen:
-            continue
+            return
+        # Bare 4-digit calendar years (2024) — keep comma-grouped grants like 2,070.
+        if "," not in token and 1900 <= n <= 2100:
+            return
         seen.add(n)
         out.append(n)
+
+    blob = text or ""
+    for m in _LEDGER_SHARE_QTY.finditer(blob):
+        _add(m.group(1))
+    for m in _LEDGER_PAREN_SUM.finditer(blob):
+        inner = m.group(1)
+        if "+" not in inner:
+            continue
+        for part in re.split(r"\s*\+\s*", inner):
+            token = part.strip()
+            if re.fullmatch(r"[\d,]+", token):
+                _add(token)
+    for m in _LEDGER_NAME_QTY.finditer(blob):
+        _add(m.group(2))
+    for m in _LEDGER_QTY_NAME_PAREN.finditer(blob):
+        _add(m.group(1))
     return out
 
 
@@ -314,6 +353,17 @@ def _canonicalize_cap_table_text(text: str | None) -> str | None:
             stated = int(sm.group("total").replace(",", ""))
         except ValueError:
             stated = None
+    # Also catch "Total evidenced … shares: N" (number after the word shares)
+    te = re.search(
+        r"(?i)Total evidenced[^:]*:\s*([\d]{1,3}(?:,\d{3})+|\d{4,})",
+        raw,
+    )
+    if te and stated is None:
+        try:
+            stated = int(te.group(1).replace(",", ""))
+        except ValueError:
+            stated = None
+
     components = [n for n in qtys if stated is None or n != stated]
     if len(components) < 2:
         components = list(qtys)
@@ -325,25 +375,39 @@ def _canonicalize_cap_table_text(text: str | None) -> str | None:
             break
     if len(components) < 2:
         return raw
+    # Largest holding first — stable, readable arithmetic for slides
+    components = sorted(components, reverse=True)
     total = sum(components)
     total_fmt = f"{total:,}"
-    if sm is not None:
+    parts = " + ".join(f"{n:,}" for n in components)
+
+    # Always rebuild the leading total so clipped slides keep correct arithmetic
+    body = raw
+    body = re.sub(
+        r"(?i)^(?:Ownership:\s*)?Total evidenced[^.]*?\.\s*",
+        "",
+        body,
+    ).strip()
+    body = re.sub(r"(?i)^Ownership:\s*", "", body).strip()
+    if sm is not None and not raw.lower().startswith("total evidenced"):
+        # In-place correction for "totaling N shares" mid-prose (no evidenced prefix)
         mid = sm.group("mid") or ""
-        return (
+        corrected = (
             raw[: sm.start()]
             + f"{sm.group('prefix')}{total_fmt} {mid}shares"
             + raw[sm.end() :]
         )
-    if total_fmt in raw and raw.strip().startswith("Total evidenced"):
-        return raw
-    parts = " + ".join(f"{n:,}" for n in components)
-    # Lead with the total so clipped findings / slide bullets keep the correct figure
-    body = raw
-    if total_fmt in body:
-        # Already has total mid/end — still lead with it for clip-safety
-        return (
-            f"Total evidenced common equity/option shares: {total_fmt} ({parts}). {body}"
-        )
+        # Still lead with evidenced total when we have ≥2 named components
+        if len(components) >= 2:
+            body = _TOTAL_EVIDENCED_PREFIX.sub("", corrected).strip()
+            body = re.sub(r"(?i)^Total evidenced[^.]*?\.\s*", "", body).strip()
+            return (
+                f"Total evidenced common equity/option shares: {total_fmt} ({parts}). "
+                f"{body.rstrip('. ')}."
+            )
+        return corrected
+    if not body:
+        return f"Total evidenced common equity/option shares: {total_fmt} ({parts})."
     return (
         f"Total evidenced common equity/option shares: {total_fmt} ({parts}). "
         f"{body.rstrip('. ')}."

@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import type { DataQualityCandidate, DataQualityItem, DataQualityPayload } from "@/lib/api";
+import {
+  DEFAULT_PAGE_SIZE,
+  ListPagination,
+  useClientPagination,
+} from "@/components/deal/ListPagination";
 
 export type DataQualityFilter = "all" | "dropped" | "conflict" | "assumed" | "failed_check";
 
@@ -51,7 +56,7 @@ export function DataQualityReview({
   busy,
   onAcceptConflict,
   showActions = true,
-  maxItems = 200,
+  pageSize: pageSizeProp,
 }: {
   quality: DataQualityPayload | null;
   busy?: boolean;
@@ -60,10 +65,13 @@ export function DataQualityReview({
     cand?: DataQualityCandidate,
   ) => void;
   showActions?: boolean;
+  /** @deprecated Hard cap removed — use pageSize instead. Kept as unused alias for callers. */
   maxItems?: number;
+  pageSize?: number;
 }) {
   const [filter, setFilter] = useState<DataQualityFilter>("all");
   const [expanded, setExpanded] = useState<number | null>(0);
+  const [pageSize, setPageSize] = useState(pageSizeProp ?? DEFAULT_PAGE_SIZE);
 
   const items = quality?.items || [];
   const byKind = quality?.summary?.by_kind || {};
@@ -83,6 +91,8 @@ export function DataQualityReview({
     if (filter === "all") return items;
     return items.filter((i) => i.kind === filter);
   }, [filter, items]);
+
+  const pager = useClientPagination(filtered, pageSize);
 
   const chips: Array<{ id: DataQualityFilter; label: string; count: number }> = [
     { id: "all", label: "All", count: counts.all },
@@ -133,14 +143,15 @@ export function DataQualityReview({
         </p>
       ) : (
         <ul className="divide-y divide-[#e5e7eb]">
-          {filtered.slice(0, maxItems).map((item, idx) => {
-            const open = expanded === idx;
+          {pager.pageItems.map((item, idx) => {
+            const absoluteIndex = pager.from - 1 + idx;
+            const open = expanded === absoluteIndex;
             const tone = badge(item.kind);
             return (
-              <li key={`${item.kind}-${idx}`}>
+              <li key={`${item.kind}-${absoluteIndex}`}>
                 <button
                   type="button"
-                  onClick={() => setExpanded(open ? null : idx)}
+                  onClick={() => setExpanded(open ? null : absoluteIndex)}
                   className="flex w-full items-start gap-2 px-4 py-3 text-left hover:bg-[#f8fafc]"
                 >
                   <span
@@ -149,7 +160,7 @@ export function DataQualityReview({
                     {tone.label}
                   </span>
                   <span className="min-w-0 flex-1 text-[13px] text-[#0f172a]">
-                    {itemTitle(item, idx)}
+                    {itemTitle(item, absoluteIndex)}
                   </span>
                   <span className="shrink-0 text-[12px] text-[#94a3b8]">{open ? "▾" : "▸"}</span>
                 </button>
@@ -241,11 +252,19 @@ export function DataQualityReview({
         </ul>
       )}
 
-      {filtered.length > maxItems ? (
-        <p className="border-t border-[#e5e7eb] px-4 py-2 text-[12px] text-[#94a3b8]">
-          Showing {maxItems} of {filtered.length}. Narrow the filter or resolve issues in Databook.
-        </p>
-      ) : null}
+      <ListPagination
+        page={pager.page}
+        pageCount={pager.pageCount}
+        total={pager.total}
+        from={pager.from}
+        to={pager.to}
+        pageSize={pageSize}
+        onPageChange={(p) => {
+          pager.setPage(p);
+          setExpanded(null);
+        }}
+        onPageSizeChange={setPageSize}
+      />
     </section>
   );
 }

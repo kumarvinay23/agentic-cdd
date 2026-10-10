@@ -215,3 +215,34 @@ def test_render_agent_document_company_background_from_spec() -> None:
     assert "4,900" in rendered
     assert "**Recommendation:**" not in rendered
     assert "## 5. Quality & Reliance" in rendered
+
+
+def test_canonicalize_cap_table_includes_small_option_grants() -> None:
+    from agetic_cdd_api.agent_document_company_background import (
+        _canonicalize_cap_table_text,
+        _ledger_share_quantities,
+    )
+
+    # Regression: earlier parser dropped Tiffany 2,070 (looked like year 2070)
+    # and failed to re-sum when only Ben+Dan appeared in the parenthetical.
+    wrong = (
+        "Total evidenced common equity/option shares: 10,200,010 "
+        "(10,000,010 + 200,000). Ben Parry 10,000,010; Dan Israel 200,000; "
+        "Tiffany Williams 2,070; Timothy Jenkins 481."
+    )
+    qtys = _ledger_share_quantities(wrong)
+    assert qtys == [10_000_010, 200_000, 2_070, 481]
+    assert sum(qtys) == 10_202_561
+    fixed = _canonicalize_cap_table_text(wrong)
+    assert fixed is not None
+    assert fixed.startswith(
+        "Total evidenced common equity/option shares: 10,202,561 "
+        "(10,000,010 + 200,000 + 2,070 + 481)."
+    )
+    assert "10,200,010" not in fixed.split(".", 1)[0]
+
+    ledger = (
+        "Securities ledger: 10,000,010 (Ben Parry), 200,000 (Dan Israel), "
+        "2,070 (Tiffany Williams), 481 (Timothy Jenkins)."
+    )
+    assert "10,202,561" in (_canonicalize_cap_table_text(ledger) or "")

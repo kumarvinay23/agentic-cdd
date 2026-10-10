@@ -21,7 +21,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Inches, Pt
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name
+from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name, sanitize_report_prose
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -95,6 +95,12 @@ def _sector_display(ctx: BuildContext) -> str:
 
 def _clean(text: str, max_chars: int = 280) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip()).replace("\x7f", " ")
+    t = sanitize_report_prose(t)
+    if re.search(r"(?i)(?:shares?|options?|cap table|ownership)", t):
+        from agetic_cdd_api.agent_document_company_background import _canonicalize_cap_table_text
+
+        t = _canonicalize_cap_table_text(t) or t
+        t = sanitize_report_prose(t)  # drop Ownership:/Total evidenced duplication after canonicalize
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
@@ -641,6 +647,24 @@ def _slide_market_primer(prs: Presentation, ctx: BuildContext, page: int, total:
     service = str(perim.get("service") or "").strip()
     if service.startswith("Information") or "Foundation ·" in service or "plan relies" in service.lower():
         service = ""
+    bg = _resolve(ctx, "company_background")
+    bg_offers = _spec(bg).get("offers") if isinstance(_spec(bg).get("offers"), dict) else {}
+    bg_sells = str(bg_offers.get("sells") or "").strip()
+    if bg_sells and (
+        not service
+        or re.search(r"(?i)DOC:\s*data room financials", service)
+    ):
+        cites = ""
+        bg_sources = bg.get("sources") if isinstance(bg.get("sources"), list) else []
+        if bg_sources:
+            n = min(3, len(bg_sources))
+            cites = " (" + ", ".join(f"DOC: [{i}]" for i in range(1, n + 1)) + ")"
+        service = f"{bg_sells}{cites}"
+    elif service:
+        service = sanitize_report_prose(
+            service,
+            sources=mdef.get("sources") if isinstance(mdef.get("sources"), list) else None,
+        )
     insight = (
         service
         or framing_text.strip()
@@ -949,9 +973,9 @@ def _slide_financials(prs: Presentation, ctx: BuildContext, page: int, total: in
     _insight_banner(slide, insight)
     pl = _spec(hist).get("pl_lines") or []
     try:
-        from agetic_cdd_api.services_databook_consume import prefer_promoted_pl_lines
+        from agetic_cdd_api.services_databook_consume import prefer_released_pl_lines
 
-        pl = prefer_promoted_pl_lines(ctx.deal_slug, pl if isinstance(pl, list) else [])
+        pl = prefer_released_pl_lines(ctx.deal_slug, pl if isinstance(pl, list) else [])
     except Exception:
         pass
     rows: list[list[str]] = []
@@ -959,10 +983,29 @@ def _slide_financials(prs: Presentation, ctx: BuildContext, page: int, total: in
         for line in pl[:7]:
             if not isinstance(line, dict):
                 continue
+            label = str(line.get("line_item") or "—")
+            status = str(line.get("databook_status") or "")
+            if status == "doubtful" or line.get("databook_provisional"):
+                label = f"{label} †"
+            elif status == "missing":
+                label = f"{label} (missing)"
+            fy_status = line.get("fy_status") if isinstance(line.get("fy_status"), dict) else {}
+
+            def _fy_cell(year: int) -> str:
+                raw = line.get(f"fy{year}_value")
+                if raw is None:
+                    if str(year) in (line.get("missing_years") or []) or fy_status.get(str(year)) == "missing":
+                        return "missing"
+                    return "—"
+                text = f"{raw}"
+                if fy_status.get(str(year)) == "doubtful" or year in (line.get("doubtful_years") or []):
+                    text = f"{text} †"
+                return text
+
             rows.append([
-                str(line.get("line_item") or "—"),
-                f"{line.get('fy2024_value')}" if line.get("fy2024_value") is not None else "—",
-                f"{line.get('fy2023_value')}" if line.get("fy2023_value") is not None else "—",
+                label,
+                _fy_cell(2024),
+                _fy_cell(2023),
                 str(line.get("unit") or _reporting_unit(ctx)),
             ])
     if not rows:
@@ -976,6 +1019,8 @@ def _slide_financials(prs: Presentation, ctx: BuildContext, page: int, total: in
         rows or [["—", "—", "—", "—"]],
     )
     notes = _as_list(_spec(hist).get("bridge_notes"), 2) + _findings(cost, 1) + _findings(cash, 1)
+    if any(isinstance(line, dict) and (line.get("databook_provisional") or line.get("databook_status") == "doubtful") for line in (pl if isinstance(pl, list) else [])):
+        notes = ["† Doubtful — provisional databook release value, not final."] + list(notes)
     if notes:
         _add_textbox(slide, Inches(0.55), Inches(5.9), Inches(12.2), Inches(0.4),
                      " · ".join(_clean(n, 90) for n in notes[:3]), size=11, color=_MUTED)

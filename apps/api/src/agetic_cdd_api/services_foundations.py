@@ -242,12 +242,22 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
         if offers.get("sells"):
             findings.append(f"Sells: {offers['sells']}")
         ownership = cb_spec.get("ownership") if isinstance(cb_spec.get("ownership"), dict) else {}
-        if ownership.get("legal_entities"):
-            findings.append(f"Legal entity: {ownership['legal_entities']}")
-        if ownership.get("ownership_or_cap_table") and "Information request" not in str(
-            ownership.get("ownership_or_cap_table")
-        ):
-            findings.append(f"Ownership: {ownership['ownership_or_cap_table']}")
+        legal = ownership.get("legal_entities")
+        if legal:
+            from agetic_cdd_api.report_builder_base import _clean_legal_name
+
+            clean_legal = _clean_legal_name(legal, fallback=str(legal).split("(")[0].strip())
+            if clean_legal:
+                findings.append(f"Legal entity: {clean_legal}")
+        cap = ownership.get("ownership_or_cap_table")
+        if cap and "Information request" not in str(cap):
+            from agetic_cdd_api.agent_document_company_background import _canonicalize_cap_table_text
+
+            cap_txt = _canonicalize_cap_table_text(str(cap)) or str(cap)
+            if cap_txt.lower().startswith("total evidenced"):
+                findings.append(cap_txt)
+            else:
+                findings.append(f"Ownership: {cap_txt}")
         streams = cb_spec.get("revenue_by_service_line") or []
         if isinstance(streams, list) and streams:
             findings.append(f"Service lines evidenced: {len(streams)}")

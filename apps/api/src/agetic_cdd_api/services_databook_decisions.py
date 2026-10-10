@@ -15,13 +15,16 @@ from agetic_cdd_api.services_databook_models import (
     ExtractedRow,
     MetricFamily,
     PromotedMetric,
+    ProofLevel,
     RowStatus,
 )
 from agetic_cdd_api.services_databook_resolve import (
+    apply_scale_step_guard,
     apply_series_drops,
     assumption_issues_from_rows,
     build_data_quality_items,
     detect_conflicts,
+    unmapped_issues_from_rows,
 )
 from agetic_cdd_api.services_databook_store import (
     append_decision,
@@ -39,7 +42,47 @@ from agetic_cdd_api.services_ingestion import utc_now_iso
 
 logger = logging.getLogger(__name__)
 
-DecisionAction = Literal["correct", "drop", "vouch", "accept"]
+DecisionAction = Literal["correct", "drop", "vouch", "accept", "confirm", "remap", "exclude"]
+
+
+def _publish_release_after_decision(deal: Deal, *, action: str) -> dict[str, Any] | None:
+    """P0: every HITL mutation publishes a new immutable release for report consume."""
+    try:
+        from agetic_cdd_api.services_databook_release import create_release, release_summary_dict
+
+        release = create_release(
+            deal,
+            source="decision",
+            note=f"Auto-release after {action}",
+        )
+        return release_summary_dict(release)
+    except Exception as exc:
+        logger.warning("Failed to publish databook release after %s: %s", action, exc)
+        return None
+
+
+def _learn_after_decision(
+    deal: Deal,
+    decision: dict[str, Any],
+    release: dict[str, Any] | None,
+) -> None:
+    """P6: lineage + traps + mapping memory (best-effort)."""
+    try:
+        from agetic_cdd_api.services_databook_learn import learn_from_decision
+
+        learn_from_decision(deal, decision=decision, release=release)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to apply learning from decision %s: %s", decision.get("decision_id"), exc)
+
+
+def _finalize_hitl(
+    deal: Deal,
+    *,
+    decision: dict[str, Any],
+) -> dict[str, Any] | None:
+    release = _publish_release_after_decision(deal, action=str(decision.get("action") or "decision"))
+    _learn_after_decision(deal, decision, release)
+    return release
 
 # Statuses that must not feed conflict detection (resolved or deliberately sidelined).
 _CONFLICT_EXCLUDED = frozenset(
@@ -109,6 +152,16 @@ def _upsert_promoted(
             captions=captions if captions is not None else [row.caption],
             decision_id=decision_id,
             auto=auto,
+            scope=row.scope,
+            statement=row.statement,
+            period_end=row.period_end,
+            period_length=row.period_length,
+            source_basis=row.source_basis,
+            source_ref=row.source_ref,
+            proof_level=ProofLevel.L4 if not auto else (row.proof_level or ProofLevel.L2),
+            proof_checks=list(
+                dict.fromkeys([*(row.proof_checks or []), *([] if auto else ["hitl_vouch"])])
+            ),
         )
     )
     return out
@@ -123,6 +176,7 @@ def _rebuild_issues_from_rows(deal: Deal, rows: list[ExtractedRow]) -> list[dict
     # Series drops on non-decision rows
     probe = [r.model_copy(update={"status": RowStatus.CANDIDATE}) for r in rows if r.status != RowStatus.DROPPED]
     _, dropped_issues = apply_series_drops(probe, params=params)
+    _, _, scale_step_issues = apply_scale_step_guard(probe, params=params)
 
     conflict_src = [
         r
@@ -188,12 +242,16 @@ def _rebuild_issues_from_rows(deal: Deal, rows: list[ExtractedRow]) -> list[dict
         ):
             kept_drops.append(item)
 
-    return build_data_quality_items(
+    items = build_data_quality_items(
         dropped=kept_drops,
         conflicts=filtered,
         failed_checks=failed_checks,
         assumed=assumption_issues_from_rows(rows),
     )
+    extras = [*scale_step_issues, *unmapped_issues_from_rows(rows)]
+    if extras:
+        items = [*items, *extras]
+    return items
 
 
 def _refresh_meta(deal: Deal, rows: list[ExtractedRow], issues: list[dict[str, Any]], promoted: list[PromotedMetric]) -> None:
@@ -221,7 +279,7 @@ def _write_decision(
     actor: str,
     patch: dict[str, Any] | None = None,
     extra: dict[str, Any] | None = None,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     decision_id = uuid.uuid4().hex[:12]
     payload: dict[str, Any] = {
         "decision_id": decision_id,
@@ -235,6 +293,7 @@ def _write_decision(
             "caption": row.caption if row else None,
             "fiscal_year": row.fiscal_year if row else None,
             "metric_key": row.metric_key if row else None,
+            "value": row.value if row else None,
         }
         if row
         else None,
@@ -243,7 +302,7 @@ def _write_decision(
     if extra:
         payload.update(_json_primitive(extra))
     append_decision(deal, payload)
-    return decision_id
+    return decision_id, payload
 
 
 def correct_row(
@@ -258,6 +317,8 @@ def correct_row(
     currency: str | None = None,
     scale: str | None = None,
     caption: str | None = None,
+    publish_release: bool = True,
+    action: Literal["correct", "remap"] = "correct",
 ) -> dict[str, Any]:
     """Machine misread — patch fields and promote when metric+year present."""
     reason = _require_reason(reason)
@@ -268,13 +329,13 @@ def correct_row(
         updates["value"] = float(value)
     if caption is not None:
         updates["caption"] = caption.strip()
-        hit = map_caption(caption)
+        hit = map_caption(caption, deal=deal)
         if hit and metric_key is None:
             updates["metric_key"] = hit.metric_key
             updates["metric_family"] = hit.family
     if metric_key is not None:
         updates["metric_key"] = metric_key
-        hit = map_caption(metric_key.replace("_", " "))
+        hit = map_caption(metric_key.replace("_", " "), deal=deal)
         updates["metric_family"] = hit.family if hit else MetricFamily.OTHER
     if unit is not None:
         updates["unit"] = unit
@@ -283,9 +344,9 @@ def correct_row(
     if scale is not None:
         updates["scale"] = scale
 
-    decision_id = _write_decision(
+    decision_id, decision = _write_decision(
         deal,
-        action="correct",
+        action=action,
         row=row,
         reason=reason,
         actor=actor,
@@ -321,19 +382,28 @@ def correct_row(
     issues = _rebuild_issues_from_rows(deal, new_rows)
     save_issues(deal, issues)
     _refresh_meta(deal, new_rows, issues, promoted)
+    release = _finalize_hitl(deal, decision=decision) if publish_release else None
     return {
         "decision_id": decision_id,
-        "action": "correct",
+        "action": action,
         "row": updated.model_dump(mode="json"),
+        "release": release,
     }
 
 
-def drop_row(deal: Deal, row_id: str, *, reason: str, actor: str) -> dict[str, Any]:
+def drop_row(
+    deal: Deal,
+    row_id: str,
+    *,
+    reason: str,
+    actor: str,
+    action: Literal["drop", "exclude"] = "drop",
+) -> dict[str, Any]:
     """Not a figure — remove from candidates."""
     reason = _require_reason(reason)
     rows = load_rows(deal)
     row = _find_row(rows, row_id)
-    decision_id = _write_decision(deal, action="drop", row=row, reason=reason, actor=actor)
+    decision_id, decision = _write_decision(deal, action=action, row=row, reason=reason, actor=actor)
     updated = row.model_copy(update={"status": RowStatus.DROPPED})
     new_rows = [updated if r.row_id == row_id else r for r in rows]
     promoted = [p for p in load_promoted(deal) if p.row_id != row_id]
@@ -342,14 +412,23 @@ def drop_row(deal: Deal, row_id: str, *, reason: str, actor: str) -> dict[str, A
     issues = _rebuild_issues_from_rows(deal, new_rows)
     save_issues(deal, issues)
     _refresh_meta(deal, new_rows, issues, promoted)
+    release = _finalize_hitl(deal, decision=decision)
     return {
         "decision_id": decision_id,
-        "action": "drop",
+        "action": action,
         "row": updated.model_dump(mode="json"),
+        "release": release,
     }
 
 
-def vouch_row(deal: Deal, row_id: str, *, reason: str, actor: str) -> dict[str, Any]:
+def vouch_row(
+    deal: Deal,
+    row_id: str,
+    *,
+    reason: str,
+    actor: str,
+    action: Literal["vouch", "confirm"] = "vouch",
+) -> dict[str, Any]:
     """Read was correct; release on reviewer authority (must not be used just to clear a list)."""
     reason = _require_reason(reason)
     rows = load_rows(deal)
@@ -359,8 +438,15 @@ def vouch_row(deal: Deal, row_id: str, *, reason: str, actor: str) -> dict[str, 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot vouch a row without metric_key and fiscal_year — correct/map it first.",
         )
-    decision_id = _write_decision(deal, action="vouch", row=row, reason=reason, actor=actor)
-    updated = row.model_copy(update={"status": RowStatus.VOUCHED, "assumption": False})
+    decision_id, decision = _write_decision(deal, action=action, row=row, reason=reason, actor=actor)
+    updated = row.model_copy(
+        update={
+            "status": RowStatus.VOUCHED,
+            "assumption": False,
+            "proof_level": ProofLevel.L4,
+            "proof_checks": list(dict.fromkeys([*(row.proof_checks or []), "hitl_vouch"])),
+        }
+    )
     new_rows = [updated if r.row_id == row_id else r for r in rows]
     # Hold siblings for same metric+year (governing source chosen)
     fixed: list[ExtractedRow] = []
@@ -381,10 +467,12 @@ def vouch_row(deal: Deal, row_id: str, *, reason: str, actor: str) -> dict[str, 
     issues = _rebuild_issues_from_rows(deal, new_rows)
     save_issues(deal, issues)
     _refresh_meta(deal, new_rows, issues, promoted)
+    release = _finalize_hitl(deal, decision=decision)
     return {
         "decision_id": decision_id,
-        "action": "vouch",
+        "action": action,
         "row": updated.model_dump(mode="json"),
+        "release": release,
     }
 
 
@@ -421,7 +509,7 @@ def accept_conflict(
             detail="No matching candidate rows for that metric/year/value",
         )
     primary = target_rows[0]
-    decision_id = _write_decision(
+    decision_id, decision = _write_decision(
         deal,
         action="accept",
         row=primary,
@@ -456,6 +544,7 @@ def accept_conflict(
     issues = _rebuild_issues_from_rows(deal, new_rows)
     save_issues(deal, issues)
     _refresh_meta(deal, new_rows, issues, promoted)
+    release = _finalize_hitl(deal, decision=decision)
     return {
         "decision_id": decision_id,
         "action": "accept",
@@ -463,6 +552,7 @@ def accept_conflict(
         "fiscal_year": fiscal_year,
         "value": float(value),
         "sources": win_sources,
+        "release": release,
     }
 
 
@@ -504,6 +594,46 @@ def load_decisions(deal: Deal) -> list[dict[str, Any]]:
         return []
     return out
 
+
+# ---------------------------------------------------------------------------
+# Phase 6 OL-3 aliases — confirm / remap / exclude
+# ---------------------------------------------------------------------------
+
+
+def confirm_row(deal: Deal, row_id: str, *, reason: str, actor: str) -> dict[str, Any]:
+    """Confirm a doubtful/calibration cell — same authority as vouch (OL-3)."""
+    return vouch_row(deal, row_id, reason=reason, actor=actor, action="confirm")
+
+
+def exclude_row(deal: Deal, row_id: str, *, reason: str, actor: str) -> dict[str, Any]:
+    """Exclude a row from the statement — same as drop (OL-3)."""
+    return drop_row(deal, row_id, reason=reason, actor=actor, action="exclude")
+
+
+def remap_row(
+    deal: Deal,
+    row_id: str,
+    *,
+    reason: str,
+    actor: str,
+    metric_key: str,
+    value: float | None = None,
+) -> dict[str, Any]:
+    """Remap caption to a different metric key (OL-3) — correct + memory seed."""
+    if not (metric_key or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="metric_key is required for remap",
+        )
+    return correct_row(
+        deal,
+        row_id,
+        reason=reason,
+        actor=actor,
+        metric_key=metric_key.strip(),
+        value=value,
+        action="remap",
+    )
 
 def _find_overlay_index(
     working: list[ExtractedRow],
@@ -592,10 +722,10 @@ def apply_decision_overlays(deal: Deal, rows: list[ExtractedRow]) -> tuple[list[
         if idx is None:
             continue
         row = working[idx]
-        if action == "drop":
+        if action in {"drop", "exclude"}:
             working[idx] = row.model_copy(update={"status": RowStatus.DROPPED})
             promoted = [p for p in promoted if p.row_id != row.row_id]
-        elif action == "correct":
+        elif action in {"correct", "remap"}:
             updates = {
                 k: v
                 for k, v in patch.items()
@@ -631,9 +761,18 @@ def apply_decision_overlays(deal: Deal, rows: list[ExtractedRow]) -> tuple[list[
                         working[i] = r.model_copy(update={"status": RowStatus.DROPPED})
             if updated.status == RowStatus.PROMOTED:
                 promoted = _upsert_promoted(promoted, row=updated, decision_id=decision_id, auto=False)
-        elif action == "vouch":
+        elif action in {"vouch", "confirm"}:
             if row.metric_key and row.fiscal_year is not None:
-                updated = row.model_copy(update={"status": RowStatus.VOUCHED, "assumption": False})
+                updated = row.model_copy(
+                    update={
+                        "status": RowStatus.VOUCHED,
+                        "assumption": False,
+                        "proof_level": ProofLevel.L4,
+                        "proof_checks": list(
+                            dict.fromkeys([*(row.proof_checks or []), "hitl_vouch"])
+                        ),
+                    }
+                )
                 working[idx] = updated
                 for i, r in enumerate(working):
                     if (

@@ -21,7 +21,7 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Inches, Pt
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt
+from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, sanitize_report_prose
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -84,8 +84,9 @@ def _sector_display(ctx: BuildContext) -> str:
     return sector_label("generic")
 
 
-def _clean(text: str, max_chars: int = 280) -> str:
+def _clean(text: str, max_chars: int = 280, *, sources: list[Any] | None = None) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip()).replace("\x7f", " ")
+    t = sanitize_report_prose(t, sources=sources)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
@@ -594,6 +595,7 @@ def _slide_perimeter(prs: Presentation, ctx: BuildContext, page: int, total: int
     mdef = _resolve(ctx, "market_definition")
     buy = _resolve(ctx, "buying_behavior")
     seg = _resolve(ctx, "customer_segmentation")
+    bg = _resolve(ctx, "company_background")
     spec = _spec(mdef)
     framing = spec.get("market_framing") or spec.get("document")
     if isinstance(framing, list):
@@ -604,6 +606,21 @@ def _slide_perimeter(prs: Presentation, ctx: BuildContext, page: int, total: int
     service = str(perim.get("service") or "").strip()
     if service.startswith("Information") or "Foundation ·" in service or "plan relies" in service.lower():
         service = ""
+    # Prefer company-background sells when market_definition only has a generic DOC cite
+    bg_offers = _spec(bg).get("offers") if isinstance(_spec(bg).get("offers"), dict) else {}
+    bg_sells = str(bg_offers.get("sells") or "").strip()
+    if bg_sells and (
+        not service
+        or re.search(r"(?i)DOC:\s*data room financials", service)
+    ):
+        cites = ""
+        bg_sources = bg.get("sources") if isinstance(bg.get("sources"), list) else []
+        if bg_sources:
+            n = min(3, len(bg_sources))
+            cites = " (" + ", ".join(f"DOC: [{i}]" for i in range(1, n + 1)) + ")"
+        service = f"{bg_sells}{cites}"
+    elif service:
+        service = _clean(service, 280, sources=mdef.get("sources") if isinstance(mdef.get("sources"), list) else None)
     insight = (
         service
         or framing_text.strip()
@@ -730,9 +747,52 @@ def _slide_trajectory(prs: Presentation, ctx: BuildContext, page: int, total: in
     right = _as_list(_spec(growth).get("growth_levers"), 5) or _as_list(_spec(growth).get("market_growth"), 4) or _findings(growth, 4)
     right += _as_list(_spec(share).get("share_trends"), 3)
     _add_textbox(slide, Inches(0.55), Inches(2.0), Inches(6), Inches(0.3), "Volume / growth notes", size=12, bold=True, color=_NAVY)
-    _add_bullets(slide, Inches(0.55), Inches(2.35), Inches(6), Inches(3.5), left[:6] or ["—"], size=12)
+    _add_bullets(slide, Inches(0.55), Inches(2.35), Inches(6), Inches(2.2), left[:5] or ["—"], size=12)
     _add_textbox(slide, Inches(6.9), Inches(2.0), Inches(6), Inches(0.3), "Growth levers / share", size=12, bold=True, color=_NAVY)
-    _add_bullets(slide, Inches(6.9), Inches(2.35), Inches(5.8), Inches(3.5), right[:6] or _findings(hist, 4) or ["—"], size=12)
+    _add_bullets(slide, Inches(6.9), Inches(2.35), Inches(5.8), Inches(2.2), right[:5] or _findings(hist, 3) or ["—"], size=12)
+
+    # G1 — company financial history from released databook only (never silent agent finals).
+    try:
+        from agetic_cdd_api.services_databook_consume import released_pl_display_rows
+
+        hist_pl = _spec(hist).get("pl_lines") if isinstance(_spec(hist).get("pl_lines"), list) else []
+        fin_rows, _, footnote = released_pl_display_rows(ctx.deal_slug, hist_pl, limit=5)
+        if fin_rows:
+            _add_textbox(
+                slide,
+                Inches(0.55),
+                Inches(4.55),
+                Inches(12),
+                Inches(0.25),
+                "Company financials (released databook)",
+                size=11,
+                bold=True,
+                color=_NAVY,
+            )
+            table_rows = [[r[0], r[1][:48], r[3]] for r in fin_rows]
+            _add_table(
+                slide,
+                Inches(0.45),
+                Inches(4.85),
+                Inches(12.4),
+                Inches(1.35),
+                ["Line", "FY values", "Status"],
+                table_rows,
+            )
+            if footnote:
+                _add_textbox(
+                    slide,
+                    Inches(0.55),
+                    Inches(6.25),
+                    Inches(12),
+                    Inches(0.25),
+                    footnote,
+                    size=10,
+                    color=_NAVY,
+                )
+    except Exception:
+        pass
+
     _chrome(slide, company=company, section="Market Analysis", page=page, total=total, part="02")
     _workflow_note(slide, [vol, growth, hist, share])
 
@@ -1049,7 +1109,11 @@ def _slide_summary(prs: Presentation, ctx: BuildContext, page: int, total: int) 
 def _slide_appendix(prs: Presentation, ctx: BuildContext, page: int, total: int) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     company = _company(ctx)
-    _section_title(slide, "Appendix — Methodology & sources", "Figures from deal agent specs; not re-modelled in this builder.")
+    _section_title(
+        slide,
+        "Appendix — Methodology & sources",
+        "Market figures from agents; company financials from released databook only (G1).",
+    )
     rows: list[list[str]] = []
     keys = [
         "market_definition", "market_volume_and_growth", "market_pricing", "demand_drivers",
@@ -1065,8 +1129,48 @@ def _slide_appendix(prs: Presentation, ctx: BuildContext, page: int, total: int)
         code = _spec(agent).get("dd_code") or _spec(agent).get("role_code") or "—"
         rows.append([_agent_name(agent, key), str(code), key, src or "—"])
     if rows:
-        _add_table(slide, Inches(0.35), Inches(1.2), Inches(12.6), Inches(5.2),
-                   ["Agent", "Code", "Slug", "Sources"], rows[:12])
+        _add_table(slide, Inches(0.35), Inches(1.2), Inches(12.6), Inches(3.6),
+                   ["Agent", "Code", "Slug", "Sources"], rows[:8])
+    try:
+        from agetic_cdd_api.services_databook_consume import released_pl_display_rows
+
+        hist = _resolve(ctx, "historical_performance")
+        hist_pl = _spec(hist).get("pl_lines") if isinstance(_spec(hist).get("pl_lines"), list) else []
+        fin_rows, _, footnote = released_pl_display_rows(ctx.deal_slug, hist_pl, limit=6)
+        if fin_rows:
+            _add_textbox(
+                slide,
+                Inches(0.45),
+                Inches(4.95),
+                Inches(12),
+                Inches(0.25),
+                "Released databook — company financial history",
+                size=11,
+                bold=True,
+                color=_NAVY,
+            )
+            _add_table(
+                slide,
+                Inches(0.35),
+                Inches(5.25),
+                Inches(12.6),
+                Inches(1.3),
+                ["Line", "FY values", "Unit", "Status"],
+                fin_rows,
+            )
+            if footnote:
+                _add_textbox(
+                    slide,
+                    Inches(0.45),
+                    Inches(6.55),
+                    Inches(12),
+                    Inches(0.2),
+                    footnote,
+                    size=10,
+                    color=_NAVY,
+                )
+    except Exception:
+        pass
     _chrome(slide, company=company, section="Appendix", page=page, total=total, part="04")
     _workflow_note(slide, [_resolve(ctx, k) for k in keys[:4]])
 

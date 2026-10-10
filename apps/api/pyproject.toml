@@ -19,6 +19,7 @@ dependencies = [
     "bcrypt>=4.0",
     "python-multipart>=0.0.9",
     "pypdf>=5.0",
+    "pymupdf>=1.24",
     "python-docx>=1.1",
     "openpyxl>=3.1",
     "python-pptx>=0.6.21",
@@ -45,4 +46,6 @@ markers = [
     "fts_scale: FTS re-ingest and retrieval scale tests (100+ files)",
     "retrieval_benchmark: 20-prompt FTS + passage recall benchmark matrix",
     "live_web: opt into live web research (no stub)",
+    "databook_ship: P7 golden databooks + trap suite ship gate (H-1…H-7)",
+    "fdd_ship: Phase 9 FDD golden deals + trap suite ship gate",
 ]

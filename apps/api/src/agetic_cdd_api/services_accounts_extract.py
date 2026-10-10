@@ -634,11 +634,16 @@ def infer_sector_id_from_corpus(corpus: str) -> str:
     t = (corpus or "").lower()
     if not t.strip():
         return "generic"
-    organics_hits = sum(
+    # Company / deal names like "Compost Crew" are decisive even without prose hits.
+    if re.search(r"\bcompost(?:ing)?\b", t) or re.search(r"\borganics?\b", t):
+        organics_hits = 2
+    else:
+        organics_hits = 0
+    organics_hits += sum(
         1
         for h in (
-            "compost", "organics", "organic waste", "food scrap", "composting",
-            "hauling.*compost", "waste recycling",
+            "organic waste", "food scrap", "food scraps",
+            "hauling.*compost", "waste recycling", "organics & composting",
         )
         if re.search(h, t)
     )

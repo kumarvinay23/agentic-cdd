@@ -1,0 +1,40 @@
+name: FDD ship gate
+
+on:
+  push:
+    paths:
+      - "apps/api/src/agetic_cdd_api/services_fdd*.py"
+      - "apps/api/src/agetic_cdd_api/fdd_ship_gate.py"
+      - "apps/api/src/agetic_cdd_api/fdd_schemas.py"
+      - "apps/api/src/agetic_cdd_api/report_fdd.py"
+      - "apps/api/tests/fixtures/fdd/**"
+      - "apps/api/tests/test_fdd*.py"
+      - ".github/workflows/fdd-ship.yml"
+  pull_request:
+    paths:
+      - "apps/api/src/agetic_cdd_api/services_fdd*.py"
+      - "apps/api/src/agetic_cdd_api/fdd_ship_gate.py"
+      - "apps/api/src/agetic_cdd_api/fdd_schemas.py"
+      - "apps/api/src/agetic_cdd_api/report_fdd.py"
+      - "apps/api/tests/fixtures/fdd/**"
+      - "apps/api/tests/test_fdd*.py"
+      - ".github/workflows/fdd-ship.yml"
+
+jobs:
+  ship-gate:
+    name: Phase 9 FDD engine gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install API package
+        run: pip install -e ".[dev]"
+      - name: FDD ship gate (goldens + traps)
+        run: python -m agetic_cdd_api.fdd_ship_gate
+      - name: Pytest fdd_ship marker
+        run: python -m pytest -m fdd_ship -q --tb=short

@@ -46,6 +46,8 @@ export const ENDPOINTS = {
   cddDatabookFindings: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/findings`,
   cddDatabookPromoted: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/promoted`,
   cddDatabookPromotedCsv: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/promoted.csv`,
+  cddDatabookRelease: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/release`,
+  cddDatabookReleases: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/releases`,
   cddDatabookExportXlsx: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/export.xlsx`,
   cddDatabookImportXlsx: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/import.xlsx`,
   cddDatabookCorrect: (id: string, rowId: string) =>
@@ -54,8 +56,20 @@ export const ENDPOINTS = {
     `/api/v1/portfolios/${id}/cdd/databook/rows/${encodeURIComponent(rowId)}/drop`,
   cddDatabookVouch: (id: string, rowId: string) =>
     `/api/v1/portfolios/${id}/cdd/databook/rows/${encodeURIComponent(rowId)}/vouch`,
+  cddDatabookConfirm: (id: string, rowId: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/rows/${encodeURIComponent(rowId)}/confirm`,
+  cddDatabookExclude: (id: string, rowId: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/rows/${encodeURIComponent(rowId)}/exclude`,
+  cddDatabookRemap: (id: string, rowId: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/rows/${encodeURIComponent(rowId)}/remap`,
   cddDatabookAccept: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/conflicts/accept`,
   cddDatabookReread: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/reread`,
+  cddDatabookValidationPack: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/validation-pack`,
+  cddDatabookCrop: (id: string, cropRef: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/crops/${encodeURIComponent(cropRef)}`,
+  cddDatabookDecisions: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/decisions`,
+  cddDatabookMappingMemory: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/mapping-memory`,
+  cddDatabookTraps: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/traps`,
   cddDataQuality: (id: string) => `/api/v1/portfolios/${id}/cdd/data-quality`,
   pipeline: (id: string) => `/api/v1/portfolios/${id}/pipeline`,
   pipelinePhases: (id: string) => `/api/v1/portfolios/${id}/pipeline/phases`,
@@ -102,4 +116,23 @@ export const ENDPOINTS = {
     `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/storyline`,
   reportSources: (id: string, reportType: string) =>
     `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/sources`,
+  fddRuns: (id: string) => `/api/v1/portfolios/${id}/fdd/runs`,
+  fddRun: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}`,
+  fddScope: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/scope`,
+  fddGates: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/gates`,
+  fddGateG1Approve: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/gates/G1/approve`,
+  fddGateG2Acknowledge: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/gates/G2/acknowledge`,
+  fddClaims: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/claims`,
+  fddClaimsBuild: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/claims/build`,
+  fddClaimsReliability: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/claims/reliability`,
+  fddPhase2: (id: string, runId: string) =>
+    `/api/v1/portfolios/${id}/fdd/runs/${encodeURIComponent(runId)}/phase2`,
 } as const;

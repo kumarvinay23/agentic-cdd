@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { DealDatabook } from "@/components/deal/DealDatabook";
 import { DataQualityReview } from "@/components/deal/DataQualityReview";
 import { DealDocumentWorkspace } from "@/components/deal/DealDocumentWorkspace";
+import { DealFdd } from "@/components/deal/DealFdd";
 import { DealReports } from "@/components/deal/DealReports";
 import { DealWorkflow } from "@/components/deal/DealWorkflow";
 import {
@@ -33,7 +34,7 @@ import { useAuth } from "@/lib/auth-store";
 import { product } from "@/lib/config";
 import type { UsageStats } from "@/lib/deal-types";
 
-type DealView = "dashboard" | "vdr" | "workflow" | "documents" | "reports" | "databook";
+type DealView = "dashboard" | "vdr" | "workflow" | "documents" | "reports" | "databook" | "fdd";
 type VdrCategory = "All" | "General" | "Financial" | "Legal" | "Technical";
 
 const emptyUsage: UsageStats = { agent_runs: 0, vdr_files: 0, vdr_bytes: 0 };
@@ -53,6 +54,7 @@ const DEAL_NAV: Array<
   { id: "documents", label: "Document workspace", icon: "doc" },
   { id: "reports", label: "Reports", icon: "doc" },
   { id: "databook", label: "Databook", icon: "chart" },
+  { id: "fdd", label: "FDD", icon: "chart" },
   { id: "chat", label: "Deal chat", icon: "chat", disabled: true },
   { id: "team", label: "Team & access", icon: "users", disabled: true },
   { id: "config", label: "Deal config", icon: "gear", disabled: true },
@@ -184,7 +186,9 @@ export function DealWorkspace({ dealId }: { dealId: string }) {
             ? "reports"
             : searchParams.get("view") === "databook"
               ? "databook"
-              : "dashboard";
+              : searchParams.get("view") === "fdd"
+                ? "fdd"
+                : "dashboard";
   const [view, setView] = useState<DealView>(initialView);
   const [agentKey, setAgentKey] = useState<string | null>(
     searchParams.get("agent")?.trim() || null,
@@ -974,6 +978,14 @@ export function DealWorkspace({ dealId }: { dealId: string }) {
 
           {view === "databook" ? (
             <DealDatabook
+              dealId={dealId}
+              accessToken={tokens?.accessToken}
+              onError={setError}
+            />
+          ) : null}
+
+          {view === "fdd" ? (
+            <DealFdd
               dealId={dealId}
               accessToken={tokens?.accessToken}
               onError={setError}

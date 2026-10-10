@@ -21,6 +21,17 @@ function messageFromBody(body: unknown, fallback: string): string {
   const b = body as Record<string, unknown>;
   if (typeof b.message === "string") return b.message;
   if (typeof b.detail === "string") return b.detail;
+  // FastAPI 422 validation errors: { detail: [{ loc, msg, type }, ...] }
+  if (Array.isArray(b.detail) && b.detail.length > 0) {
+    const parts = b.detail
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const d = item as Record<string, unknown>;
+        return typeof d.msg === "string" ? d.msg : null;
+      })
+      .filter((m): m is string => Boolean(m));
+    if (parts.length) return parts.join("; ");
+  }
   if (b.detail && typeof b.detail === "object") {
     const d = b.detail as Record<string, unknown>;
     if (typeof d.message === "string" && d.message.trim()) return d.message;
@@ -302,6 +313,27 @@ export async function vdrSyncRequest(accessToken: string, dealId: string) {
   );
 }
 
+export type DatabookReleaseSummary = {
+  release_id: string;
+  version: number;
+  created_at: string;
+  source?: string;
+  note?: string | null;
+  counts?: {
+    proven?: number;
+    doubtful?: number;
+    missing?: number;
+    requests?: number;
+  };
+  request_count?: number;
+  coverage?: {
+    keys?: string[];
+    years?: number[];
+    source?: string;
+  } | null;
+  missing_required_docs?: string[];
+};
+
 export type DatabookSummary = {
   deal_id: string;
   meta: {
@@ -312,9 +344,17 @@ export type DatabookSummary = {
     promoted_count: number;
     held_out_count: number;
     issue_count: number;
+    current_release_id?: string | null;
+    current_release_version?: number | null;
+    last_release_at?: string | null;
+    release_stale?: boolean;
+    mapping_memory_count?: number;
+    trap_count?: number;
+    last_validation_pack_at?: string | null;
   };
   flags: Record<string, number>;
   promoted_preview: Array<Record<string, unknown>>;
+  release?: DatabookReleaseSummary | null;
   freshness?: {
     up_to_date: boolean;
     label: string;
@@ -324,6 +364,13 @@ export type DatabookSummary = {
     last_deep_at?: string | null;
     action?: "none" | "rescan";
   };
+  validation_pack?: {
+    ready_for_review: boolean;
+    release_id?: string | null;
+    release_version?: number | null;
+    counts?: Record<string, number>;
+    generated_at?: string;
+  } | null;
 };
 
 export type DatabookRow = {
@@ -355,6 +402,12 @@ export type DatabookFinding = {
   flags?: string[];
   triage?: string | null;
   note?: string;
+  relevance?: string | null;
+  role?: string | null;
+  basis?: string | null;
+  ladder_score?: number | null;
+  actual_forecast?: string | null;
+  set_aside_reason?: string | null;
 };
 
 export type DataQualityCandidate = {
@@ -429,6 +482,20 @@ export async function databookRescanRequest(accessToken: string, dealId: string)
   return apiRequest<ApiSuccess<DatabookSummary>>(ENDPOINTS.cddDatabookRescan(dealId), {
     method: "POST",
     accessToken,
+  });
+}
+
+export async function databookReleaseRequest(
+  accessToken: string,
+  dealId: string,
+  note?: string,
+) {
+  return apiRequest<
+    ApiSuccess<{ release: Record<string, unknown>; summary: DatabookSummary }>
+  >(ENDPOINTS.cddDatabookRelease(dealId), {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
   });
 }
 
@@ -605,6 +672,139 @@ export async function databookVouchRequest(
     accessToken,
     body: JSON.stringify({ reason }),
   });
+}
+
+export async function databookConfirmRequest(
+  accessToken: string,
+  dealId: string,
+  rowId: string,
+  reason: string,
+) {
+  return apiRequest<ApiSuccess<Record<string, unknown>>>(ENDPOINTS.cddDatabookConfirm(dealId, rowId), {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function databookExcludeRequest(
+  accessToken: string,
+  dealId: string,
+  rowId: string,
+  reason: string,
+) {
+  return apiRequest<ApiSuccess<Record<string, unknown>>>(ENDPOINTS.cddDatabookExclude(dealId, rowId), {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function databookRemapRequest(
+  accessToken: string,
+  dealId: string,
+  rowId: string,
+  body: { reason: string; metric_key: string; value?: number },
+) {
+  return apiRequest<ApiSuccess<Record<string, unknown>>>(ENDPOINTS.cddDatabookRemap(dealId, rowId), {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify(body),
+  });
+}
+
+export type ValidationCard = {
+  card_id: string;
+  kind: "doubtful" | "conflict" | "missing" | "calibration";
+  metric_key: string;
+  fiscal_year: number;
+  status: string;
+  value?: number | null;
+  unit?: string | null;
+  currency?: string | null;
+  scale?: string | null;
+  row_id?: string | null;
+  sources?: string[];
+  captions?: string[];
+  reason?: string | null;
+  alternatives?: Array<Record<string, unknown>>;
+  scope?: string | null;
+  statement?: string | null;
+  period_end?: string | null;
+  period_length?: string | null;
+  source_basis?: string | null;
+  proof_level?: string | null;
+  proof_checks?: string[];
+  dependents?: string[];
+  release_id?: string | null;
+  release_version?: number | null;
+  source_ref?: {
+    doc?: string | null;
+    page?: number | null;
+    table?: string | null;
+    row?: number | null;
+    col?: number | null;
+    rule?: string | null;
+    bbox?: number[] | null;
+    crop_ref?: string | null;
+    crop_status?: "available" | "unavailable" | "pending" | null;
+    crop_reason?: string | null;
+  } | null;
+  crop_ref?: string | null;
+  crop_status?: "available" | "unavailable" | "pending";
+  crop_reason?: string | null;
+  request_id?: string | null;
+  document_request?: {
+    request_id: string;
+    doc_kind: string;
+    label: string;
+    reason: string;
+    metric_keys?: string[];
+    fiscal_years?: number[];
+    priority?: string;
+    status?: string;
+  } | null;
+};
+
+export type ValidationPack = {
+  deal_slug: string;
+  release_id?: string | null;
+  release_version?: number | null;
+  generated_at: string;
+  cards: ValidationCard[];
+  counts: Record<string, number>;
+  ready_for_review: boolean;
+};
+
+export async function databookValidationPackRequest(
+  accessToken: string,
+  dealId: string,
+  calibration = 5,
+) {
+  const qs = new URLSearchParams({ calibration: String(calibration) });
+  return apiRequest<ApiSuccess<ValidationPack>>(
+    `${ENDPOINTS.cddDatabookValidationPack(dealId)}?${qs.toString()}`,
+    { method: "GET", accessToken },
+  );
+}
+
+/** Fetch a rendered page crop as an object URL (caller must revoke). */
+export async function databookCropObjectUrl(
+  accessToken: string,
+  dealId: string,
+  cropRef: string,
+): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}${ENDPOINTS.cddDatabookCrop(dealId, cropRef)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Crop fetch failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 export async function databookAcceptConflictRequest(
@@ -1610,4 +1810,189 @@ export async function reportEventsStream(
   }
   if (buffer.trim()) dispatchBlock(buffer);
   if (!finished) handlers.onDone?.();
+}
+
+// ---------------------------------------------------------------------------
+// FDD workspace (scope editor, G2 claims gate)
+// ---------------------------------------------------------------------------
+
+export type FddScopeProfile = {
+  profile_id: string;
+  deal_slug: string;
+  run_id?: string | null;
+  status?: string;
+  entities_in: string[];
+  entities_out: string[];
+  deal_type?: string | null;
+  periods: string[];
+  currency: string;
+  scale?: string | null;
+  materiality_m?: number | null;
+  materiality_basis?: string;
+  materiality_pct?: number;
+  sections_in_scope: string[];
+  notes?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+};
+
+export type FddRunSummary = {
+  run_id: string;
+  status?: string;
+  stage?: string;
+  draft_mode?: boolean;
+  g0_passed?: boolean;
+  g1_approved?: boolean;
+  g2_passed?: boolean;
+  claims_built?: boolean;
+  unreliable_modules?: string[];
+  is_current?: boolean;
+  created_at?: string;
+  updated_at?: string | null;
+};
+
+export type FddGateState = {
+  passed?: boolean;
+  approved?: boolean;
+  ready?: boolean;
+  blocked?: boolean;
+  blockers?: string[];
+  unreliable_modules?: string[];
+  auto_ok?: boolean;
+  acknowledged?: boolean;
+  claim_count?: number;
+  financial_count?: number;
+  contradicted?: number;
+  unverifiable?: number;
+  approval?: Record<string, unknown> | null;
+  score?: number | null;
+  held_back_exhibits?: string[];
+};
+
+export type FddClaimsLedger = {
+  run_id: string;
+  deal_slug: string;
+  claim_count: number;
+  financial_count: number;
+  qualitative_count: number;
+  agrees: number;
+  contradicted: number;
+  unverifiable: number;
+  pending: number;
+  unreliable_modules: string[];
+  modules: Array<{
+    source_agent: string;
+    total: number;
+    financial_total: number;
+    failed: number;
+    fail_rate: number;
+    unreliable: boolean;
+  }>;
+  claims: Array<{
+    claim_id: string;
+    source_agent?: string | null;
+    text: string;
+    kind: string;
+    test_result: string;
+    failed: boolean;
+    claimed_value?: number | null;
+    databook_value?: number | null;
+  }>;
+};
+
+export async function fddListRunsRequest(accessToken: string, dealId: string) {
+  return apiRequest<{ success: boolean; data: FddRunSummary[] }>(ENDPOINTS.fddRuns(dealId), {
+    method: "GET",
+    accessToken,
+  });
+}
+
+export async function fddCreateRunRequest(accessToken: string, dealId: string) {
+  return apiRequest<{ success: boolean; data: Record<string, unknown> }>(ENDPOINTS.fddRuns(dealId), {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify({}),
+  });
+}
+
+export async function fddGetScopeRequest(accessToken: string, dealId: string, runId: string) {
+  return apiRequest<{
+    success: boolean;
+    data: { scope: FddScopeProfile; g1_ready: boolean; g1_blockers: string[] };
+  }>(ENDPOINTS.fddScope(dealId, runId), { method: "GET", accessToken });
+}
+
+export async function fddPutScopeRequest(
+  accessToken: string,
+  dealId: string,
+  runId: string,
+  body: Partial<FddScopeProfile> & { allow_edit_approved?: boolean },
+) {
+  return apiRequest<{
+    success: boolean;
+    data: { scope: FddScopeProfile; g1_ready: boolean; g1_blockers: string[] };
+  }>(ENDPOINTS.fddScope(dealId, runId), {
+    method: "PUT",
+    accessToken,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fddApproveG1Request(
+  accessToken: string,
+  dealId: string,
+  runId: string,
+  note?: string,
+) {
+  return apiRequest<{ success: boolean; data: Record<string, unknown> }>(
+    ENDPOINTS.fddGateG1Approve(dealId, runId),
+    { method: "POST", accessToken, body: JSON.stringify({ note, require_g0: true }) },
+  );
+}
+
+export async function fddGetGatesRequest(accessToken: string, dealId: string, runId: string) {
+  return apiRequest<{ success: boolean; data: Record<string, FddGateState> }>(
+    ENDPOINTS.fddGates(dealId, runId),
+    { method: "GET", accessToken },
+  );
+}
+
+export async function fddAcknowledgeG2Request(
+  accessToken: string,
+  dealId: string,
+  runId: string,
+  opts: { note?: string; allow_unreliable?: boolean } = {},
+) {
+  return apiRequest<{ success: boolean; data: Record<string, unknown> }>(
+    ENDPOINTS.fddGateG2Acknowledge(dealId, runId),
+    {
+      method: "POST",
+      accessToken,
+      body: JSON.stringify({
+        note: opts.note,
+        allow_unreliable: opts.allow_unreliable ?? true,
+      }),
+    },
+  );
+}
+
+export async function fddGetClaimsRequest(accessToken: string, dealId: string, runId: string) {
+  return apiRequest<{ success: boolean; data: FddClaimsLedger }>(ENDPOINTS.fddClaims(dealId, runId), {
+    method: "GET",
+    accessToken,
+  });
+}
+
+export async function fddBuildClaimsRequest(accessToken: string, dealId: string, runId: string) {
+  return apiRequest<{ success: boolean; data: { claims: FddClaimsLedger } }>(
+    ENDPOINTS.fddClaimsBuild(dealId, runId),
+    { method: "POST", accessToken, body: JSON.stringify({ open_requests: true }) },
+  );
+}
+
+export async function fddPhase2Request(accessToken: string, dealId: string, runId: string) {
+  return apiRequest<{ success: boolean; data: Record<string, unknown> }>(
+    ENDPOINTS.fddPhase2(dealId, runId),
+    { method: "POST", accessToken },
+  );
 }
