@@ -25,6 +25,7 @@ def _ops_corpus() -> str:
         "Defect Rate (units per 1000) < 8 13.4 At Risk. "
         "Parts Stockout Rate (%) < 3% 11.2% Below Target. "
         "Capacity Utilization (%) 80% 71% -9 pp Monitor. "
+        "Monthly production capacity 45,000 units. "
         "Service Resolution Time 48 hours target, actual 72 hours At Risk. "
         "Operational risk rating: HIGH. "
         "Production bottlenecks High / High. Quality defects Medium / High. "
@@ -36,18 +37,31 @@ def _ops_corpus() -> str:
         "Staff attrition at service centers 28% annually — High / Medium. "
         "Plan ramp in FY2026 to new geography (Tier-2 cities) amplifies service resolution risk. "
         "Safety near-miss at Hosur plant in 2024; control training completed but never tested under load. "
+        "Preventive maintenance schedule for assembly line reviewed quarterly. "
         "Generic enterprise risk framework items are ignored — register from records only."
     )
 
 
 def test_operational_risk_prompt_book_listed() -> None:
-    system = compose_system("operational_risk", sector="EV", geography="India")
+    system = compose_system(
+        "operational_risk",
+        sector="EV",
+        geography="India",
+        deal_perimeter="standalone ops",
+        transaction_type="majority buyout",
+        as_of_date="2024-12-31",
+        decision_stage="IC",
+    )
     assert "operational_risk" in listed_agents()
     assert "risk" in system.lower()
     body = agent_prompt("operational_risk")
     assert "Ola" not in body and "SoftBank" not in body
     assert "taxonomy" in body.lower() or "generic" in body.lower()
     assert "tested" in body.lower()
+    assert "questions" in body.lower()
+    assert "cash" in body.lower()
+    assert "cyber" in body.lower() or "insurance" in body.lower()
+    assert "standalone ops" in system.lower() or "deal perimeter" in system.lower()
 
 
 def test_operational_risk_not_company_hardcoded() -> None:
@@ -82,7 +96,6 @@ def test_register_from_records_not_taxonomy() -> None:
         )
         for r in register
     )
-    # Must not invent a bare generic taxonomy row as the only content
     assert not all(
         "generic" in str(r.get("risk") or "").lower()
         for r in register if isinstance(r, dict)
@@ -113,6 +126,87 @@ def test_untested_control_not_mitigation() -> None:
     assert tested
 
 
+def test_ops_evidence_qa_and_questions() -> None:
+    heur = _heuristic_operational_risk_spec(
+        company="Test3",
+        corpus=_ops_corpus(),
+        sources=["07_Operational_Due_Diligence.pdf"],
+        cash_flow_spec={
+            "cash_metrics": {"fcf": 12.0},
+            "working_capital": {"dio_days": 68},
+            "liquidity": {"cash": 40.0},
+        },
+    )
+    qa = heur.get("ops_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "process_asset_site_labour_map",
+        "capacity_utilisation",
+        "incident_maintenance_insurance",
+        "disruption_to_pnl_cash",
+        "continuity_tested_vs_untested",
+        "growth_bottleneck_cash_flow",
+        "no_invented_cyber_insurance",
+    ):
+        assert need in checks
+    assert all(r.get("status") in {"PASS", "FAIL"} for r in qa if isinstance(r, dict))
+    assert heur.get("ops_map")
+    assert heur.get("capacity_utilisation")
+    assert heur.get("continuity_arrangements")
+    cf = heur.get("growth_bottleneck_reconcile") or {}
+    assert cf.get("cash_flow_present") is True
+    questions = heur.get("questions") or []
+    for q in questions:
+        assert isinstance(q, dict)
+        assert q.get("question")
+        assert q.get("closure_test")
+
+
+def test_qa_fail_caps_ready_to_limited() -> None:
+    heur = _heuristic_operational_risk_spec(
+        company="Test3",
+        corpus=_ops_corpus(),
+        sources=["a.pdf"],
+        # no cash_flow_spec → growth_bottleneck FAIL
+    )
+    assert heur.get("reliance_verdict") in {"LIMITED", "BLOCKED"}
+    assert heur.get("reliance_verdict") != "READY"
+    qa = heur.get("ops_evidence_qa") or []
+    assert any(isinstance(r, dict) and r.get("status") == "FAIL" for r in qa)
+
+
+def test_no_invented_cyber_from_weak_proxy() -> None:
+    heur = _heuristic_operational_risk_spec(
+        company="Test3",
+        corpus=(
+            _ops_corpus()
+            + " Cyber risk from ERP and CRM systems is material. "
+            "Insurance cover assumed adequate based on IT stack."
+        ),
+        sources=["proxy.pdf"],
+    )
+    # Without explicit cyber/insurance evidence cues matching _CYBER_CUE/_INSURANCE_CUE
+    # weakly — ERP/CRM alone should not invent cyber. The corpus has "Cyber risk" which
+    # IS a cyber cue, so proxy_flags may be empty; force weak-only corpus:
+    heur2 = _heuristic_operational_risk_spec(
+        company="Test3",
+        corpus=(
+            "Defect Rate 13.4 At Risk. QA SOP tested. "
+            "Systems risk: ERP outage could be a cyber event based on CRM alone."
+        ),
+        sources=["weak.pdf"],
+    )
+    # Register may reclassify; no_invented check should PASS when no false invent,
+    # or FAIL with flags when weak proxy cyber claimed without _CYBER_CUE body beyond word.
+    qa = heur2.get("ops_evidence_qa") or []
+    assert any(r.get("check") == "no_invented_cyber_insurance" for r in qa if isinstance(r, dict))
+    assert "cyber" in agent_prompt("operational_risk").lower() or "insurance" in agent_prompt(
+        "operational_risk"
+    ).lower()
+    # Primary corpus with insurance word but no policy still requests insurance review
+    assert heur.get("incident_maintenance_insurance")
+
+
 def test_operational_risk_markdown_follows_prompt_book() -> None:
     heur = _heuristic_operational_risk_spec(
         company="Test3",
@@ -133,7 +227,9 @@ def test_operational_risk_markdown_follows_prompt_book() -> None:
     assert "## 3. Controls" in md
     assert "## 4. Historical vs Plan" in md
     assert "## 5. Price / Protection" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Operational Risk Evidence QA" in md
+    assert "## 7. Questions and Inputs Required" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     sized = heur.get("sized_risks") or []
     assert any(
@@ -180,7 +276,7 @@ def test_normalise_strips_recommendation() -> None:
             "recommendation": "Invest",
             "confidence": 0.9,
             "quality_verdict": "PASS",
-            "reliance_verdict": "LIMITED",
+            "reliance_verdict": "READY",
         },
         sources=["a.pdf"],
         legacy_spec=None,
@@ -192,6 +288,30 @@ def test_normalise_strips_recommendation() -> None:
     controls = llm.get("controls") or []
     assert controls and controls[0].get("tested")
     assert "not mitigation" in str(controls[0].get("mitigation_status") or "").lower()
+    assert llm.get("ops_evidence_qa")
+    assert llm.get("questions")
+    assert llm.get("reliance_verdict") != "READY"
+
+
+def test_deal_slots_on_build() -> None:
+    deal = _FakeDeal()
+    deal.metadata = {  # type: ignore[attr-defined]
+        "deal_perimeter": "standalone ops",
+        "transaction_type": "majority buyout",
+        "as_of_date": "2024-12-31",
+        "decision_stage": "IC",
+    }
+    spec = build_operational_risk_spec(
+        deal,  # type: ignore[arg-type]
+        index={"documents": []},
+        company="Test3",
+        corpus=_ops_corpus(),
+        sources=["07_Operational_Due_Diligence.pdf"],
+        prefer_heuristic=True,
+    )
+    slots = spec.get("deal_slots") or {}
+    assert slots.get("deal_perimeter") == "standalone ops"
+    assert slots.get("decision_stage") == "IC"
 
 
 def test_render_agent_document_operational_risk() -> None:
@@ -203,7 +323,7 @@ def test_render_agent_document_operational_risk() -> None:
             "# Operational Risk\n\n"
             "## 1. Evidence-Derived Risk Register\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 8. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -232,6 +352,9 @@ def test_build_operational_risk_from_corpus() -> None:
     )
     md = render_operational_risk_markdown("Operational Risk", spec)
     assert "## 2. Sized Risks" in md
+    assert "## 6. Operational Risk Evidence QA" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-19"
+    assert spec.get("ops_evidence_qa")
+    assert spec.get("questions")

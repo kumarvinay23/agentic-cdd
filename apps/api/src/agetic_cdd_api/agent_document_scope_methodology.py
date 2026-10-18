@@ -255,6 +255,119 @@ def _quality_reliance(
     return quality, reliance, rationale
 
 
+def _phase_agent_slugs() -> list[str]:
+    from agetic_cdd_api.pipeline_catalog import (
+        PHASE2_AGENT_KEYS,
+        PHASE3_AGENT_KEYS,
+        PHASE4_AGENT_KEYS,
+    )
+
+    return list(PHASE2_AGENT_KEYS) + list(PHASE3_AGENT_KEYS) + list(PHASE4_AGENT_KEYS)
+
+
+def _build_agent_coverage_matrix(
+    *,
+    index: dict[str, Any],
+    prior_agents: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """One row per Phase 2–4 slug: completed | planned | unavailable."""
+    prior = prior_agents if isinstance(prior_agents, dict) else {}
+    docs = index.get("documents") if isinstance(index.get("documents"), list) else []
+    has_vdr = bool(docs)
+    rows: list[dict[str, str]] = []
+    for slug in _phase_agent_slugs():
+        prior_row = prior.get(slug)
+        status = "planned"
+        reliance_limitation = "Not yet delivered"
+        if isinstance(prior_row, dict):
+            spec = prior_row.get("spec") if isinstance(prior_row.get("spec"), dict) else prior_row
+            rv = str(spec.get("reliance_verdict") or "").upper()
+            qv = str(spec.get("quality_verdict") or "").upper()
+            if prior_row.get("document") or spec.get("composer"):
+                status = "completed"
+                if rv == "BLOCKED":
+                    reliance_limitation = "Delivered but decision reliance BLOCKED"
+                elif rv == "LIMITED":
+                    reliance_limitation = "Delivered with LIMITED reliance"
+                elif qv == "REWORK":
+                    reliance_limitation = "Delivered; Quality REWORK"
+                else:
+                    reliance_limitation = "None material from this workstream"
+            elif prior_row.get("status") == "blocked" or prior_row.get("error"):
+                status = "unavailable"
+                reliance_limitation = str(prior_row.get("error") or "Agent run failed")
+        elif not has_vdr:
+            status = "unavailable"
+            reliance_limitation = "No VDR indexed — workstream cannot start"
+        rows.append(
+            {
+                "agent_slug": slug,
+                "status": status,
+                "reliance_limitation": reliance_limitation,
+            }
+        )
+    return rows
+
+
+def _vdr_retrieval_log(index: dict[str, Any]) -> list[dict[str, str]]:
+    docs = index.get("documents") if isinstance(index.get("documents"), list) else []
+    log: list[dict[str, str]] = []
+    for doc in docs[:40]:
+        if not isinstance(doc, dict):
+            continue
+        name = str(doc.get("filename") or doc.get("name") or "").strip()
+        if not name:
+            continue
+        excerpt = str(doc.get("excerpt") or "").strip()
+        log.append(
+            {
+                "filename": name,
+                "cdl_category": str(doc.get("cdl_category") or "—"),
+                "retrieval_status": "opened" if excerpt else "indexed_no_excerpt",
+                "period_or_note": "excerpt available" if excerpt else "no extract yet",
+            }
+        )
+    return log
+
+
+def _questions_from_unfinished(unfinished: list[dict[str, Any]]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    for u in unfinished:
+        if not isinstance(u, dict):
+            continue
+        gate = str(u.get("gate") or "residual").lower().replace("-", "_")
+        priority = (
+            "mandatory_pre_decision"
+            if gate == "must_close"
+            else "residual_uncertainty"
+        )
+        item = str(u.get("item") or "Unfinished diligence item")
+        workstream = str(u.get("workstream") or "unassigned")
+        could = str(u.get("could_change") or "decision")
+        row = normalize_question(
+            {
+                "question": item,
+                "required_records": f"{workstream} evidence pack covering the stated question",
+                "decision_effect": f"Could change {could}",
+                "priority": priority,
+                "owner": workstream,
+                "timing": "before IC" if priority == "mandatory_pre_decision" else "per deal timetable",
+                "closure_test": (
+                    f"{workstream} question mapped to completed evidence or an explicit blocker"
+                ),
+                "interim_treatment": (
+                    "Do not call coverage comprehensive; bound reliance"
+                    if priority == "mandatory_pre_decision"
+                    else "Accept as residual uncertainty if deal lead agrees"
+                ),
+            }
+        )
+        out.append(row)
+    return out
+
+
 def _llm_scope_methodology_spec(
     *,
     company: str,
@@ -266,6 +379,12 @@ def _llm_scope_methodology_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    target_company: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -278,6 +397,12 @@ def _llm_scope_methodology_spec(
         sector=sector,
         geography=geography,
         materiality=materiality,
+        target_company=target_company or company,
+        deal_perimeter=deal_perimeter,
+        transaction_type=transaction_type,
+        as_of_date=as_of_date,
+        review_periods=review_periods,
+        decision_stage=decision_stage,
     )
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:16], start=1))
     user = (
@@ -291,8 +416,10 @@ def _llm_scope_methodology_spec(
         "insight_snapshot (string — coverage honesty only),\n"
         "coverage_counts: {questions_evidenced (int), questions_in_scope (int), "
         "documents_read (int), documents_available (int)},\n"
-        "coverage_table: [{question, work_done, source, period, method, status}] "
-        "status is complete|partial|not_started (8–12 rows),\n"
+        "coverage_table: [{question, work_done, source, period, method, status, "
+        "reliance_limitation}] status is complete|partial|not_started (8–12 rows),\n"
+        "agent_coverage: [{agent_slug, status, reliance_limitation}] "
+        "status is completed|planned|unavailable — one row per Phase 2–4 slug,\n"
         "completed_work: [string],\n"
         "planned_work: [string],\n"
         "blocked_work: [string],\n"
@@ -302,6 +429,8 @@ def _llm_scope_methodology_spec(
         "must set status claimed_undated and must not count as work performed,\n"
         "unfinished: [{item, could_change, gate, workstream}] "
         "could_change is price|structure|decision; gate is must_close|residual,\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "coverage_conclusion (string — completeness of diligence only; "
         "never investment attractiveness; never say comprehensive if must_close remains),\n"
         "quality_verdict (PASS|REWORK),\n"
@@ -356,6 +485,12 @@ def _heuristic_scope_methodology_spec(
                 else "Not started — no VDR files in this category"
             )
         )
+        if status == "complete":
+            reliance_lim = "None material from this question"
+        elif status == "partial":
+            reliance_lim = "Partial evidence — bound conclusions to opened sources"
+        else:
+            reliance_lim = "Unavailable — do not rely on this question"
         row = {
             "question": entry["question"].replace("the target market", f"the {industry} market")
             if "market" in entry["question"].lower() and industry != "N/A (data room did not provide it)"
@@ -367,6 +502,7 @@ def _heuristic_scope_methodology_spec(
             "period": periods if filenames else "—",
             "method": entry["method"],
             "status": status,
+            "reliance_limitation": reliance_lim,
         }
         coverage_table.append(row)
 
@@ -484,6 +620,18 @@ def _heuristic_scope_methodology_spec(
         for s in seeds:
             planned.append(_clean(s, 160))
 
+    # Prioritise unfinished: price/structure/decision must_close first.
+    impact_rank = {"price": 0, "structure": 1, "decision": 2}
+    unfinished.sort(
+        key=lambda u: (
+            0 if u.get("gate") == "must_close" else 1,
+            impact_rank.get(str(u.get("could_change") or "decision"), 9),
+        )
+    )
+    questions = _questions_from_unfinished(unfinished)
+    agent_coverage = _build_agent_coverage_matrix(index=index)
+    vdr_log = _vdr_retrieval_log(index)
+
     return {
         "insight_snapshot": insight,
         "coverage_counts": {
@@ -492,14 +640,19 @@ def _heuristic_scope_methodology_spec(
             "questions_complete": evidenced_strict,
             "documents_read": docs_read,
             "documents_available": docs_available,
+            "agents_completed": sum(1 for r in agent_coverage if r["status"] == "completed"),
+            "agents_in_scope": len(agent_coverage),
         },
         "coverage_table": coverage_table,
+        "agent_coverage": agent_coverage,
+        "vdr_retrieval_log": vdr_log,
         "completed_work": completed[:12],
         "planned_work": planned[:12],
         "blocked_work": blocked[:12],
         "exclusions": exclusions[:16],
         "fieldwork": fieldwork[:8],
         "unfinished": unfinished[:12],
+        "questions": questions[:12],
         "coverage_conclusion": conclusion,
         "quality_verdict": quality,
         "reliance_verdict": reliance,
@@ -583,6 +736,33 @@ def _normalise_llm_spec(
     llm["coverage_conclusion"] = conclusion
     llm.setdefault("covered", covered)
     llm.setdefault("gaps", gaps)
+    unfinished = llm.get("unfinished") if isinstance(llm.get("unfinished"), list) else []
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_unfinished(
+            [u for u in unfinished if isinstance(u, dict)]
+        )
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            if not isinstance(raw, dict):
+                continue
+            q = normalize_question(raw)
+            if not q.get("closure_test"):
+                q["closure_test"] = (
+                    "Mapped to completed evidence or an explicit blocker"
+                )
+            if not q.get("timing"):
+                q["timing"] = (
+                    "before IC"
+                    if q["priority"] == "mandatory_pre_decision"
+                    else "per deal timetable"
+                )
+            filled.append(q)
+        llm["questions"] = filled or _questions_from_unfinished(
+            [u for u in unfinished if isinstance(u, dict)]
+        )
     llm["primary_sources"] = sources[:16]
     llm["composer"] = "llm_v1"
     # Strip legacy invest fields if model emits them.
@@ -598,6 +778,7 @@ def build_scope_methodology_spec(
     company: str | None = None,
     covered: list[str] | None = None,
     gaps: list[str] | None = None,
+    prior_agents: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from agetic_cdd_api.prompt_book import prompt_vars_from_deal
 
@@ -633,6 +814,9 @@ def build_scope_methodology_spec(
             vars_["sector"] = inferred
 
     doc_count = int(index.get("document_count") or len(index.get("documents") or []) or 0)
+    agent_matrix = _build_agent_coverage_matrix(index=index, prior_agents=prior_agents)
+    vdr_log = _vdr_retrieval_log(index)
+
     llm = _llm_scope_methodology_spec(
         company=target,
         corpus=corpus,
@@ -643,9 +827,15 @@ def build_scope_methodology_spec(
         sector=vars_.get("sector"),
         geography=vars_.get("geography"),
         materiality=vars_.get("materiality"),
+        target_company=target,
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if llm:
-        return _normalise_llm_spec(
+        out = _normalise_llm_spec(
             llm,
             company=target,
             sources=sources,
@@ -653,8 +843,13 @@ def build_scope_methodology_spec(
             covered=covered_labels,
             gaps=gap_labels,
         )
+        if not out.get("agent_coverage"):
+            out["agent_coverage"] = agent_matrix
+        out.setdefault("vdr_retrieval_log", vdr_log)
+        out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+        return out
 
-    return _heuristic_scope_methodology_spec(
+    heur = _heuristic_scope_methodology_spec(
         company=target,
         corpus=corpus,
         sources=sources,
@@ -662,6 +857,15 @@ def build_scope_methodology_spec(
         covered=covered_labels,
         gaps=gap_labels,
     )
+    # Prefer matrix built with prior agent runs when provided.
+    if prior_agents:
+        heur["agent_coverage"] = agent_matrix
+        heur["coverage_counts"]["agents_completed"] = sum(
+            1 for r in agent_matrix if r["status"] == "completed"
+        )
+        heur["coverage_counts"]["agents_in_scope"] = len(agent_matrix)
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_scope_methodology_markdown(
@@ -704,18 +908,67 @@ def render_scope_methodology_markdown(
         if not isinstance(row, dict):
             continue
         cov_rows.append([
-            _clean(row.get("question"), 160),
-            _clean(row.get("work_done"), 160),
-            _clean(row.get("source"), 120),
+            _clean(row.get("question"), 140),
+            _clean(row.get("work_done"), 120),
+            _clean(row.get("source"), 100),
             _clean(row.get("period"), 40),
-            _clean(row.get("method"), 80),
+            _clean(row.get("method"), 60),
             _clean(row.get("status"), 20),
+            _clean(row.get("reliance_limitation"), 80),
         ])
     parts.append("### Coverage Table\n\n")
     parts.append(_table(
-        ["Question", "Work Done", "Source", "Period", "Method", "Status"],
+        [
+            "Question",
+            "Work Done",
+            "Source",
+            "Period",
+            "Method",
+            "Status",
+            "Reliance Limitation",
+        ],
         cov_rows,
     ))
+
+    agent_cov = spec.get("agent_coverage") if isinstance(spec.get("agent_coverage"), list) else []
+    if agent_cov:
+        parts.append("### Agent Coverage Matrix (Phase 2–4)\n\n")
+        if counts.get("agents_in_scope") is not None:
+            parts.append(
+                f"**Agents:** {counts.get('agents_completed', 0)} / "
+                f"{counts.get('agents_in_scope')} completed.\n\n"
+            )
+        ac_rows: list[list[str]] = []
+        for row in agent_cov:
+            if not isinstance(row, dict):
+                continue
+            ac_rows.append([
+                _clean(row.get("agent_slug"), 60),
+                _clean(row.get("status"), 20),
+                _clean(row.get("reliance_limitation"), 120),
+            ])
+        parts.append(_table(["Agent", "Status", "Reliance Limitation"], ac_rows))
+
+    vdr_log = (
+        spec.get("vdr_retrieval_log")
+        if isinstance(spec.get("vdr_retrieval_log"), list)
+        else []
+    )
+    if vdr_log:
+        parts.append("### VDR Retrieval Log\n\n")
+        vr_rows: list[list[str]] = []
+        for row in vdr_log[:24]:
+            if not isinstance(row, dict):
+                continue
+            vr_rows.append([
+                _clean(row.get("filename"), 80),
+                _clean(row.get("cdl_category"), 40),
+                _clean(row.get("retrieval_status"), 40),
+                _clean(row.get("period_or_note"), 60),
+            ])
+        parts.append(
+            _table(["File", "CDL", "Retrieval", "Note"], vr_rows)
+        )
 
     parts.append("### Work Status Split\n\n")
     parts.append(
@@ -803,6 +1056,37 @@ def render_scope_methodology_markdown(
             _clean(row.get("workstream"), 40),
         ])
     parts.append(_table(["Item", "Could Change", "Gate", "Workstream"], un_rows))
+
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    if questions:
+        parts.append("\n### Questions and Inputs Required\n\n")
+        q_rows: list[list[str]] = []
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            q_rows.append([
+                _clean(row.get("priority"), 40),
+                _clean(row.get("question"), 120),
+                _clean(row.get("decision_effect"), 80),
+                _clean(row.get("required_records"), 80),
+                _clean(row.get("owner"), 40),
+                _clean(row.get("closure_test"), 80),
+                _clean(row.get("interim_treatment"), 80),
+            ])
+        parts.append(
+            _table(
+                [
+                    "Priority",
+                    "Question",
+                    "Decision Effect",
+                    "Required Records",
+                    "Owner",
+                    "Closure Test",
+                    "Interim",
+                ],
+                q_rows,
+            )
+        )
     parts.append("---\n\n")
 
     parts.append("## 5. Coverage Conclusion\n\n")

@@ -54,6 +54,32 @@ _COC_RULE = (
 _RESILIENCE_RULE = (
     "Dependencies are reconciled with supply chain resilience findings where available."
 )
+_ROLE_RULE = (
+    "Supplier roles (BOM / materials, logistics, IT, components, services) "
+    "are classified separately from spend share."
+)
+_DISRUPTION_RULE = (
+    "Suppliers are prioritised by disruption impact — criticality × switch "
+    "difficulty × capacity exposure — not by spend alone."
+)
+
+_ROLE_CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("BOM / materials", re.compile(
+        r"(?i)\b(cell|battery|cathode|anode|raw\s+material|commodity|steel|resin|chemical)\b"
+    )),
+    ("components", re.compile(
+        r"(?i)\b(wiring|harness|module|pcb|motor|controller|component|parts?)\b"
+    )),
+    ("logistics", re.compile(
+        r"(?i)\b(logistics|freight|shipping|3pl|warehouse|carrier|transport)\b"
+    )),
+    ("IT", re.compile(
+        r"(?i)\b(software|SaaS|ERP|cloud|IT\s+vendor|platform)\b"
+    )),
+    ("services / capacity", re.compile(
+        r"(?i)\b(processor|tolling|contract\s+manufactur|capacity|outsource|service\s+provider)\b"
+    )),
+)
 
 _SPEND_SHARE_RE = re.compile(
     r"(?i)([A-Z][A-Za-z0-9&'.\- ]{1,40}?)\s+"
@@ -629,6 +655,481 @@ def _extract_evidence_status(
     }
 
 
+def _classify_supplier_roles(
+    vendors: list[dict[str, Any]],
+    corpus: str = "",
+) -> list[dict[str, str]]:
+    """Classify each supplier's operational role (not spend share)."""
+    text = _prose(corpus)
+    out: list[dict[str, str]] = []
+    for v in vendors:
+        name = str(v.get("name") or "").strip()
+        if not name:
+            continue
+        component = str(v.get("component") or "")
+        hay = f"{name} {component} {text[:3000]}"
+        role = "unclassified"
+        for label, cue in _ROLE_CUES:
+            if cue.search(hay):
+                role = label
+                break
+        if role == "unclassified" and component:
+            role = _info_request(f"role classification for {name} ({component})")
+        elif role == "unclassified":
+            role = _info_request(f"role classification for {name}")
+        out.append({
+            "supplier": name,
+            "role": role,
+            "component": _clean(component, 80) or _NA,
+            "source": _DOC_CITE if role and not str(role).startswith("Information") else _NA,
+            "notes": _ROLE_RULE,
+        })
+    if not out:
+        out.append({
+            "supplier": _info_request("suppliers to classify"),
+            "role": _info_request("BOM / logistics / IT / components / services role"),
+            "component": _NA,
+            "source": _NA,
+            "notes": _ROLE_RULE,
+        })
+    return out
+
+
+def _prioritise_disruption(
+    *,
+    criticality: list[dict[str, Any]],
+    substitutability: list[dict[str, Any]],
+    spend_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Rank suppliers by disruption impact, not spend alone."""
+    subst_by = {
+        str(r.get("supplier") or "").lower(): r
+        for r in substitutability
+        if isinstance(r, dict) and r.get("supplier")
+    }
+    spend_by = {
+        str(r.get("supplier") or "").lower(): r
+        for r in spend_rows
+        if isinstance(r, dict) and r.get("supplier")
+    }
+    ranked: list[dict[str, Any]] = []
+    for row in criticality:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("supplier") or "").strip()
+        if not name or name.startswith("Information"):
+            continue
+        crit = str(row.get("criticality") or "").lower()
+        score = 0
+        if "critical" in crit:
+            score += 50
+        elif crit.startswith("high"):
+            score += 35
+        elif crit.startswith("medium"):
+            score += 20
+        subst = subst_by.get(name.lower()) or {}
+        alts = str(subst.get("alternatives") or "").lower()
+        switch_time = str(subst.get("switch_time") or "")
+        if "no" in alts or "none" in alts or "sole" in str(subst.get("sole_source_status") or "").lower():
+            score += 30
+        if re.search(r"(?i)\d+\s*(?:month|year)", switch_time):
+            score += 15
+        spend = spend_by.get(name.lower()) or {}
+        share = _num(spend.get("share_of_total_pct"))
+        capacity = (
+            f"Spend share {share:g}% — capacity exposure sized from payables"
+            if share is not None
+            else _info_request(f"capacity / volume exposure if {name} stops")
+        )
+        if share is not None and share >= 20:
+            score += 10
+        ranked.append({
+            "supplier": name,
+            "disruption_rank_score": score,
+            "criticality": _clean(row.get("criticality"), 40),
+            "what_stops": _clean(row.get("what_stops"), 160),
+            "switch_time": _clean(subst.get("switch_time"), 80) or _info_request("switch time"),
+            "capacity_exposure": capacity,
+            "rationale": _DISRUPTION_RULE,
+            "source": _clean(row.get("source") or subst.get("source") or _DOC_CITE, 60),
+        })
+    ranked.sort(key=lambda r: (-int(r.get("disruption_rank_score") or 0), str(r.get("supplier"))))
+    for i, row in enumerate(ranked, start=1):
+        row["priority"] = i
+    if not ranked:
+        ranked.append({
+            "supplier": _info_request("suppliers to prioritise by disruption impact"),
+            "priority": 1,
+            "disruption_rank_score": 0,
+            "criticality": _NA,
+            "what_stops": _NA,
+            "switch_time": _NA,
+            "capacity_exposure": _NA,
+            "rationale": _DISRUPTION_RULE,
+            "source": _NA,
+        })
+    return ranked[:12]
+
+
+def _reconcile_supply_chain_resilience(
+    *,
+    criticality: list[dict[str, Any]],
+    substitutability: list[dict[str, Any]],
+    corpus: str = "",
+    prior_scr: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Reconcile dependence findings with Supply Chain Resilience (static or prior payload)."""
+    crit_names = [
+        str(r.get("supplier"))
+        for r in criticality
+        if isinstance(r, dict)
+        and "critical" in str(r.get("criticality") or "").lower()
+    ]
+    no_alt = [
+        str(r.get("supplier"))
+        for r in substitutability
+        if isinstance(r, dict)
+        and re.search(r"(?i)\b(no|none|sole)\b", str(r.get("alternatives") or r.get("sole_source_status") or ""))
+    ]
+    scr = prior_scr if isinstance(prior_scr, dict) else {}
+    scr_open = bool(scr) or bool(re.search(
+        r"(?i)supply\s+chain\s+resilien|localization|logistics\s+risk|single[- ]source\s+geograph",
+        corpus or "",
+    ))
+    gaps: list[str] = []
+    if crit_names and not scr_open:
+        gaps.append(
+            _info_request(
+                "open Supply Chain Resilience pack to reconcile critical suppliers "
+                + ", ".join(crit_names[:3])
+            )
+        )
+    if no_alt:
+        gaps.append(
+            "No-alternate suppliers to align with SCR localization / logistics: "
+            + ", ".join(no_alt[:3])
+        )
+    status = "reconciled" if scr_open and not gaps else ("partial" if scr_open or crit_names else "missing")
+    return {
+        "status": status,
+        "critical_suppliers": crit_names[:8],
+        "no_alternate_suppliers": no_alt[:8],
+        "scr_signals_present": scr_open,
+        "gaps": gaps[:6] or ([_RESILIENCE_RULE] if status == "reconciled" else [
+            _info_request("Supply Chain Resilience findings for critical / no-alternate suppliers")
+        ]),
+        "notes": _RESILIENCE_RULE,
+        "source": _DOC_CITE if scr_open else _NA,
+    }
+
+
+def _supplier_evidence_qa(
+    *,
+    spend_rows: list[dict[str, Any]],
+    roles: list[dict[str, Any]],
+    criticality: list[dict[str, Any]],
+    contracts: list[dict[str, Any]],
+    substitutability: list[dict[str, Any]],
+    disruption: list[dict[str, Any]],
+    scr: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Explicit PASS/FAIL QA for supplier-dependence discipline."""
+    rows: list[dict[str, str]] = []
+    ledger_n = sum(1 for r in spend_rows if isinstance(r, dict) and r.get("ledger_evidenced"))
+    rows.append({
+        "check": "ap_ops_supplier_master",
+        "status": "PASS" if ledger_n >= 1 else "FAIL",
+        "finding": (
+            f"{ledger_n} supplier(s) with payables/ops spend evidenced"
+            if ledger_n >= 1
+            else _info_request("AP payables ledger + ops dependency supplier master")
+        ),
+        "action": (
+            "Supplier master grounded in AP / ops packs"
+            if ledger_n >= 1
+            else "Do not size dependence without a ledger-backed master"
+        ),
+    })
+
+    role_ok = sum(
+        1 for r in roles
+        if isinstance(r, dict)
+        and _is_filled(r.get("role"))
+        and not str(r.get("role")).startswith("Information")
+        and str(r.get("role")) != "unclassified"
+    )
+    rows.append({
+        "check": "role_classification",
+        "status": "PASS" if role_ok >= 1 else "FAIL",
+        "finding": (
+            f"{role_ok} supplier role(s) classified"
+            if role_ok >= 1
+            else _info_request("role classification (BOM / logistics / IT / components / services)")
+        ),
+        "action": _ROLE_RULE,
+    })
+
+    crit_ok = sum(
+        1 for r in criticality
+        if isinstance(r, dict)
+        and _is_filled(r.get("criticality"))
+        and not str(r.get("criticality")).startswith("Information")
+        and "spend" in str(r.get("spend_vs_criticality") or "").lower()
+    )
+    rows.append({
+        "check": "spend_vs_capacity_exposure",
+        "status": "PASS" if crit_ok >= 1 else "FAIL",
+        "finding": (
+            f"{crit_ok} criticality rating(s) separate from spend"
+            if crit_ok >= 1
+            else _info_request("operational criticality and capacity exposure separate from spend")
+        ),
+        "action": _CRITICALITY_RULE,
+    })
+
+    critical_names = {
+        str(r.get("supplier") or "").lower()
+        for r in criticality
+        if isinstance(r, dict)
+        and "critical" in str(r.get("criticality") or "").lower()
+    }
+    contract_read = sum(
+        1 for r in contracts
+        if isinstance(r, dict)
+        and str(r.get("contract_read") or "").lower().startswith("yes")
+        and (
+            not critical_names
+            or str(r.get("supplier") or "").lower() in critical_names
+        )
+    )
+    if critical_names and contract_read == 0:
+        rows.append({
+            "check": "contract_clauses_read",
+            "status": "FAIL",
+            "finding": _info_request("executed contracts for Critical suppliers"),
+            "action": _CONTRACT_RULE,
+        })
+    else:
+        rows.append({
+            "check": "contract_clauses_read",
+            "status": "PASS",
+            "finding": (
+                f"{contract_read} critical-supplier contract(s) read"
+                if contract_read >= 1
+                else "No Critical suppliers requiring contract read (or contracts read)"
+            ),
+            "action": _CONTRACT_RULE,
+        })
+
+    switch_ok = sum(
+        1 for r in substitutability
+        if isinstance(r, dict)
+        and _is_filled(r.get("switch_time"))
+        and not str(r.get("switch_time")).startswith("Information")
+        and _is_filled(r.get("switch_cost"))
+        and not str(r.get("switch_cost")).startswith("Information")
+    )
+    rows.append({
+        "check": "switch_cost_time",
+        "status": "PASS" if switch_ok >= 1 else "FAIL",
+        "finding": (
+            f"{switch_ok} supplier(s) with switch time and cost sized"
+            if switch_ok >= 1
+            else _info_request("switch time and cost for critical / no-alternate suppliers")
+        ),
+        "action": "Substitutability must size time and cost — naming an alternate is not enough",
+    })
+
+    disruption_ok = any(
+        isinstance(r, dict)
+        and int(r.get("disruption_rank_score") or 0) > 0
+        and _is_filled(r.get("supplier"))
+        and not str(r.get("supplier")).startswith("Information")
+        for r in disruption
+    )
+    rows.append({
+        "check": "disruption_priority",
+        "status": "PASS" if disruption_ok else "FAIL",
+        "finding": (
+            f"{len([r for r in disruption if isinstance(r, dict) and int(r.get('disruption_rank_score') or 0) > 0])} "
+            "supplier(s) ranked by disruption impact"
+            if disruption_ok
+            else _info_request("disruption-impact ranking (criticality × switch × capacity)")
+        ),
+        "action": _DISRUPTION_RULE,
+    })
+
+    scr_status = str(scr.get("status") or "")
+    rows.append({
+        "check": "scr_reconcile",
+        "status": "PASS" if scr_status in {"reconciled", "partial"} else "FAIL",
+        "finding": (
+            f"SCR reconcile status: {scr_status}"
+            if scr_status
+            else _info_request("reconcile with Supply Chain Resilience findings")
+        ),
+        "action": _RESILIENCE_RULE,
+    })
+    return rows
+
+
+def _questions_from_sup_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("supplier_evidence_qa")
+        if isinstance(spec.get("supplier_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("ap_ops_supplier_master"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide the AP payables ledger and ops dependency list "
+                        "to build the supplier master"
+                    ),
+                    "required_records": "Payables extract + BOM / ops vendor register",
+                    "decision_effect": "Dependence cannot be sized without a ledger-backed master",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial / ops diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "ap_ops_supplier_master QA PASS",
+                    "interim_treatment": "BLOCKED — do not invent a vendor list",
+                }
+            )
+        )
+    if _qa_fail("role_classification"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Classify supplier roles (BOM / logistics / IT / components / services)",
+                    "required_records": "BOM + ops/IT vendor taxonomy",
+                    "decision_effect": "Spend share alone misstates capacity dependence",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "role_classification QA PASS",
+                    "interim_treatment": "LIMITED reliance on spend-only concentration",
+                }
+            )
+        )
+    if _qa_fail("spend_vs_capacity_exposure"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Rate operational criticality and capacity exposure "
+                        "separately from spend for each material supplier"
+                    ),
+                    "required_records": "What-stops notes + capacity / volume at risk",
+                    "decision_effect": "Low-spend bottlenecks may be missed",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "ops diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "spend_vs_capacity_exposure QA PASS",
+                    "interim_treatment": _CRITICALITY_RULE,
+                }
+            )
+        )
+    if _qa_fail("contract_clauses_read"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Open executed contracts for Critical suppliers (term, SLA, CoC, exclusivity)",
+                    "required_records": "Executed MSA / supply agreements for Critical vendors",
+                    "decision_effect": "Unread terms must not be invented; protection unknown",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "legal / commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "contract_clauses_read QA PASS",
+                    "interim_treatment": _CONTRACT_RULE,
+                }
+            )
+        )
+    if _qa_fail("switch_cost_time"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Size switch time and cost for critical / no-alternate suppliers",
+                    "required_records": "Qualification plan + switching cost estimate by supplier",
+                    "decision_effect": "Substitutability claims remain untested",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "switch_cost_time QA PASS",
+                    "interim_treatment": "Do not treat a named alternate as proven substitutability",
+                }
+            )
+        )
+    if _qa_fail("disruption_priority"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Prioritise suppliers by disruption impact (not spend alone)",
+                    "required_records": "Criticality × switch difficulty × capacity exposure ranking",
+                    "decision_effect": "IC may focus on high-spend vendors that are not bottlenecks",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "disruption_priority QA PASS",
+                    "interim_treatment": _DISRUPTION_RULE,
+                }
+            )
+        )
+    if _qa_fail("scr_reconcile"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Reconcile critical / no-alternate suppliers with Supply Chain Resilience",
+                    "required_records": "SCR localization / logistics findings for the same vendors",
+                    "decision_effect": "Dependence and resilience narratives may conflict",
+                    "priority": "residual_uncertainty",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "scr_reconcile status reconciled or partial with gaps closed",
+                    "interim_treatment": _RESILIENCE_RULE,
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material supplier-dependence inputs are missing "
+                        "for the stated perimeter"
+                    ),
+                    "required_records": "N/A — master, criticality, contracts and switch maths publishable",
+                    "decision_effect": "None — dependence publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "ops diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if payables period or Critical vendor set changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
+
+
 def _quality_reliance(
     *,
     spend_rows: list[dict],
@@ -700,11 +1201,26 @@ def _heuristic_supplier_dependence_spec(
 
     vendors = _extract_vendors_from_corpus(corpus_full, legacy)
     spend_rows = _build_spend_table(vendors, corpus_full)
+    roles = _classify_supplier_roles(vendors, corpus_full)
     criticality = _rate_criticality(vendors, corpus_full)
     contracts = _extract_contract_terms(vendors, corpus_full)
     substitutability = _extract_substitutability(vendors, corpus_full)
+    disruption = _prioritise_disruption(
+        criticality=criticality,
+        substitutability=substitutability,
+        spend_rows=spend_rows,
+    )
     coc = _extract_change_of_control(corpus_full, contracts)
     evidence = _extract_evidence_status(vendors, spend_rows, corpus_full)
+    scr = _reconcile_supply_chain_resilience(
+        criticality=criticality,
+        substitutability=substitutability,
+        corpus=corpus_full,
+        prior_scr=legacy.get("supply_chain_resilience")
+        if isinstance(legacy.get("supply_chain_resilience"), dict)
+        else None,
+    )
+    evidence["resilience_reconcile"] = scr
 
     flags: list[str] = []
     for f in (legacy.get("concentration_flags") or [])[:4]:
@@ -740,10 +1256,23 @@ def _heuristic_supplier_dependence_spec(
         _SOLE_SOURCE_RULE,
         _COC_RULE,
         _RESILIENCE_RULE,
+        _ROLE_RULE,
+        _DISRUPTION_RULE,
     ]
     for n in (legacy.get("dependency_notes") or [])[:4]:
         if isinstance(n, str) and n.strip():
             notes.append(_soften_invest(_clean(n, 240)))
+
+    supplier_qa = _supplier_evidence_qa(
+        spend_rows=spend_rows,
+        roles=roles,
+        criticality=criticality,
+        contracts=contracts,
+        substitutability=substitutability,
+        disruption=disruption,
+        scr=scr,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in supplier_qa)
 
     quality, reliance, rationale = _quality_reliance(
         spend_rows=spend_rows,
@@ -752,6 +1281,9 @@ def _heuristic_supplier_dependence_spec(
         substitutability=substitutability,
         coc=coc,
     )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "Supplier evidence QA has open FAILs — reliance limited. " + rationale
 
     bits = [f"Supplier Dependence for {company}:"]
     bits.append(f"{len(vendors)} supplier(s) listed")
@@ -763,15 +1295,20 @@ def _heuristic_supplier_dependence_spec(
     bits.append(
         "CoC " + ("flagged" if coc.get("transaction_triggers_flagged") else "not evidenced")
     )
+    bits.append(f"SCR reconcile {scr.get('status')}")
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest("; ".join(bits)),
         "spend_by_supplier": spend_rows,
+        "supplier_roles": roles,
         "operational_criticality": criticality,
         "contract_terms": contracts,
         "substitutability": substitutability,
+        "disruption_priority": disruption,
         "change_of_control": coc,
+        "scr_reconcile": scr,
         "evidence_status": evidence,
+        "supplier_evidence_qa": supplier_qa,
         # Legacy dual-write
         "vendors": vendors,
         "concentration_flags": flags[:6],
@@ -785,6 +1322,8 @@ def _heuristic_supplier_dependence_spec(
         "dd_code": legacy.get("dd_code") or _DD_CODE,
         "empty": not vendors and not any(r.get("ledger_evidenced") for r in spend_rows),
     }
+    out["questions"] = _questions_from_sup_gaps(out)
+    return out
 
 
 def _llm_supplier_dependence_spec(
@@ -795,6 +1334,11 @@ def _llm_supplier_dependence_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -807,6 +1351,12 @@ def _llm_supplier_dependence_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -821,21 +1371,30 @@ def _llm_supplier_dependence_spec(
         "insight_snapshot (string),\n"
         "spend_by_supplier: [{supplier, period, spend, share_of_total_pct, component, country, "
         "source, ledger_evidenced}],\n"
+        "supplier_roles: [{supplier, role, component, source, notes}],\n"
         "operational_criticality: [{supplier, criticality, what_stops, spend_vs_criticality, source}],\n"
         "contract_terms: [{supplier, contract_read, duration, renewal, pricing_mechanism, "
         "service_levels, termination_rights, assignment, change_of_control, exclusivity, source, notes}],\n"
         "substitutability: [{supplier, alternatives, qualification, switch_time, switch_cost, "
         "sole_source_status, source}],\n"
+        "disruption_priority: [{supplier, priority, disruption_rank_score, criticality, what_stops, "
+        "switch_time, capacity_exposure, rationale, source}],\n"
         "change_of_control: {transaction_triggers_flagged, consents: [string], notes, source},\n"
+        "scr_reconcile: {status, critical_suppliers, no_alternate_suppliers, scr_signals_present, "
+        "gaps, notes, source},\n"
         "evidence_status: {evidenced: [string], assumed: [string], sole_source_rule, "
         "resilience_reconcile, notes},\n"
+        "supplier_evidence_qa: [{check, status (PASS|FAIL), finding, action}],\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "vendors: [{name, component, country, annual_value_inr_cr, risk_level, alternate_available}],\n"
         "concentration_flags: [string], dependency_notes: [string],\n"
         "quality_verdict (PASS|REWORK), reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
         "Do NOT state contract terms you have not read. "
         "Do NOT treat a named supplier as automatically sole source. "
-        "Rate criticality separately from spend. "
+        "Rate criticality separately from spend. Prioritise by disruption impact. "
+        "Reconcile with Supply Chain Resilience. Include Questions for every material gap. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -863,6 +1422,7 @@ def _normalise_llm_spec(
         return cleaned or heur.get(key) or []
 
     llm["spend_by_supplier"] = _list_of_dicts("spend_by_supplier", "supplier")
+    llm["supplier_roles"] = _list_of_dicts("supplier_roles", "supplier") or heur.get("supplier_roles")
     llm["operational_criticality"] = _list_of_dicts("operational_criticality", "supplier")
 
     contracts = _list_of_dicts("contract_terms", "supplier")
@@ -894,6 +1454,15 @@ def _normalise_llm_spec(
             row["sole_source_status"] = _SOLE_SOURCE_RULE
     llm["substitutability"] = subst
 
+    disruption = _list_of_dicts("disruption_priority", "supplier")
+    if not disruption or not any(int(r.get("disruption_rank_score") or 0) > 0 for r in disruption):
+        disruption = _prioritise_disruption(
+            criticality=llm["operational_criticality"],
+            substitutability=subst,
+            spend_rows=llm["spend_by_supplier"],
+        )
+    llm["disruption_priority"] = disruption
+
     coc = llm.get("change_of_control") if isinstance(llm.get("change_of_control"), dict) else {}
     if not coc:
         coc = heur["change_of_control"]
@@ -904,6 +1473,20 @@ def _normalise_llm_spec(
         coc = base
     llm["change_of_control"] = coc
 
+    scr = llm.get("scr_reconcile") if isinstance(llm.get("scr_reconcile"), dict) else {}
+    if not scr or not scr.get("status"):
+        scr = heur.get("scr_reconcile") or _reconcile_supply_chain_resilience(
+            criticality=llm["operational_criticality"],
+            substitutability=subst,
+            corpus=corpus,
+        )
+    else:
+        base = dict(heur.get("scr_reconcile") or {})
+        base.update({k: v for k, v in scr.items() if v is not None})
+        base["notes"] = _RESILIENCE_RULE
+        scr = base
+    llm["scr_reconcile"] = scr
+
     evidence = llm.get("evidence_status") if isinstance(llm.get("evidence_status"), dict) else {}
     if not evidence:
         evidence = heur["evidence_status"]
@@ -911,7 +1494,7 @@ def _normalise_llm_spec(
         base = dict(heur["evidence_status"])
         base.update({k: v for k, v in evidence.items() if v is not None})
         base["sole_source_rule"] = _SOLE_SOURCE_RULE
-        base["resilience_reconcile"] = _RESILIENCE_RULE
+        base["resilience_reconcile"] = scr
         evidence = base
     llm["evidence_status"] = evidence
 
@@ -933,6 +1516,9 @@ def _normalise_llm_spec(
         cleaned_vendors = heur["vendors"]
     llm["vendors"] = cleaned_vendors
 
+    if not llm.get("supplier_roles"):
+        llm["supplier_roles"] = _classify_supplier_roles(cleaned_vendors, corpus)
+
     flags = llm.get("concentration_flags") if isinstance(llm.get("concentration_flags"), list) else []
     flags = [_soften_invest(_clean(f, 200)) for f in flags if isinstance(f, str) and f.strip()]
     if not flags:
@@ -941,12 +1527,27 @@ def _normalise_llm_spec(
 
     notes = llm.get("dependency_notes") if isinstance(llm.get("dependency_notes"), list) else []
     notes = [_soften_invest(_clean(n, 240)) for n in notes if isinstance(n, str) and n.strip()]
-    for rule in (_CRITICALITY_RULE, _CONTRACT_RULE, _SOLE_SOURCE_RULE, _COC_RULE, _RESILIENCE_RULE):
+    for rule in (
+        _CRITICALITY_RULE, _CONTRACT_RULE, _SOLE_SOURCE_RULE, _COC_RULE,
+        _RESILIENCE_RULE, _ROLE_RULE, _DISRUPTION_RULE,
+    ):
         if not any(rule[:30].lower() in x.lower() for x in notes):
             notes.append(rule)
     if not notes:
         notes = heur["dependency_notes"]
     llm["dependency_notes"] = notes[:8]
+
+    supplier_qa = _supplier_evidence_qa(
+        spend_rows=llm["spend_by_supplier"],
+        roles=llm["supplier_roles"],
+        criticality=llm["operational_criticality"],
+        contracts=contracts,
+        substitutability=subst,
+        disruption=disruption,
+        scr=scr,
+    )
+    llm["supplier_evidence_qa"] = supplier_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in supplier_qa)
 
     quality, reliance, rationale = _quality_reliance(
         spend_rows=llm["spend_by_supplier"],
@@ -964,6 +1565,24 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "Supplier evidence QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_sup_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_sup_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
@@ -1024,22 +1643,31 @@ def build_supplier_dependence_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_supplier_dependence_spec(
+    heur = _heuristic_supplier_dependence_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_supplier_dependence_markdown(
@@ -1049,13 +1677,19 @@ def render_supplier_dependence_markdown(
     sources: list[str] | None = None,
 ) -> str:
     spend = spec.get("spend_by_supplier") if isinstance(spec.get("spend_by_supplier"), list) else []
+    roles = spec.get("supplier_roles") if isinstance(spec.get("supplier_roles"), list) else []
     criticality = (
         spec.get("operational_criticality")
         if isinstance(spec.get("operational_criticality"), list) else []
     )
     contracts = spec.get("contract_terms") if isinstance(spec.get("contract_terms"), list) else []
     subst = spec.get("substitutability") if isinstance(spec.get("substitutability"), list) else []
+    disruption = (
+        spec.get("disruption_priority")
+        if isinstance(spec.get("disruption_priority"), list) else []
+    )
     coc = spec.get("change_of_control") if isinstance(spec.get("change_of_control"), dict) else {}
+    scr = spec.get("scr_reconcile") if isinstance(spec.get("scr_reconcile"), dict) else {}
     evidence = spec.get("evidence_status") if isinstance(spec.get("evidence_status"), dict) else {}
     flags = spec.get("concentration_flags") if isinstance(spec.get("concentration_flags"), list) else []
     notes = spec.get("dependency_notes") if isinstance(spec.get("dependency_notes"), list) else []
@@ -1066,8 +1700,8 @@ def render_supplier_dependence_markdown(
     # 1
     parts.append("## 1. Supplier Spend (Payables Ledger)\n\n")
     parts.append(
-        "Supplier list built from the payables ledger. Each supplier's spend and its share "
-        "of total spend for each period.\n\n"
+        "Supplier master from the payables ledger and operational dependencies. "
+        "Each supplier's spend and its share of total spend for each period.\n\n"
     )
     if spend:
         parts.append(_table(
@@ -1087,6 +1721,22 @@ def render_supplier_dependence_markdown(
         ))
     else:
         parts.append(f"**{_info_request('supplier list and spend from payables ledger')}**\n\n")
+    parts.append(f"### Role classification\n\n{_ROLE_RULE}\n\n")
+    if roles:
+        parts.append(_table(
+            ["Supplier", "Role", "Component", "Source"],
+            [
+                [
+                    _clean(r.get("supplier"), 60),
+                    _clean(r.get("role"), 60),
+                    _clean(r.get("component"), 60),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in roles if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append(f"**{_info_request('supplier role classification')}**\n\n")
     parts.append("---\n\n")
 
     # 2
@@ -1109,6 +1759,24 @@ def render_supplier_dependence_markdown(
         ))
     else:
         parts.append(f"**{_info_request('operational criticality ratings separate from spend')}**\n\n")
+    parts.append(f"### Disruption priority\n\n{_DISRUPTION_RULE}\n\n")
+    if disruption:
+        parts.append(_table(
+            ["Priority", "Supplier", "Criticality", "Switch time", "Capacity exposure", "Source"],
+            [
+                [
+                    str(r.get("priority") or "—"),
+                    _clean(r.get("supplier"), 50),
+                    _clean(r.get("criticality"), 40),
+                    _clean(r.get("switch_time"), 80),
+                    _clean(r.get("capacity_exposure"), 120),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in disruption if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append(f"**{_info_request('disruption-impact ranking')}**\n\n")
     parts.append("---\n\n")
 
     # 3
@@ -1208,6 +1876,35 @@ def render_supplier_dependence_markdown(
             if isinstance(f, str):
                 parts.append(f"- {_clean(f, 200)}\n")
         parts.append("\n")
+    parts.append("### Supply Chain Resilience reconcile\n\n")
+    parts.append(f"{_RESILIENCE_RULE}\n\n")
+    parts.append(_table(
+        ["Item", "Statement"],
+        [
+            ["Status", _clean(scr.get("status"), 40) or _NA],
+            [
+                "Critical suppliers",
+                ", ".join(
+                    _clean(s, 40) for s in (scr.get("critical_suppliers") or [])[:6]
+                    if isinstance(s, str)
+                ) or _NA,
+            ],
+            [
+                "No-alternate suppliers",
+                ", ".join(
+                    _clean(s, 40) for s in (scr.get("no_alternate_suppliers") or [])[:6]
+                    if isinstance(s, str)
+                ) or _NA,
+            ],
+            [
+                "Gaps",
+                "; ".join(
+                    _clean(g, 120) for g in (scr.get("gaps") or [])[:4] if isinstance(g, str)
+                ) or _NA,
+            ],
+            ["Source", _clean(scr.get("source") or _NA, 60)],
+        ],
+    ))
     parts.append(
         "*This section does not recommend invest or pass. Unread contract terms are not stated. "
         "A named supplier is not automatically sole source.*\n\n"
@@ -1215,7 +1912,59 @@ def render_supplier_dependence_markdown(
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    supplier_qa = (
+        spec.get("supplier_evidence_qa")
+        if isinstance(spec.get("supplier_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. Supplier Evidence QA\n\n")
+    parts.append(
+        "QA enforces AP/ops master, role classification, spend vs capacity, "
+        "contracts read for Critical suppliers, switch cost/time, disruption priority, "
+        "and SCR reconcile.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in supplier_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('supplier evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material supplier-dependence gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

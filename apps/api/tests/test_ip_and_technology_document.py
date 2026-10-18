@@ -17,6 +17,12 @@ class _FakeDeal:
     company = "Test3"
     sector = "Electric Two-Wheelers"
     geography = "India"
+    metadata = {
+        "deal_perimeter": "standalone ops",
+        "transaction_type": "majority buyout",
+        "as_of_date": "2024-12-31",
+        "decision_stage": "IC",
+    }
 
 
 def _ip_corpus() -> str:
@@ -43,13 +49,24 @@ def _ip_corpus() -> str:
 
 
 def test_ip_and_technology_prompt_book_listed() -> None:
-    system = compose_system("ip_and_technology", sector="EV", geography="India")
+    system = compose_system(
+        "ip_and_technology",
+        sector="EV",
+        geography="India",
+        deal_perimeter="standalone ops",
+        transaction_type="majority buyout",
+        as_of_date="2024-12-31",
+        decision_stage="IC",
+    )
     assert "ip_and_technology" in listed_agents()
     assert "intellectual" in system.lower() or "technology" in system.lower()
     body = agent_prompt("ip_and_technology")
     assert "Ola" not in body and "SoftBank" not in body
     assert "register" in body.lower()
     assert "change of control" in body.lower() or "change-of-control" in body.lower()
+    assert "moat" in body.lower()
+    assert "questions" in body.lower()
+    assert "cyber" in body.lower() or "restore" in body.lower()
 
 
 def test_ip_and_technology_not_company_hardcoded() -> None:
@@ -185,7 +202,10 @@ def test_ip_and_technology_markdown_follows_prompt_book() -> None:
     assert "## 3. Change-of-Control" in md
     assert "## 4. System Fitness" in md
     assert "## 5. Replacement / Upgrade" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Cyber Checklist" in md
+    assert "## 7. IP & Technology Evidence QA" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     coc = heur.get("change_of_control") or []
     assert any(
@@ -276,6 +296,46 @@ def test_render_agent_document_ip_and_technology() -> None:
     assert "**Recommendation:**" not in rendered
 
 
+def test_ip_qa_moat_cyber_and_omit_metrics() -> None:
+    heur = _heuristic_ip_and_technology_spec(
+        company="Test3",
+        corpus=_ip_corpus(),
+        sources=["08_Technical_Due_Diligence.pdf"],
+        competitive_spec={
+            "claimed_advantages": [{"claim": "Patent-backed IP advantage"}],
+            "moat_signals": ["hard to replicate firmware moat"],
+        },
+    )
+    qa = heur.get("ip_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "asset_map_classification",
+        "register_assignment_verify",
+        "licence_coc_transfer",
+        "cyber_restore_checklist",
+        "moat_test_discipline",
+        "replacement_cost_schedule",
+        "competitive_diff_cross_check",
+        "omit_software_metrics",
+        "tech_map_omit_reasons",
+    ):
+        assert need in checks
+    cyber = heur.get("cyber_checklist") or []
+    assert cyber
+    assert any(r.get("status") == "CLOSED" for r in cyber if isinstance(r, dict))
+    moat = heur.get("moat_test") or []
+    assert moat
+    omitted = heur.get("omitted_software_metrics") or []
+    assert any(
+        isinstance(r, dict) and r.get("treatment") == "OMITTED" and r.get("reason")
+        for r in omitted
+    )
+    questions = heur.get("questions") or []
+    assert isinstance(questions, list)
+    if any(isinstance(r, dict) and r.get("status") == "FAIL" for r in qa):
+        assert heur.get("reliance_verdict") != "READY" or questions
+
+
 def test_build_ip_and_technology_from_corpus() -> None:
     spec = build_ip_and_technology_spec(
         _FakeDeal(),
@@ -296,6 +356,10 @@ def test_build_ip_and_technology_from_corpus() -> None:
     )
     md = render_ip_and_technology_markdown("IP & Technology", spec)
     assert "## 2. Owned IP" in md
+    assert "## 7. IP & Technology Evidence QA" in md
+    assert "## 9. Quality & Reliance" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "F-IP"
+    assert isinstance(spec.get("deal_slots"), dict)
+    assert spec.get("ip_evidence_qa")

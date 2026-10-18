@@ -33,6 +33,51 @@ from agetic_cdd_api.services_databook_models import (
 from agetic_cdd_api.services_library import load_library_document, load_library_index
 
 
+_RETENTION_LINE_RE = re.compile(
+    r"(?i)\b(?:grr|nrr|gross\s+dollar\s+retention|gross\s+revenue\s+retention|"
+    r"net\s+revenue\s+retention)\b"
+)
+
+
+def _qualify_retention_caption(
+    caption: str,
+    *,
+    source_name: str = "",
+    table_name: str = "",
+) -> str:
+    """Prefix Commercial when the sheet context is commercial and the line is bare retention.
+
+    Residential lines stay untouched (and remain unmapped by CoA). Avoids releasing
+    residential 0.84x GRR under a Commercial label when the Commercial Summary sheet
+    only prints unlabeled 'Gross dollar retention'.
+
+    Sheet/table name wins over workbook filename — a file named
+    ``…Residential_and_Commercial…`` must not force a Commercial prefix onto a
+    Residential Summary row.
+    """
+    cap = (caption or "").strip()
+    if not cap or not _RETENTION_LINE_RE.search(cap):
+        return cap
+    if "residential" in cap.lower():
+        return cap
+    if "commercial" in cap.lower():
+        return cap
+    # Prefer the sheet/table label over the workbook filename for segment.
+    sheet_blob = f"{table_name}".lower()
+    if re.search(r"(?i)\bresidential\b", sheet_blob):
+        return cap
+    if re.search(r"(?i)commercial\s+summary|commercial\s+segment|\bcommercial\b", sheet_blob):
+        return f"Commercial {cap}"
+    file_blob = f"{source_name}".lower()
+    if re.search(r"(?i)\bresidential\b", file_blob) and not re.search(
+        r"(?i)\bcommercial\b", file_blob
+    ):
+        return cap
+    if re.search(r"(?i)commercial\s+summary|commercial\s+segment|\bcommercial\b", file_blob):
+        return f"Commercial {cap}"
+    return cap
+
+
 # Fiscal-year bounds only (avoid treating codes / large amounts as years).
 _YEAR_PREFIXED_RE = re.compile(r"\b(?:fy|f\.?y\.?|year)\s*(19\d{2}|20\d{2})\b", re.I)
 _YEAR_BARE_CELL_RE = re.compile(r"^(?:fy|f\.?y\.?)?(19\d{2}|20\d{2})$", re.I)
@@ -712,7 +757,11 @@ def rows_from_table(
             if not row:
                 continue
             line_idx = idx + body_start  # absolute grid row for SourceRef / row_id
-            caption = _row_caption(row)
+            caption = _qualify_retention_caption(
+                _row_caption(row),
+                source_name=source_name,
+                table_name=table_name,
+            )
             if not caption:
                 continue
 
@@ -859,7 +908,11 @@ def rows_from_table(
         if len(row) < 2:
             continue
         line_idx = idx + body_start
-        caption = normalize_caption(row[0])
+        caption = _qualify_retention_caption(
+            normalize_caption(row[0]),
+            source_name=source_name,
+            table_name=table_name,
+        )
         if not caption:
             continue
         hit = map_caption(

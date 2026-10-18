@@ -58,6 +58,31 @@ _NO_BENCHMARK_RULE = (
     "Cost ratios are not imported from another sector as a benchmark. "
     "If the ledger cannot be mapped, missing accounts are named and requested."
 )
+_SYNERGY_RULE = (
+    "Stand-alone efficiency is kept separate from Synergies — do not double-count."
+)
+_ALLOCATION_RULE = (
+    "Allocated overhead is distinguished from avoidable cost where evidenced; "
+    "until split, treat costs as allocated."
+)
+_SAAS_RD_RULE = (
+    "SaaS LTV/CAC peer ratios and R&D/%-of-revenue peer benchmarks are not "
+    "used by default."
+)
+
+_SYNERGY_CUE = re.compile(
+    r"(?i)\b(synerg(?:y|ies)|run[- ]rate\s+synergy|deal\s+synergy|"
+    r"purchase\s+accounting\s+synergy)\b"
+)
+_SAAS_RD_PEER_CUE = re.compile(
+    r"(?i)\b(?:SaaS\s+(?:LTV|CAC|magic\s+number)|peer\s+(?:LTV|CAC)|"
+    r"R&D\s+as\s+(?:a\s+)?%\s+of\s+revenue|industry\s+R&D\s+intensity|"
+    r"typical\s+SaaS\s+(?:gross\s+)?margin)\b"
+)
+_ALLOCATION_CUE = re.compile(
+    r"(?i)\b(allocated|allocation|absorb(?:ed|ption)|overhead\s+allocation|"
+    r"avoidable|direct\s+vs\s+allocated)\b"
+)
 
 _BOM_LINE_RE = re.compile(
     r"(?i)([A-Za-z][A-Za-z0-9 &/\-]{2,40}?)\s*[—\-–:]\s*(\d+(?:\.\d+)?)\s*%"
@@ -797,6 +822,7 @@ def _build_efficiency(
         if key in seen:
             continue
         seen.add(key)
+        syn = bool(_SYNERGY_CUE.search(note))
         rows.append(
             {
                 "opportunity": _clean(note, 160),
@@ -805,16 +831,22 @@ def _build_efficiency(
                 "net_benefit": _info_request("net benefit"),
                 "in_plan": _info_request("whether already counted in the plan"),
                 "source": _DOC_CITE,
-                "notes": _EFFICIENCY_RULE,
+                "notes": (
+                    f"{_EFFICIENCY_RULE} {_SYNERGY_RULE}"
+                    if syn
+                    else _EFFICIENCY_RULE
+                ),
+                "synergy_flag": syn,
             }
         )
     for sent in _sentences(corpus or "")[:50]:
-        if not _EFFICIENCY_CUE.search(sent):
+        if not _EFFICIENCY_CUE.search(sent) and not _SYNERGY_CUE.search(sent):
             continue
         key = sent.strip().lower()[:80]
         if key in seen:
             continue
         seen.add(key)
+        syn = bool(_SYNERGY_CUE.search(sent))
         rows.append(
             {
                 "opportunity": _clean(sent, 160),
@@ -823,7 +855,12 @@ def _build_efficiency(
                 "net_benefit": _info_request("net benefit"),
                 "in_plan": _info_request("already in plan?"),
                 "source": _DOC_CITE,
-                "notes": _EFFICIENCY_RULE,
+                "notes": (
+                    f"{_EFFICIENCY_RULE} {_SYNERGY_RULE}"
+                    if syn
+                    else _EFFICIENCY_RULE
+                ),
+                "synergy_flag": syn,
             }
         )
         if len(rows) >= 6:
@@ -900,7 +937,10 @@ def _legacy_dual_write(
     for note in legacy.get("efficiency_notes") or []:
         if isinstance(note, str) and note.strip():
             notes.append(_clean(note, 200))
-    for rule in (_MAP_RULE, _CLASS_RULE, _UNIT_RULE, _INFLATION_RULE, _EFFICIENCY_RULE, _NO_BENCHMARK_RULE):
+    for rule in (
+        _MAP_RULE, _CLASS_RULE, _UNIT_RULE, _INFLATION_RULE, _EFFICIENCY_RULE,
+        _NO_BENCHMARK_RULE, _SYNERGY_RULE, _ALLOCATION_RULE, _SAAS_RD_RULE,
+    ):
         if not any(rule[:28].lower() in n.lower() for n in notes):
             notes.append(rule)
     if missing:
@@ -915,6 +955,399 @@ def _legacy_dual_write(
         seen.add(key)
         deduped.append(n)
     return bom_out[:16], metrics_out, deduped[:8]
+
+
+def _cost_evidence_qa(
+    *,
+    categories: list[dict[str, Any]],
+    reconciliation: list[dict[str, Any]],
+    classification: list[dict[str, Any]],
+    unit_econ: list[dict[str, Any]],
+    inflation: list[dict[str, Any]],
+    efficiency: list[dict[str, Any]],
+    missing: list[str],
+    corpus: str = "",
+    notes: list[str] | None = None,
+) -> list[dict[str, str]]:
+    """Explicit PASS/FAIL QA for cost-structure discipline."""
+    rows: list[dict[str, str]] = []
+    text = corpus or ""
+    note_blob = " ".join(n for n in (notes or []) if isinstance(n, str))
+
+    mapped = sum(
+        1 for c in categories
+        if isinstance(c, dict)
+        and _is_filled(c.get("gl_accounts"))
+        and not str(c.get("gl_accounts")).startswith("Information")
+    )
+    recon_ok = any(
+        isinstance(r, dict)
+        and (
+            "0%" in str(r.get("difference") or "")
+            or "unexplained" in str(r.get("difference") or "").lower()
+            or _is_filled(r.get("difference"))
+        )
+        for r in reconciliation
+    )
+    coa_ok = mapped >= 2 and (recon_ok or not missing)
+    rows.append({
+        "check": "coa_fs_reconcile",
+        "status": "PASS" if coa_ok else "FAIL",
+        "finding": (
+            f"{mapped} operating categor{'y' if mapped == 1 else 'ies'} mapped"
+            + ("; reconciliation shown" if recon_ok else "")
+            if coa_ok
+            else _info_request("GL / COA map reconciled to reported COS / operating costs")
+        ),
+        "action": _MAP_RULE,
+    })
+
+    classified = sum(
+        1 for c in classification
+        if isinstance(c, dict)
+        and str(c.get("classification") or "") not in {"", "Unclassified", _NA}
+        and _is_filled(c.get("driver"))
+        and not str(c.get("driver")).startswith("Information")
+        and "account name" not in str(c.get("justification") or "").lower()
+    )
+    rows.append({
+        "check": "driver_classification",
+        "status": "PASS" if classified >= 2 else "FAIL",
+        "finding": (
+            f"{classified} categor{'y' if classified == 1 else 'ies'} classified by driver"
+            if classified >= 2
+            else _info_request("fixed / variable / step classification by operational driver")
+        ),
+        "action": _CLASS_RULE,
+    })
+
+    units = sum(
+        1 for u in unit_econ
+        if isinstance(u, dict)
+        and _is_filled(u.get("cost"))
+        and not str(u.get("cost")).startswith("Information")
+        and u.get("cost") != _NA
+    )
+    rows.append({
+        "check": "unit_economics",
+        "status": "PASS" if units >= 1 else "FAIL",
+        "finding": (
+            f"{units} unit-economics row(s) with evidenced cost"
+            if units >= 1
+            else _info_request("unit economics (route / site / tonne / customer / service)")
+        ),
+        "action": _UNIT_RULE,
+    })
+
+    infl_vs_plan = sum(
+        1 for r in inflation
+        if isinstance(r, dict)
+        and _is_filled(r.get("exposure"))
+        and not str(r.get("exposure")).startswith("Information")
+        and _is_filled(r.get("plan_assumption"))
+        and not str(r.get("plan_assumption")).startswith("Information")
+    )
+    rows.append({
+        "check": "inflation_vs_plan",
+        "status": "PASS" if infl_vs_plan >= 1 else "FAIL",
+        "finding": (
+            f"{infl_vs_plan} inflation categor{'y' if infl_vs_plan == 1 else 'ies'} vs plan"
+            if infl_vs_plan >= 1
+            else _info_request("inflation exposure by category compared with plan assumptions")
+        ),
+        "action": _INFLATION_RULE,
+    })
+
+    eff_net = sum(
+        1 for r in efficiency
+        if isinstance(r, dict)
+        and _is_filled(r.get("opportunity"))
+        and not str(r.get("opportunity")).startswith("Information")
+        and _is_filled(r.get("cost_to_achieve"))
+        and not str(r.get("cost_to_achieve")).startswith("Information")
+        and _is_filled(r.get("net_benefit"))
+        and not str(r.get("net_benefit")).startswith("Information")
+    )
+    rows.append({
+        "check": "efficiency_net_of_cta",
+        "status": "PASS" if eff_net >= 1 else "FAIL",
+        "finding": (
+            f"{eff_net} efficiency opportunit{'y' if eff_net == 1 else 'ies'} net of cost-to-achieve"
+            if eff_net >= 1
+            else _info_request("efficiency opportunities quantified net of cost to achieve")
+        ),
+        "action": _EFFICIENCY_RULE,
+    })
+
+    synergy_hit = bool(_SYNERGY_CUE.search(text) or _SYNERGY_CUE.search(note_blob))
+    synergy_overlap = False
+    for r in efficiency:
+        if not isinstance(r, dict):
+            continue
+        blob = " ".join(
+            str(r.get(k) or "")
+            for k in ("opportunity", "notes", "gross_benefit", "net_benefit", "in_plan")
+        )
+        if _SYNERGY_CUE.search(blob) and "non-overlap" not in blob.lower() and "separate" not in blob.lower():
+            synergy_overlap = True
+            break
+    if synergy_hit and synergy_overlap:
+        rows.append({
+            "check": "synergies_non_overlap",
+            "status": "FAIL",
+            "finding": _info_request(
+                "stand-alone efficiency kept separate from Synergies (no double-count)"
+            ),
+            "action": _SYNERGY_RULE,
+        })
+    else:
+        rows.append({
+            "check": "synergies_non_overlap",
+            "status": "PASS",
+            "finding": (
+                _SYNERGY_RULE
+                if synergy_hit
+                else "No Synergies language in stand-alone efficiency rows"
+            ),
+            "action": _SYNERGY_RULE,
+        })
+
+    alloc_evidenced = bool(_ALLOCATION_CUE.search(text) or _ALLOCATION_CUE.search(note_blob))
+    alloc_in_class = any(
+        isinstance(c, dict)
+        and (
+            _ALLOCATION_CUE.search(str(c.get("justification") or ""))
+            or _ALLOCATION_CUE.search(str(c.get("notes") or ""))
+            or "allocated" in str(c.get("classification") or "").lower()
+        )
+        for c in classification
+    )
+    overhead_present = any(
+        isinstance(c, dict)
+        and re.search(
+            r"(?i)\b(facilit|admin|overhead|head\s*office|sales|sg&a)\b",
+            str(c.get("category") or ""),
+        )
+        for c in classification
+    )
+    if overhead_present and not (alloc_evidenced or alloc_in_class):
+        rows.append({
+            "check": "allocation_vs_avoidable",
+            "status": "FAIL",
+            "finding": _info_request(
+                "allocated overhead vs avoidable cost split for overhead categories"
+            ),
+            "action": _ALLOCATION_RULE,
+        })
+    else:
+        rows.append({
+            "check": "allocation_vs_avoidable",
+            "status": "PASS",
+            "finding": (
+                "Allocation vs avoidable distinguished where evidenced"
+                if alloc_evidenced or alloc_in_class
+                else _ALLOCATION_RULE
+            ),
+            "action": _ALLOCATION_RULE,
+        })
+
+    saas_peer = bool(
+        _SAAS_RD_PEER_CUE.search(text)
+        or _SAAS_RD_PEER_CUE.search(note_blob)
+        or _SECTOR_BENCH_CUE.search(note_blob)
+    )
+    rows.append({
+        "check": "no_saas_rd_peer_ratios",
+        "status": "FAIL" if saas_peer else "PASS",
+        "finding": (
+            "SaaS/R&D peer ratios or cross-sector cost benchmarks detected — strip before IC"
+            if saas_peer
+            else _SAAS_RD_RULE
+        ),
+        "action": _SAAS_RD_RULE,
+    })
+    return rows
+
+
+def _questions_from_cost_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("cost_evidence_qa")
+        if isinstance(spec.get("cost_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("coa_fs_reconcile"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide the chart of accounts / GL extract mapped to reported "
+                        "COS and operating costs, with unexplained differences shown"
+                    ),
+                    "required_records": "Trial balance / COA + audited P&L cost lines",
+                    "decision_effect": "Margin-plan testing cannot rest on an unmapped cost base",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "coa_fs_reconcile QA PASS",
+                    "interim_treatment": "BLOCKED — do not invent a cost bridge",
+                }
+            )
+        )
+    if _qa_fail("driver_classification"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Classify each operating cost category as fixed / variable / step "
+                        "by the operational driver that moves it"
+                    ),
+                    "required_records": "Ops cost pack + volume / utilisation drivers",
+                    "decision_effect": "Account-name classification misstates margin leverage",
+                    "priority": "signing_condition",
+                    "owner": "ops / financial diligence",
+                    "timing": "per deal timetable",
+                    "closure_test": "driver_classification QA PASS",
+                    "interim_treatment": "LIMITED reliance on account-name labels",
+                }
+            )
+        )
+    if _qa_fail("unit_economics"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide unit economics (cost per route / site / tonne / customer / "
+                        "service) with utilisation and volume sensitivity"
+                    ),
+                    "required_records": "Unit-cost pack + utilisation series",
+                    "decision_effect": "Cannot test plan unit-cost paths without evidenced units",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "unit_economics QA PASS",
+                    "interim_treatment": "LIMITED — withhold unit-cost claims",
+                }
+            )
+        )
+    if _qa_fail("inflation_vs_plan"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "State inflation exposure by category (wage, fuel, disposal, insurance) "
+                        "and the plan assumption for each"
+                    ),
+                    "required_records": "Historical inflation + plan cost inflation schedule",
+                    "decision_effect": "Plan may be assuming inflation away inside margin expansion",
+                    "priority": "signing_condition",
+                    "owner": "financial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "inflation_vs_plan QA PASS",
+                    "interim_treatment": "LIMITED — flag plan inflation as untested",
+                }
+            )
+        )
+    if _qa_fail("efficiency_net_of_cta"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Quantify each efficiency opportunity gross, cost-to-achieve, net, "
+                        "and whether already counted in the plan"
+                    ),
+                    "required_records": "Efficiency case + implementation cost bridge",
+                    "decision_effect": "Gross savings without cost-to-achieve overstate EBITDA",
+                    "priority": "signing_condition",
+                    "owner": "ops / financial diligence",
+                    "timing": "per deal timetable",
+                    "closure_test": "efficiency_net_of_cta QA PASS",
+                    "interim_treatment": "LIMITED — do not credit unsigned efficiency",
+                }
+            )
+        )
+    if _qa_fail("synergies_non_overlap"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Separate stand-alone efficiency from Synergies and confirm "
+                        "no double-count with the Synergies workstream"
+                    ),
+                    "required_records": "Synergies register + stand-alone efficiency list",
+                    "decision_effect": "Overlapping claims inflate the value bridge",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "deal team / financial diligence",
+                    "timing": "before IC",
+                    "closure_test": "synergies_non_overlap QA PASS",
+                    "interim_treatment": "BLOCKED on overlapping efficiency / synergy lines",
+                }
+            )
+        )
+    if _qa_fail("allocation_vs_avoidable"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Split allocated overhead from avoidable cost for facilities / "
+                        "admin / sales overhead categories"
+                    ),
+                    "required_records": "Allocation keys + avoidable-cost analysis",
+                    "decision_effect": "Treating allocated cost as avoidable misstates exit costs",
+                    "priority": "signing_condition",
+                    "owner": "financial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "allocation_vs_avoidable QA PASS",
+                    "interim_treatment": "LIMITED — treat overhead as allocated until split",
+                }
+            )
+        )
+    if _qa_fail("no_saas_rd_peer_ratios"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Remove SaaS LTV/CAC peer ratios and R&D/%-of-revenue peer "
+                        "benchmarks; use this-business evidence only"
+                    ),
+                    "required_records": "This-business cost packs (no peer-ratio imports)",
+                    "decision_effect": "Cross-sector peer ratios distort cost conclusions",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "no_saas_rd_peer_ratios QA PASS",
+                    "interim_treatment": "Strip peer-ratio language; reliance LIMITED",
+                }
+            )
+        )
+    for miss in (spec.get("missing_accounts") or [])[:3]:
+        text = miss if isinstance(miss, str) else str((miss or {}).get("account") or miss)
+        if not text.strip():
+            continue
+        out.append(
+            normalize_question(
+                {
+                    "question": f"Provide missing cost account / pack: {text.strip()[:120]}",
+                    "required_records": text.strip()[:160],
+                    "decision_effect": "Unmapped accounts leave the cost base incomplete",
+                    "priority": "signing_condition",
+                    "owner": "financial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": f"Account present in COA map: {text.strip()[:80]}",
+                    "interim_treatment": "LIMITED — name the gap; do not invent the line",
+                }
+            )
+        )
+    return out
 
 
 def _quality_reliance(
@@ -1022,6 +1455,19 @@ def _heuristic_cost_structure_spec(
         missing=missing,
         legacy=legacy,
     )
+    cost_qa = _cost_evidence_qa(
+        categories=categories,
+        reconciliation=reconciliation,
+        classification=classification,
+        unit_econ=unit_econ,
+        inflation=inflation,
+        efficiency=efficiency,
+        missing=missing,
+        corpus=corpus,
+        notes=notes,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in cost_qa)
+
     quality, reliance, rationale = _quality_reliance(
         categories=categories,
         classification=classification,
@@ -1031,6 +1477,9 @@ def _heuristic_cost_structure_spec(
         missing=missing,
         reconciliation=reconciliation,
     )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "Cost evidence QA has open FAILs — reliance limited. " + rationale
 
     bits = [f"Cost Structure for {company}"]
     if bom_out:
@@ -1047,7 +1496,7 @@ def _heuristic_cost_structure_spec(
     if missing:
         bits.append(f"{len(missing)} information gap(s)")
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "operating_categories": categories,
         "reconciliation": reconciliation,
@@ -1056,6 +1505,7 @@ def _heuristic_cost_structure_spec(
         "inflation_exposure": inflation,
         "efficiency_opportunities": efficiency,
         "missing_accounts": missing,
+        "cost_evidence_qa": cost_qa,
         # Legacy dual-write
         "bom_components": bom_out,
         "cost_metrics": metrics_out,
@@ -1069,6 +1519,8 @@ def _heuristic_cost_structure_spec(
         "dd_code": legacy.get("dd_code") or _DD_CODE,
         "empty": not bom_out and not metrics_out and not categories,
     }
+    out["questions"] = _questions_from_cost_gaps(out)
+    return out
 
 
 def _llm_cost_structure_spec(
@@ -1079,6 +1531,11 @@ def _llm_cost_structure_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -1091,6 +1548,12 @@ def _llm_cost_structure_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -1111,11 +1574,17 @@ def _llm_cost_structure_spec(
         "unit_economics: [{unit, cost, utilisation, volume_sensitivity, source, notes}],\n"
         "inflation_exposure: [{category, exposure, plan_assumption, gap, source, notes}],\n"
         "efficiency_opportunities: [{opportunity, gross_benefit, cost_to_achieve, "
-        "net_benefit, in_plan, source, notes}],\n"
+        "net_benefit, in_plan, source, notes, synergy_flag}],\n"
         "missing_accounts: [string],\n"
         "bom_components: [{category, share_pct}],\n"
         "cost_metrics: {string: number},\n"
         "efficiency_notes: [string],\n"
+        "cost_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "coa_fs_reconcile, driver_classification, unit_economics, inflation_vs_plan, "
+        "efficiency_net_of_cta, synergies_non_overlap, allocation_vs_avoidable, "
+        "no_saas_rd_peer_ratios,\n"
+        "questions: [{question, required_records, decision_effect, priority, owner, "
+        "timing, closure_test, interim_treatment}],\n"
         "quality_verdict: PASS|REWORK,\n"
         "reliance_verdict: READY|LIMITED|BLOCKED,\n"
         "quality_reliance_rationale: string.\n"
@@ -1134,6 +1603,7 @@ def _normalise_llm_spec(
     heur: dict[str, Any],
     sources: list[str],
     legacy: dict[str, Any],
+    corpus: str = "",
 ) -> dict[str, Any]:
     llm = dict(raw) if isinstance(raw, dict) else {}
 
@@ -1163,6 +1633,8 @@ def _normalise_llm_spec(
         # Reject account-name-only justifications that cite sector benchmarks
         if _SECTOR_BENCH_CUE.search(str(row.get("justification") or "")):
             row["justification"] = _CLASS_RULE
+        if _SAAS_RD_PEER_CUE.search(str(row.get("justification") or "")):
+            row["justification"] = _CLASS_RULE
     llm["cost_classification"] = classification
 
     unit_econ = _rows("unit_economics", "unit")
@@ -1180,8 +1652,17 @@ def _normalise_llm_spec(
 
     efficiency = _rows("efficiency_opportunities", "opportunity")
     for row in efficiency:
-        row["notes"] = _EFFICIENCY_RULE
+        syn = bool(row.get("synergy_flag")) or bool(
+            _SYNERGY_CUE.search(str(row.get("opportunity") or ""))
+        )
+        row["synergy_flag"] = syn
+        row["notes"] = (
+            f"{_EFFICIENCY_RULE} {_SYNERGY_RULE}" if syn else _EFFICIENCY_RULE
+        )
         row["opportunity"] = _soften_invest(_clean(row.get("opportunity"), 200))
+        for field in ("gross_benefit", "cost_to_achieve", "net_benefit", "in_plan"):
+            if row.get(field):
+                row[field] = _soften_invest(_clean(row.get(field), 160))
     llm["efficiency_opportunities"] = efficiency
 
     missing = llm.get("missing_accounts") if isinstance(llm.get("missing_accounts"), list) else []
@@ -1210,14 +1691,30 @@ def _normalise_llm_spec(
 
     notes = llm.get("efficiency_notes") if isinstance(llm.get("efficiency_notes"), list) else []
     notes = [_soften_invest(_clean(n, 240)) for n in notes if isinstance(n, str) and n.strip()]
+    notes = [n for n in notes if not _SAAS_RD_PEER_CUE.search(n)]
     for rule in (
-        _MAP_RULE, _CLASS_RULE, _UNIT_RULE, _INFLATION_RULE, _EFFICIENCY_RULE, _NO_BENCHMARK_RULE,
+        _MAP_RULE, _CLASS_RULE, _UNIT_RULE, _INFLATION_RULE, _EFFICIENCY_RULE,
+        _NO_BENCHMARK_RULE, _SYNERGY_RULE, _ALLOCATION_RULE, _SAAS_RD_RULE,
     ):
         if not any(rule[:28].lower() in x.lower() for x in notes):
             notes.append(rule)
     if not notes:
         notes = list(heur.get("efficiency_notes") or [])
-    llm["efficiency_notes"] = notes[:8]
+    llm["efficiency_notes"] = notes[:10]
+
+    cost_qa = _cost_evidence_qa(
+        categories=categories,
+        reconciliation=llm.get("reconciliation") or [],
+        classification=classification,
+        unit_econ=unit_econ,
+        inflation=inflation,
+        efficiency=efficiency,
+        missing=missing,
+        corpus=corpus,
+        notes=notes,
+    )
+    llm["cost_evidence_qa"] = cost_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in cost_qa)
 
     quality, reliance, rationale = _quality_reliance(
         categories=categories,
@@ -1237,6 +1734,24 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "Cost evidence QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_cost_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_cost_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
@@ -1304,6 +1819,7 @@ def build_cost_structure_spec(
         geography=vars_.get("geography"),
         legacy_spec=legacy,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
     if prefer_heuristic:
         return heur
 
@@ -1314,10 +1830,19 @@ def build_cost_structure_spec(
         sector=vars_.get("sector"),
         geography=vars_.get("geography"),
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if not llm_raw:
         return heur
-    return _normalise_llm_spec(llm_raw, heur=heur, sources=srcs, legacy=legacy)
+    out = _normalise_llm_spec(
+        llm_raw, heur=heur, sources=srcs, legacy=legacy, corpus=full_corpus,
+    )
+    out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return out
 
 
 def render_cost_structure_markdown(
@@ -1486,6 +2011,7 @@ def render_cost_structure_markdown(
     # 5
     parts.append("## 5. Efficiency Opportunities (Net of Cost to Achieve)\n\n")
     parts.append(f"{_EFFICIENCY_RULE}\n\n")
+    parts.append(f"{_SYNERGY_RULE}\n\n")
     if efficiency:
         parts.append(_table(
             ["Opportunity", "Gross benefit", "Cost to achieve", "Net", "In plan?", "Source"],
@@ -1505,25 +2031,92 @@ def render_cost_structure_markdown(
         parts.append(f"**{_info_request('efficiency opportunities net of cost to achieve')}**\n\n")
     if notes:
         parts.append("### Notes\n\n")
-        for n in notes[:6]:
+        for n in notes[:8]:
             parts.append(f"- {_clean(n, 240)}\n")
         parts.append("\n")
     parts.append(
         "*This section does not recommend invest or pass. Cost ratios are not imported "
-        "from another sector. Classifications use operational drivers, not account names.*\n\n"
+        "from another sector (including SaaS LTV/CAC or R&D peer ratios by default). "
+        "Classifications use operational drivers, not account names. "
+        f"{_ALLOCATION_RULE}*\n\n"
     )
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    cost_qa = (
+        spec.get("cost_evidence_qa")
+        if isinstance(spec.get("cost_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. Cost Evidence QA\n\n")
+    parts.append(
+        "QA enforces COA/FS reconcile, driver classification, unit economics, "
+        "inflation vs plan, efficiency net of cost-to-achieve, Synergies non-overlap, "
+        "allocation vs avoidable, and no SaaS/R&D peer ratios by default.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in cost_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('cost evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material cost-structure gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
     rationale = spec.get("quality_reliance_rationale") or _NA
-    parts.append(f"**Quality:** {qv}  \n")
-    parts.append(f"**Reliance:** {rv}  \n\n")
-    parts.append(f"{_soften_invest(_clean(rationale, 600))}\n\n")
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _soften_invest(_clean(rationale, 460))],
+        ],
+    ))
+    parts.append(
+        f"**Quality:** {_clean(qv, 20)} — is the cost map accurate and honest about limits?\n\n"
+    )
+    parts.append(
+        f"**Reliance:** {_clean(rv, 20)} — can diligence rest on this cost base "
+        "for margin-plan testing?\n\n"
+    )
     parts.append(
         "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open cost-evidence QA FAILs cap READY → LIMITED. "
         "This agent does not issue an invest or pass recommendation.*\n\n"
     )
     parts.append("---\n\n")

@@ -34,7 +34,9 @@ _FOUNDED = re.compile(
     re.IGNORECASE,
 )
 _LEGAL_NAME = re.compile(
-    r"(?:Legal Name|legal name)\s+([A-Z][A-Za-z0-9 &.,'\-]{4,80}?(?:Limited|Ltd|LLC|Inc|PLC)?)",
+    r"(?:Legal Name|legal name)\s+"
+    r"([A-Z][A-Za-z0-9 &.,'\-]{4,80}?"
+    r"(?:Limited|Ltd|LLC|Inc\.?|PLC|,\s*A?\s*Benefit\s+Corporation)?)",
     re.IGNORECASE,
 )
 _HEADCOUNT = re.compile(
@@ -200,17 +202,29 @@ def gather_company_background_corpus(
         "deal_strategy": 4,
         "market_competition": 5,
     }
+
+    def _filename_boost(name: str) -> int:
+        low = (name or "").lower()
+        if re.search(
+            r"(?i)cap\s*table|securities?\s*ledger|stockholder|shareholder|"
+            r"corporate\s*record|certificate",
+            low,
+        ):
+            return 0
+        return 5
+
     docs = [d for d in (index.get("documents") or []) if isinstance(d, dict)]
     ranked = sorted(
         docs,
         key=lambda d: (
+            _filename_boost(str(d.get("filename") or "")),
             prefer.get(str(d.get("cdl_category") or ""), 9),
             str(d.get("filename") or ""),
         ),
     )
     blobs: list[str] = []
     sources: list[str] = []
-    for doc in ranked[:12]:
+    for doc in ranked[:16]:
         filename = str(doc.get("filename") or "")
         if not filename:
             continue
@@ -219,15 +233,123 @@ def gather_company_background_corpus(
         except Exception:
             loaded = {}
         text = str(loaded.get("text") or doc.get("excerpt") or "")
-        text = re.sub(r"[■▪●◆□◦\x7f]+", " ", text)
-        text = re.sub(r"\s+", " ", text).strip()
+        # Keep newlines in cap-table / ledger extracts so CS-## row segments bind.
+        if _filename_boost(filename) == 0:
+            text = re.sub(r"[■▪●◆□◦\x7f]+", " ", text)
+            text = re.sub(r"[ \t]+", " ", text)
+            text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        else:
+            text = re.sub(r"[■▪●◆□◦\x7f]+", " ", text)
+            text = re.sub(r"\s+", " ", text).strip()
         if len(text) < 40:
             continue
-        blobs.append(f"### {filename}\n{text[:14_000]}")
+        cap = 28_000 if _filename_boost(filename) == 0 else 14_000
+        blobs.append(f"### {filename}\n{text[:cap]}")
         sources.append(filename)
-        if sum(len(b) for b in blobs) > 56_000:
+        if sum(len(b) for b in blobs) > 72_000:
             break
     return "\n\n".join(blobs), sources
+
+
+def _stated_common_outstanding(text: str) -> int | None:
+    sm = _STATED_SHARE_TOTAL.search(text or "")
+    co = _STATED_COMMON_OUTSTANDING.search(text or "")
+    stated = None
+    if sm:
+        try:
+            stated = int(sm.group("total").replace(",", ""))
+        except ValueError:
+            stated = None
+    if co:
+        try:
+            stated = int(co.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    return stated
+
+
+def _build_ownership_text(corpus: str) -> str | None:
+    """Compose ownership narrative from cap-table / CS-## evidence in the corpus."""
+    ownership_text = _canonicalize_cap_table_text(_parse_shareholders(corpus))
+    ledger_m = re.search(
+        r"(?i)(?:Common Stock outstanding|Securities ledger|Stock Option Plan|"
+        r"Cap\s*Table(?:\s+Summary)?)[\s\S]{0,12000}",
+        corpus[:160_000],
+    )
+    if ledger_m:
+        ownership_text = _canonicalize_cap_table_text(ledger_m.group(0)) or ownership_text
+    cert_windows = [
+        m.group(0)
+        for m in re.finditer(
+            r"(?i)\b(?:CS-\d+|Certificate\s*#?\s*\d+)\b[\s\S]{0,400}",
+            corpus[:200_000],
+        )
+    ]
+    if cert_windows or ledger_m:
+        cert_blob = "\n".join(
+            x
+            for x in (
+                ledger_m.group(0) if ledger_m else "",
+                *cert_windows,
+            )
+            if x
+        )
+        ownership_text = _canonicalize_cap_table_text(cert_blob) or ownership_text
+    return ownership_text
+
+
+def _ownership_needs_cert_enrichment(text: str | None, corpus: str) -> bool:
+    """True when stated outstanding exceeds named holdings (missing CS rows)."""
+    blob = f"{text or ''}\n{corpus or ''}"
+    stated = _stated_common_outstanding(blob)
+    if stated is None:
+        return False
+    named = _ledger_named_holdings(blob)
+    if len(named) < 2:
+        return True
+    return sum(named.values()) + 50 < stated  # allow tiny rounding gap
+
+
+def _load_cap_table_extras(
+    deal: Deal,
+    index: dict[str, Any],
+    *,
+    already: set[str],
+) -> str:
+    """Load additional cap-table / securities docs not yet in the gather window."""
+    from agetic_cdd_api.services_library import load_library_document
+
+    blobs: list[str] = []
+    for doc in index.get("documents") or []:
+        if not isinstance(doc, dict):
+            continue
+        filename = str(doc.get("filename") or "")
+        if not filename or filename in already:
+            continue
+        low = filename.lower()
+        if not re.search(
+            r"(?i)cap\s*table|securities?\s*ledger|stockholder|shareholder|"
+            r"certificate|capitali[sz]ation",
+            low,
+        ):
+            # Also pull any doc whose excerpt already shows CS-## rows.
+            excerpt = str(doc.get("excerpt") or "")
+            if not re.search(r"(?i)\bCS-\d+\b", excerpt):
+                continue
+        try:
+            loaded = load_library_document(deal, filename) or {}
+        except Exception:
+            loaded = {}
+        text = str(loaded.get("text") or doc.get("excerpt") or "")
+        text = re.sub(r"[■▪●◆□◦\x7f]+", " ", text)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        if len(text) < 40:
+            continue
+        blobs.append(f"### {filename}\n{text[:40_000]}")
+        if sum(len(b) for b in blobs) > 80_000:
+            break
+    return "\n\n".join(blobs)
 
 
 def _parse_shareholders(corpus: str, *, limit: int = 5) -> str | None:
@@ -278,42 +400,253 @@ _LEDGER_PAREN_SUM = re.compile(
     r"\(([^)]{3,120})\)"
 )
 _LEDGER_NAME_QTY = re.compile(
-    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z'-]+)+)\s*[:\-]?\s*"
+    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z'-]+)+)\s*"
+    r"(?:\([^)]{0,40}\)\s*)?"  # optional (Job Title)
+    r"[:\-]?\s*"
     r"([\d]{1,3}(?:,\d{3})+|\d{3,})\b"
 )
 _LEDGER_QTY_NAME_PAREN = re.compile(
-    r"(?<![.\d])([\d]{1,3}(?:,\d{3})+|\d{3,})\s*\(\s*[A-Z][^)]{1,80}\)"
+    r"(?<![.\d])([\d]{1,3}(?:,\d{3})+|\d{3,})\s*\(\s*([A-Z][^)]{1,80})\)"
+)
+# Certificate rows: CS-03 Dan Israel 200,000 / CS-07 91,613 Dan Israel
+# Stay on one line — never swallow the next CS-## token via newlines.
+_LEDGER_CERT_ROW = re.compile(
+    r"(?i)\b(CS-\d+)\b"
+    r"(?:[^\n0-9A-Z]{0,80}?([A-Z][a-z]+(?:[ \t]+[A-Z][a-z'-]+)+))?"
+    r"[^\n0-9]{0,60}?"
+    r"(?<![.\d])([\d]{1,3}(?:,\d{3})+|\d{3,})\b"
+    r"(?:[^\nA-Z]{0,60}?([A-Z][a-z]+(?:[ \t]+[A-Z][a-z'-]+)+))?"
+)
+# Tabular: CS-06 <tab> 687 <tab> Dan Israel
+_LEDGER_CERT_TAB = re.compile(
+    r"(?i)\b(CS-\d+)\b[\t ]+"
+    r"([\d]{1,3}(?:,\d{3})+|\d{3,})[\t ]+"
+    r"([A-Z][a-z]+(?:[\t ]+[A-Z][a-z'-]+)+)"
 )
 _STATED_SHARE_TOTAL = re.compile(
     r"(?i)(?P<prefix>shows?\s+|equal(?:s|ing)?\s+|total(?:ing)?\s+)"
     r"(?P<total>[\d]{1,3}(?:,\d{3})+|\d{4,})\s+"
     r"(?P<mid>(?:outstanding\s+)?(?:common\s+)?(?:equity/option\s+)?)shares?"
 )
+# Authoritative cap-table total only — not a single holder's grant, and not our
+# own "Stated common outstanding:" sanitizer note (that can echo a grant).
+_STATED_COMMON_OUTSTANDING = re.compile(
+    r"(?i)(?:^|[\n.;]\s*|cap\s*table[\s\S]{0,200}?)"
+    r"(?:common\s+stock\s+outstanding|total\s+common\s+stock(?:\s+outstanding)?|"
+    r"common\s+shares?\s+outstanding(?!\s+include))"
+    r"\s*[—:\-]?\s*([\d]{1,3}(?:,\d{3}){2,}|\d{7,})"
+)
 _TOTAL_EVIDENCED_PREFIX = re.compile(
     r"(?i)^Total evidenced[^.]*?\.\s*"
 )
 
 
+def _parse_share_qty(token: str) -> int | None:
+    raw = (token or "").strip()
+    try:
+        n = int(raw.replace(",", ""))
+    except ValueError:
+        return None
+    if n < 10:
+        return None
+    # Bare 4-digit calendar years (2024) — keep comma-grouped grants like 2,070.
+    if "," not in raw and 1900 <= n <= 2100:
+        return None
+    return n
+
+
+def _ledger_named_holdings(text: str) -> dict[str, int]:
+    """Map holder → share count, summing multiple certificates per person.
+
+    Dedupes identical ``(name, qty)`` pairs across regexes so
+    ``Dan Israel 200,000`` and ``200,000 (Dan Israel)`` are not double-counted,
+    but CS-03 / CS-06 / CS-07 for the same holder all contribute.
+    """
+    by_holder: dict[str, int] = {}
+    canon: dict[str, str] = {}
+    seen_pair: set[tuple[str, int]] = set()
+    seen_cert: set[str] = set()
+
+    def _clean_holder_name(name: str) -> str:
+        """Strip Job Titles and Yes/No Employee flags — keep the person."""
+        name = re.sub(r"\s+", " ", (name or "").strip()).strip(" ,.;")
+        # Cap-table "Employee" column is Yes/No — never part of the holder name.
+        name = re.sub(
+            r"(?i)\b(?:yes|no)\b(?:\s+employee)?\b|\bemployee\b(?:\s+(?:yes|no))?\b",
+            " ",
+            name,
+        )
+        # Strip trailing ledger Job Titles (CEO / SVP / Driver) — do NOT drop the
+        # person. Earlier runs discarded "Ben Parry CEO" entirely and left Dan as
+        # 98.74% of a 202,551-share subtotal.
+        name = re.sub(
+            r"(?i)(?:,?\s*)+\b(?:ex-?)?(?:svp|senior\s+vice\s+president|"
+            r"vice\s+president|ceo|cfo|cto|coo|commercial\s+driver|driver|"
+            r"option.?holder|ex-employee|composting\s+lead\s+operator)\b.*$",
+            "",
+            name,
+        ).strip(" ,.;")
+        name = re.sub(
+            r"(?i)\b(?:ex-?)?(?:svp|ceo|cfo|cto|coo|commercial\s+driver|"
+            r"option.?holder|ex-employee)\b",
+            "",
+            name,
+        )
+        name = re.sub(r"(?i)\s*CS-?\d*\s*$", "", name)
+        return re.sub(r"\s{2,}", " ", name).strip(" ,.;")
+
+    def _add(name: str, qty: int) -> None:
+        name = _clean_holder_name(name)
+        if not name or qty is None or qty < 10:
+            return
+        # Drop share-class / title-only / status tokens mistaken for holder names
+        if re.search(
+            r"(?i)^(?:common|preferred|svp|ceo|cfo|option.?holder|ex-employee|"
+            r"certificate|equity\s+award|yes|no|employee)$",
+            name,
+        ):
+            return
+        if len(name.split()) < 2:
+            return
+        key = name.lower()
+        pair = (key, qty)
+        if pair in seen_pair:
+            return
+        seen_pair.add(pair)
+        if key not in canon:
+            canon[key] = name
+        by_holder[canon[key]] = by_holder.get(canon[key], 0) + qty
+
+    def _name_from_chunk(chunk: str) -> str:
+        """First person-like name in chunk, skipping Yes/No Employee flags."""
+        for nm in re.finditer(
+            r"\b([A-Z][a-z]+(?:[\t \n]+[A-Z][a-z'-]+)+)\b",
+            chunk or "",
+        ):
+            cand = _clean_holder_name(re.sub(r"[\t \n]+", " ", nm.group(1)))
+            if len(cand.split()) >= 2 and not re.search(
+                r"(?i)^(?:yes|no|employee)\b", cand
+            ):
+                return cand
+        return ""
+
+    blob = text or ""
+    last_holder: str | None = None
+
+    def _norm_cert_id(raw: str) -> str:
+        m = re.match(r"(?i)CS-(\d+)", raw or "")
+        if m:
+            return f"CS-{int(m.group(1))}"
+        m = re.match(r"(?i)Certificate\s*#?\s*(\d+)", raw or "")
+        if m:
+            return f"CS-{int(m.group(1))}"
+        return (raw or "").upper()
+
+    # Segment by CS-## / Certificate N so qty/name on following lines still bind.
+    for seg in re.split(r"(?i)(?=\b(?:CS-\d+|Certificate\s*#?\s*\d+)\b)", blob):
+        hm = re.match(
+            r"(?i)\b(CS-\d+|Certificate\s*#?\s*\d+)\b([\s\S]{0,220})",
+            seg.strip(),
+        )
+        if not hm:
+            continue
+        cert = _norm_cert_id(hm.group(1))
+        if cert in seen_cert:
+            continue
+        rest = hm.group(2) or ""
+        qty_m = re.search(
+            r"(?<![.\d])([\d]{1,3}(?:,\d{3})+|\d{3,})\b",
+            rest,
+        )
+        if not qty_m:
+            continue
+        qty = _parse_share_qty(qty_m.group(1))
+        if qty is None:
+            continue
+        before = rest[: qty_m.start()]
+        after = rest[qty_m.end() :]
+        after_lines = after.split("\n")
+        same_line_after = after_lines[0] if after_lines else ""
+        next_line = after_lines[1] if len(after_lines) > 1 else ""
+        status_only = bool(
+            re.fullmatch(
+                r"(?i)[\s,;]*(?:yes|no)(?:\s*employee)?[\s,;]*",
+                same_line_after or "",
+            )
+        )
+        blank_same = not (same_line_after or "").strip()
+        name = _name_from_chunk(before) or _name_from_chunk(same_line_after)
+        # Qty alone on its line, holder on the next (PDF stacked cells).
+        if not name and blank_same and next_line:
+            name = _name_from_chunk(next_line)
+        if not name and last_holder and (status_only or blank_same):
+            # Subsequent certs for the same person: blank holder + Employee Yes/No.
+            name = last_holder
+        if not name:
+            continue
+        seen_cert.add(cert)
+        last_holder = name
+        _add(name, qty)
+
+    for m in _LEDGER_CERT_TAB.finditer(blob):
+        cert = m.group(1).upper()
+        if cert in seen_cert:
+            continue
+        qty = _parse_share_qty(m.group(2))
+        if qty is None:
+            continue
+        seen_cert.add(cert)
+        _add(m.group(3), qty)
+
+    for m in _LEDGER_CERT_ROW.finditer(blob):
+        cert = m.group(1).upper()
+        if cert in seen_cert:
+            continue
+        qty = _parse_share_qty(m.group(3))
+        if qty is None:
+            continue
+        name = (m.group(2) or m.group(4) or "").strip()
+        if not name:
+            # Same line only — avoid leaping into the next certificate row.
+            line_end = blob.find("\n", m.end())
+            after = blob[m.end() : line_end if line_end > 0 else m.end() + 80]
+            nm = re.search(r"\b([A-Z][a-z]+(?:[ \t]+[A-Z][a-z'-]+)+)\b", after)
+            name = nm.group(1) if nm else ""
+        if not name:
+            continue
+        seen_cert.add(cert)
+        _add(name, qty)
+
+    for m in _LEDGER_NAME_QTY.finditer(blob):
+        qty = _parse_share_qty(m.group(2))
+        if qty is not None:
+            _add(m.group(1), qty)
+    for m in _LEDGER_QTY_NAME_PAREN.finditer(blob):
+        qty = _parse_share_qty(m.group(1))
+        name = re.sub(r"\s+", " ", (m.group(2) or "").strip())
+        # Strip trailing role noise inside paren: "Dan Israel, Ex-SVP"
+        name = re.split(r"\s*[,;]\s*", name)[0].strip()
+        if qty is not None and name:
+            _add(name, qty)
+    return by_holder
+
+
 def _ledger_share_quantities(text: str) -> list[int]:
     """Pull discrete share/option quantities from a securities-ledger narrative.
 
-    Accepts ``N shares``, ``N options``, parenthetical ``(a + b + c)`` sums,
-    ``Person Name N`` holdings, and ``N (Person Name)`` ledger rows so small
-    grants are not dropped from the total.
+    Prefers per-holder totals (multiple certificates summed). Falls back to
+    quantity-only extraction when names are absent.
     """
+    named = _ledger_named_holdings(text)
+    if len(named) >= 2:
+        return sorted(named.values(), reverse=True)
+
     out: list[int] = []
     seen: set[int] = set()
 
     def _add(raw: str) -> None:
-        token = (raw or "").strip()
-        try:
-            n = int(token.replace(",", ""))
-        except ValueError:
-            return
-        if n < 10 or n in seen:
-            return
-        # Bare 4-digit calendar years (2024) — keep comma-grouped grants like 2,070.
-        if "," not in token and 1900 <= n <= 2100:
+        n = _parse_share_qty(raw)
+        if n is None or n in seen:
             return
         seen.add(n)
         out.append(n)
@@ -336,16 +669,71 @@ def _ledger_share_quantities(text: str) -> list[int]:
     return out
 
 
+_JOB_TITLE_TOKEN = (
+    r"CEO|CFO|CTO|COO|President|Chairman|Founder|"
+    r"Senior\s+Vice\s+President|Vice\s+President|SVP|"
+    r"Commercial\s+Driver|Composting\s+Lead\s+Operator|"
+    r"(?:Lead\s+)?Operator|Director|Manager|"
+    r"Head\s+of\s+[A-Za-z][A-Za-z&/\s]{1,40}"
+)
+
+
+def _title_near_holder(name: str, raw: str) -> str | None:
+    """Pull a Job Title from the ledger text beside a holder — never from a fixed map."""
+    if not name or not raw:
+        return None
+    m = re.search(
+        rf"(?i)\b{re.escape(name)}\b\s*[\(,/\-]?\s*({_JOB_TITLE_TOKEN})"
+        r"(?:\s*[,/]\s*ex-?employee)?",
+        raw,
+    )
+    if not m:
+        # Title before quantity: "Name Commercial Driver 2,070"
+        m = re.search(
+            rf"(?i)\b{re.escape(name)}\b\s+({_JOB_TITLE_TOKEN})\s+[\d,]+",
+            raw,
+        )
+    if not m:
+        return None
+    title = re.sub(r"\s+", " ", m.group(1)).strip()
+    # Preserve ex-employee when the ledger marks it near this holder.
+    window = raw[max(0, m.start() - 20) : m.end() + 40]
+    if re.search(r"(?i)ex-?employee", window) and "ex-employee" not in title.lower():
+        title = f"{title}, ex-employee"
+    return title
+
+
 def _canonicalize_cap_table_text(text: str | None) -> str | None:
     """Ensure ownership narrative carries a correctly summed share total when components exist."""
     if not text or str(text).startswith("Information"):
         return text
     raw = str(text).strip()
-    qtys = _ledger_share_quantities(raw)
-    if len(qtys) < 2:
-        return raw
+    # Strip prior sanitizer output so re-runs do not echo "Stated…" / wrong totals.
+    raw = re.sub(
+        r"(?i)(?:Ownership:\s*)?Total evidenced common equity/option shares:[^.]*\.\s*",
+        "",
+        raw,
+    )
+    raw = re.sub(r"(?i)Stated common outstanding:\s*[\d,]+\.\s*", "", raw)
+    raw = re.sub(r"\s{2,}", " ", raw).strip()
+    if not raw:
+        return str(text).strip()
 
-    # Prefer component grants over a stated total that sits near "outstanding"
+    named = _ledger_named_holdings(raw)
+    qtys = (
+        sorted(named.values(), reverse=True)
+        if len(named) >= 2
+        else _ledger_share_quantities(raw)
+    )
+    if len(qtys) < 2 and len(named) < 2:
+        # Not enough to rebuild — still collapse repeated sanitizer notes.
+        collapsed = re.sub(
+            r"(?i)(\s*Stated common outstanding:\s*[\d,]+\.)(?:\s*Stated common outstanding:\s*[\d,]+\.)+",
+            r"\1",
+            str(text).strip(),
+        )
+        return collapsed
+
     stated = None
     sm = _STATED_SHARE_TOTAL.search(raw)
     if sm:
@@ -353,20 +741,24 @@ def _canonicalize_cap_table_text(text: str | None) -> str | None:
             stated = int(sm.group("total").replace(",", ""))
         except ValueError:
             stated = None
-    # Also catch "Total evidenced … shares: N" (number after the word shares)
-    te = re.search(
-        r"(?i)Total evidenced[^:]*:\s*([\d]{1,3}(?:,\d{3})+|\d{4,})",
-        raw,
-    )
-    if te and stated is None:
+    # Cap-table "Common Stock outstanding N" — authoritative when present.
+    co = _STATED_COMMON_OUTSTANDING.search(raw)
+    if co:
         try:
-            stated = int(te.group(1).replace(",", ""))
+            stated = int(co.group(1).replace(",", ""))
         except ValueError:
+            pass
+    # Never treat a single named holder's grant as the stated outstanding total.
+    if stated is not None and named and stated in set(named.values()) and len(named) >= 2:
+        holder_sum = sum(named.values())
+        if stated != holder_sum:
             stated = None
 
-    components = [n for n in qtys if stated is None or n != stated]
+    components = list(named.values()) if len(named) >= 2 else list(qtys)
+    if stated is not None:
+        components = [n for n in components if n != stated]
     if len(components) < 2:
-        components = list(qtys)
+        components = list(named.values()) if named else list(qtys)
     # Drop any quantity that equals the sum of the remaining (already a total)
     for n in list(components):
         others = [x for x in components if x != n]
@@ -374,44 +766,91 @@ def _canonicalize_cap_table_text(text: str | None) -> str | None:
             components = others
             break
     if len(components) < 2:
-        return raw
-    # Largest holding first — stable, readable arithmetic for slides
+        return str(text).strip()
+
     components = sorted(components, reverse=True)
-    total = sum(components)
+    attributed = sum(components)
+    # Prefer the cap-table stated outstanding when certificates sum to it.
+    # If scrape is incomplete (sum < stated), still use stated as the total for
+    # % math when the label was an authoritative "Common Stock outstanding".
+    if stated is not None and stated >= attributed:
+        total = stated
+    else:
+        total = attributed
     total_fmt = f"{total:,}"
     parts = " + ".join(f"{n:,}" for n in components)
 
-    # Always rebuild the leading total so clipped slides keep correct arithmetic
-    body = raw
-    body = re.sub(
-        r"(?i)^(?:Ownership:\s*)?Total evidenced[^.]*?\.\s*",
-        "",
-        body,
-    ).strip()
-    body = re.sub(r"(?i)^Ownership:\s*", "", body).strip()
-    if sm is not None and not raw.lower().startswith("total evidenced"):
-        # In-place correction for "totaling N shares" mid-prose (no evidenced prefix)
-        mid = sm.group("mid") or ""
-        corrected = (
-            raw[: sm.start()]
-            + f"{sm.group('prefix')}{total_fmt} {mid}shares"
-            + raw[sm.end() :]
-        )
-        # Still lead with evidenced total when we have ≥2 named components
-        if len(components) >= 2:
-            body = _TOTAL_EVIDENCED_PREFIX.sub("", corrected).strip()
-            body = re.sub(r"(?i)^Total evidenced[^.]*?\.\s*", "", body).strip()
-            return (
-                f"Total evidenced common equity/option shares: {total_fmt} ({parts}). "
-                f"{body.rstrip('. ')}."
+    holder_bits: list[str] = []
+    if named and len(named) >= 2:
+        for name, qty in sorted(named.items(), key=lambda kv: -kv[1]):
+            if qty not in components and qty != total:
+                continue
+            pct = 100.0 * qty / total if total else 0.0
+            pct_lbl = f"{pct:.2f}%" if pct >= 0.01 else "<0.01%"
+            title = _title_near_holder(name, raw)
+            name_bit = f"{name} ({title})" if title else name
+            bit = f"{name_bit} {qty:,} ({pct_lbl} of common)"
+            extras: list[str] = []
+            # % must sit beside this holder (optional comma-grouped share qty /
+            # title paren) — never leap across another person or eat the % digits.
+            _beside = (
+                rf"(?i)\b{re.escape(name)}\b"
+                r"(?:\s*\((?:(?!\b[A-Z][a-z]+\s+[A-Z])[^)]){0,40}\))?"
+                r"(?:\s*[\d]{1,3}(?:,\d{3})+(?:\s*\([^)]{0,40}\))?)?"
+                r"\s*[;,]?\s*"
             )
-        return corrected
-    if not body:
-        return f"Total evidenced common equity/option shares: {total_fmt} ({parts})."
-    return (
-        f"Total evidenced common equity/option shares: {total_fmt} ({parts}). "
-        f"{body.rstrip('. ')}."
+            all_out = re.search(
+                _beside + r"(\d+(?:\.\d+)?)\s*%\s+of\s+all\s+outstanding",
+                raw,
+            )
+            fd = re.search(
+                _beside + r"(\d+(?:\.\d+)?)\s*%\s*(?:fully\s+diluted|FD)\b",
+                raw,
+            )
+            if qty == components[0]:
+                if not all_out:
+                    all_out = re.search(
+                        r"(?i)(?:controlling\s+shareholder|founder).{0,80}?"
+                        r"(\d+(?:\.\d+)?)\s*%\s+of\s+all\s+outstanding",
+                        raw,
+                    )
+                if not fd:
+                    fd = re.search(
+                        rf"(?i)\b{re.escape(name)}\b.{{0,80}}?"
+                        r"(\d+(?:\.\d+)?)\s*%\s*(?:fully\s+diluted|FD)\b",
+                        raw,
+                    )
+                    # Reject if another person name sits between holder and FD%.
+                    if fd:
+                        span = raw[raw.lower().find(name.lower()) : fd.start()]
+                        if re.search(
+                            r"\b[A-Z][a-z]+\s+[A-Z][a-z'-]+\b",
+                            span[len(name) :],
+                        ):
+                            fd = None
+            if all_out:
+                extras.append(f"{all_out.group(1)}% of all outstanding")
+            if fd:
+                extras.append(f"{fd.group(1)}% fully diluted")
+            if extras:
+                bit = f"{bit}; {'; '.join(extras)}"
+            holder_bits.append(bit)
+
+    # Only note a gap when attributed certificates disagree with stated outstanding.
+    stated_note = ""
+    if stated is not None and attributed != stated and attributed < stated:
+        stated_note = (
+            f" Attributed certificates sum to {attributed:,} "
+            f"(stated common outstanding {stated:,})."
+        )
+
+    lead = (
+        f"Total evidenced common equity/option shares: {total_fmt} ({parts})."
+        f"{stated_note}"
     )
+    if holder_bits:
+        lead = f"{lead} {'; '.join(holder_bits)}."
+    return lead
 
 
 def _sanitize_legal_name(raw: Any, *, company: str) -> str:
@@ -489,12 +928,28 @@ def _parse_headcount(corpus: str) -> str | None:
     return None
 
 
+# Generic P&L revenue component rows — "… Sales" / "… Revenue" with a figure nearby.
 _PNL_SERVICE_LINES = re.compile(
-    r"(?i)\b("
-    r"Commercial\s+Sales|Municipal\s+Sales|Residential\s+Sales|"
-    r"Key\s*Compostables(?:\s+Sales)?|Compost\s+Sales|"
-    r"Curbside\s+Composting|Organic\s+Waste\s+Collection"
-    r")\b"
+    r"(?im)^[\s•\-\u2022\d.]*"
+    r"([A-Z][A-Za-z0-9][A-Za-z0-9 &/\-]{1,40}?"
+    r"(?:\s+(?:Sales|Revenue)))\b"
+    r"(?=[^\n]{0,40}\d)"
+)
+_PNL_STREAM_SKIP = frozenset(
+    {
+        "total sales",
+        "total revenue",
+        "net sales",
+        "net revenue",
+        "gross sales",
+        "gross revenue",
+        "other sales",
+        "other revenue",
+        "deferred revenue",
+        "unearned revenue",
+        "revenue growth",
+        "yoy revenue",
+    }
 )
 
 
@@ -540,23 +995,41 @@ def _parse_revenue_streams(corpus: str) -> list[dict[str, str]]:
             if len(streams) >= 6:
                 return streams
 
-    # Accounts P&L named lines (Commercial / Municipal / Residential / …) — no % needed
-    if len(streams) < 3:
-        for m in _PNL_SERVICE_LINES.finditer(corpus[:40_000]):
-            name = re.sub(r"\s+", " ", m.group(1)).strip()
-            key = name.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            streams.append({
-                "dimension": "service_line",
-                "label": name,
-                "share": "evidenced in accounts",
-                "period": "accounts P&L",
-                "source": _DOC_CITE,
-            })
-            if len(streams) >= 6:
-                break
+    # Accounts / monthly-pack P&L named revenue rows — prefer these when the
+    # pack lists several component Sales/Revenue lines (often richer than mix %).
+    pnl: list[dict[str, str]] = []
+    pnl_seen: set[str] = set()
+    for m in _PNL_SERVICE_LINES.finditer(corpus[:120_000]):
+        name = re.sub(r"\s+", " ", m.group(1)).strip()
+        key = name.lower()
+        if (
+            key in pnl_seen
+            or key in _PNL_STREAM_SKIP
+            or key in _STREAM_SKIP
+            or any(s in key for s in _STREAM_SKIP)
+        ):
+            continue
+        pnl_seen.add(key)
+        pnl.append({
+            "dimension": "service_line",
+            "label": name,
+            "share": "evidenced in accounts",
+            "period": "accounts P&L",
+            "source": _DOC_CITE,
+        })
+        if len(pnl) >= 6:
+            break
+    if len(pnl) >= max(len(streams), 4):
+        return pnl[:6]
+    # Otherwise fill a thin mix block from any remaining P&L names.
+    for row in pnl:
+        key = row["label"].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        streams.append(row)
+        if len(streams) >= 6:
+            break
     return streams
 
 
@@ -722,6 +1195,82 @@ def _quality_reliance(*, filled: int, requests: int) -> tuple[str, str, str]:
     return quality, reliance, rationale
 
 
+def _questions_from_company_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    """Build Questions rows from omitted fields and corporate record requests."""
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    omitted = spec.get("omitted_fields") if isinstance(spec.get("omitted_fields"), list) else []
+    for row in omitted:
+        if not isinstance(row, dict):
+            continue
+        field = str(row.get("field") or "field")
+        reason = str(row.get("reason") or "not evidenced")
+        # Omitted-as-N/A (inapplicable) ≠ missing evidence.
+        if re.search(r"(?i)does not apply|not applicable|n/?a for this", reason):
+            continue
+        out.append(
+            normalize_question(
+                {
+                    "question": f"Provide evidence for {field}",
+                    "required_records": reason,
+                    "decision_effect": "Market/ops agents must not invent an operating model",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "company diligence lead",
+                    "timing": "before IC",
+                    "closure_test": f"{field} evidenced with locator and period",
+                    "interim_treatment": f"Treat {field} as unknown; omit from READY reliance",
+                }
+            )
+        )
+    ownership = spec.get("ownership") if isinstance(spec.get("ownership"), dict) else {}
+    for req in ownership.get("corporate_record_requests") or []:
+        text = str(req).strip()
+        if not text:
+            continue
+        out.append(
+            normalize_question(
+                {
+                    "question": text if text.endswith("?") else f"Obtain: {text}",
+                    "required_records": text,
+                    "decision_effect": "Legal perimeter / ownership for structure and pricing",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "legal / corporate",
+                    "timing": "before IC",
+                    "closure_test": "Named corporate record filed with dated locator",
+                    "interim_treatment": "Ownership conclusions LIMITED",
+                }
+            )
+        )
+    # Unreconciled revenue splits are decision-relevant.
+    recon = str(spec.get("accounts_reconciliation") or "")
+    if "information request" in recon.lower() or recon.startswith("N/A"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide revenue by service line / customer / geography reconciling to accounts",
+                    "required_records": "Audited or management accounts split by dimension×period",
+                    "decision_effect": "Mix drives pricing, market and concentration workstreams",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financials lead",
+                    "timing": "before IC",
+                    "closure_test": "Splits sum to accounts total within materiality for each period",
+                    "interim_treatment": "Do not invent mix; later agents use group totals only",
+                }
+            )
+        )
+    # Deduplicate by question text
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    return unique[:12]
+
+
 def _llm_company_background_spec(
     *,
     company: str,
@@ -730,6 +1279,11 @@ def _llm_company_background_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -742,6 +1296,12 @@ def _llm_company_background_spec(
         sector=sector,
         geography=geography,
         materiality=materiality,
+        target_company=company,
+        deal_perimeter=deal_perimeter,
+        transaction_type=transaction_type,
+        as_of_date=as_of_date,
+        review_periods=review_periods,
+        decision_stage=decision_stage,
     )
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
@@ -766,6 +1326,8 @@ def _llm_company_background_spec(
         "[{date, event, evidence}], corporate_record_requests: [string]},\n"
         "operating_model (string — one plain-language paragraph: one unit of "
         "revenue end-to-end; what is in-house),\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "quality_verdict (PASS|REWORK),\n"
         "reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
@@ -1004,14 +1566,7 @@ def _heuristic_company_background_spec(
             "reason": "No functional headcount split in the HR pack",
         })
 
-    ownership_text = _canonicalize_cap_table_text(_parse_shareholders(corpus))
-    # Prefer securities-ledger narrative from corpus when present (richer than % list)
-    ledger_m = re.search(
-        r"(?i)(?:Common Stock outstanding|Securities ledger|Stock Option Plan).{0,500}",
-        corpus[:80_000],
-    )
-    if ledger_m:
-        ownership_text = _canonicalize_cap_table_text(ledger_m.group(0)) or ownership_text
+    ownership_text = _build_ownership_text(corpus)
     history = _parse_ma_events(corpus)
     founded_m = founded
     if founded_m:
@@ -1106,7 +1661,7 @@ def _heuristic_company_background_spec(
             "municipal service contracts, and per-unit product sales"
         )
 
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "offers": {
             "sells": sells_s,
@@ -1144,6 +1699,8 @@ def _heuristic_company_background_spec(
         "entity_type": entity.get("entity_type"),
         "governance_notes": entity.get("governance_notes") or [],
     }
+    out["questions"] = _questions_from_company_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -1301,6 +1858,20 @@ def _normalise_llm_spec(
     llm["incorporation_date"] = ownership.get("founded") or entity.get("incorporation_date")
     llm["entity_type"] = entity.get("entity_type")
     llm["governance_notes"] = entity.get("governance_notes") or []
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_company_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            if not isinstance(raw, dict):
+                continue
+            q = normalize_question(raw)
+            if not q.get("closure_test"):
+                q["closure_test"] = "Evidence filed with locator and period"
+            filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_company_gaps(llm)
     return llm
 
 
@@ -1338,6 +1909,17 @@ def build_company_background_spec(
                 bits.append(ex)
                 sources.append(str(doc.get("filename") or "source"))
         corpus = "\n".join(bits)
+    # When holder totals under-state Common Stock outstanding, pull more
+    # cap-table / CS-## pages that the first gather window may have missed.
+    if _ownership_needs_cert_enrichment(None, corpus or ""):
+        extra = _load_cap_table_extras(deal, idx, already=set(sources or []))
+        if extra:
+            corpus = f"{corpus or ''}\n\n{extra}"
+            for line in extra.splitlines():
+                if line.startswith("### "):
+                    fn = line[4:].strip()
+                    if fn and fn not in (sources or []):
+                        sources = list(sources or []) + [fn]
 
     vars_ = prompt_vars_from_deal(deal)
     if not vars_.get("sector"):
@@ -1350,16 +1932,25 @@ def build_company_background_spec(
         sector=vars_.get("sector"),
         geography=vars_.get("geography"),
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if llm:
-        return _normalise_llm_spec(llm, company=target, sources=sources, entity=entity)
+        out = _normalise_llm_spec(llm, company=target, sources=sources, entity=entity)
+        out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+        return out
 
-    return _heuristic_company_background_spec(
+    heur = _heuristic_company_background_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         entity=entity,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_company_background_markdown(
@@ -1541,8 +2132,38 @@ def render_company_background_markdown(
     )
     parts.append("---\n\n")
 
-    # 5. Quality & Reliance
-    parts.append("## 5. Quality & Reliance\n\n")
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    if questions:
+        parts.append("## 5. Questions and Inputs Required\n\n")
+        q_rows = []
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            q_rows.append([
+                _clean(row.get("priority"), 40),
+                _clean(row.get("question"), 120),
+                _clean(row.get("decision_effect"), 80),
+                _clean(row.get("required_records"), 80),
+                _clean(row.get("owner"), 40),
+                _clean(row.get("closure_test"), 80),
+                _clean(row.get("interim_treatment"), 80),
+            ])
+        parts.append(_table(
+            [
+                "Priority",
+                "Question",
+                "Decision Effect",
+                "Required Records",
+                "Owner",
+                "Closure Test",
+                "Interim",
+            ],
+            q_rows,
+        ))
+        parts.append("---\n\n")
+
+    # Quality & Reliance
+    parts.append("## 6. Quality & Reliance\n\n")
     parts.append(
         f"**Quality:** {_clean(spec.get('quality_verdict') or 'PASS', 20)} — "
         f"is the work accurate and honest about limits?\n\n"

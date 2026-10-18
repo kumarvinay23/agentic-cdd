@@ -392,7 +392,10 @@ def harvest_metric_facts(ctx: BuildContext) -> list[MetricFact]:
 
 def _format_display(value: float, unit: str = "", family: str = "") -> Any:
     if unit == "%" or family in ("gross_margin", "ebitda_margin", "grr", "nrr", "wacc"):
-        return f"{value:g}%"
+        from agetic_cdd_api.report_builder_base import coerce_percent_points
+
+        pp = coerce_percent_points(float(value), family=family, unit=unit or "%")
+        return f"{pp:.2f}".rstrip("0").rstrip(".") + "%"
     if unit == "INR Cr":
         return f"{value:g} INR Cr"
     if unit == "INR" or family in ("cac", "ltv", "asp"):
@@ -631,13 +634,16 @@ def derive_kpi_scorecard(facts: list[MetricFact], pl_lines: list[dict]) -> list[
             continue
         name = label_overrides.get(fam, fact.label)
         display = _format_display(fact.value, fact.unit, fam)
-        if fam == "gross_margin":
-            display = f"{fact.value:g}%"
-        if fam == "wacc":
-            display = f"{fact.value:g}%"
         if fam == "ltv_cac":
             display = f"{fact.value:g}x"
-        kpis.append(KpiRow(name, display, "-", _rag_for_metric(fam, fact.value)))
+        from agetic_cdd_api.report_builder_base import coerce_percent_points
+
+        rag_val = (
+            coerce_percent_points(float(fact.value), family=fam, unit=fact.unit or "%")
+            if fam in {"gross_margin", "ebitda_margin", "grr", "nrr", "wacc"}
+            else fact.value
+        )
+        kpis.append(KpiRow(name, display, "-", _rag_for_metric(fam, float(rag_val))))
         seen.add(display_fam)
 
     return kpis
@@ -822,7 +828,8 @@ def _build_exec_dashboard(wb: Workbook, ctx: BuildContext, facts: list[MetricFac
 
     preferred = [
         "historical_performance", "operational_risk", "internal_risk",
-        "deal_context_and_objectives", "capital_structure", "cash_flow",
+        "management_quality", "deal_context_and_objectives",
+        "capital_structure", "cash_flow",
     ]
     agent_keys = [k for k in preferred if k in ctx.agent_outputs] or sorted(ctx.agent_outputs.keys())
     for agent_key in agent_keys:
@@ -932,9 +939,19 @@ def _build_customer_analysis(wb: Workbook, ctx: BuildContext) -> None:
         _write_header_row(ws, r, ["Metric", "Value", "Source"])
         r += 1
         for mk, mv in retention.items():
-            if _as_float(mv) is None:
+            num = _as_float(mv)
+            if num is None:
                 continue
-            _write_row(ws, r, [_humanize(str(mk)), _safe_num(mv), "from the data room"])
+            fam = _canonical_family(str(mk))
+            _write_row(
+                ws,
+                r,
+                [
+                    _humanize(str(mk)),
+                    _format_display(num, "%", fam),
+                    "from the data room",
+                ],
+            )
             r += 1
         r += 1
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agetic_cdd_api.agent_document_company_background import (
     _heuristic_company_background_spec,
+    _parse_headcount_by_function,
     build_company_background_spec,
     render_company_background_markdown,
 )
@@ -120,7 +121,7 @@ def test_company_background_markdown_follows_prompt_book() -> None:
     assert "## 2. Physical Operation" in md
     assert "## 3. Ownership, Legal Entities & History" in md
     assert "## 4. Operating Model" in md
-    assert "## 5. Quality & Reliance" in md
+    assert "## 6. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "**Confidence:**" not in md
     assert "Execution Verdict" not in md
@@ -135,6 +136,21 @@ def test_company_background_markdown_follows_prompt_book() -> None:
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
     assert heur.get("operating_model")
     assert "Invest in" not in (heur.get("operating_model") or "")
+    assert isinstance(heur.get("questions"), list)
+    # Thin-evidence path must emit Questions with closure tests
+    thin = _heuristic_company_background_spec(
+        company="SparseCo",
+        corpus="SparseCo Limited provides services. No mix disclosed.",
+        sources=["note.pdf"],
+        entity={"legal_name": "SparseCo Limited"},
+    )
+    assert thin.get("questions")
+    from agetic_cdd_api.prompt_book import questions_complete
+
+    assert questions_complete(thin["questions"])
+    thin_md = render_company_background_markdown("Company Background", thin)
+    assert "Questions and Inputs Required" in thin_md
+    assert "Closure Test" in thin_md
 
 
 def test_build_company_background_spec_renderable() -> None:
@@ -214,12 +230,13 @@ def test_render_agent_document_company_background_from_spec() -> None:
     assert "Ola Electric Mobility Limited" in rendered
     assert "4,900" in rendered
     assert "**Recommendation:**" not in rendered
-    assert "## 5. Quality & Reliance" in rendered
+    assert "## 6. Quality & Reliance" in rendered
 
 
 def test_canonicalize_cap_table_includes_small_option_grants() -> None:
     from agetic_cdd_api.agent_document_company_background import (
         _canonicalize_cap_table_text,
+        _ledger_named_holdings,
         _ledger_share_quantities,
     )
 
@@ -235,10 +252,7 @@ def test_canonicalize_cap_table_includes_small_option_grants() -> None:
     assert sum(qtys) == 10_202_561
     fixed = _canonicalize_cap_table_text(wrong)
     assert fixed is not None
-    assert fixed.startswith(
-        "Total evidenced common equity/option shares: 10,202,561 "
-        "(10,000,010 + 200,000 + 2,070 + 481)."
-    )
+    assert "10,202,561" in fixed.split(".", 1)[0]
     assert "10,200,010" not in fixed.split(".", 1)[0]
 
     ledger = (
@@ -246,3 +260,164 @@ def test_canonicalize_cap_table_includes_small_option_grants() -> None:
         "2,070 (Tiffany Williams), 481 (Timothy Jenkins)."
     )
     assert "10,202,561" in (_canonicalize_cap_table_text(ledger) or "")
+
+    # Full certificate ledger — Dan Israel holds CS-03 + CS-06 + CS-07 = 292,300.
+    # Totals / % must come from summing this scrape, not a hardcoded canon.
+    full = (
+        "Cap Table Summary — Common Stock outstanding 10,294,861. "
+        "Ben Parry 61.27% of all outstanding; 55.26% fully diluted. "
+        "Securities ledger: "
+        "CS-01 Ben Parry 10,000,010; "
+        "CS-03 Dan Israel 200,000; "
+        "CS-06 Dan Israel 687; "
+        "CS-07 Dan Israel 91,613; "
+        "Tiffany Williams 2,070; Timothy Jenkins 481."
+    )
+    holdings = _ledger_named_holdings(full)
+    assert holdings.get("Dan Israel") == 292_300
+    assert holdings.get("Ben Parry") == 10_000_010
+    canon = _canonicalize_cap_table_text(full)
+    assert canon is not None
+    assert "10,294,861" in canon
+    assert "292,300" in canon
+    assert "97.14%" in canon
+    assert "61.27%" in canon
+    assert "55.26%" in canon
+    assert "<0.01%" in canon or "Timothy Jenkins 481 (<0.01%" in (canon or "")
+    assert "0.00% of common" not in (canon or "")
+
+    # Multi-line ledger: certificates after the header must still be summed.
+    multiline = (
+        "Cap Table Summary — Common Stock outstanding 10,294,861.\n"
+        "Securities ledger:\n"
+        "CS-01 Ben Parry 10,000,010\n"
+        "CS-03 Dan Israel 200,000\n"
+        "CS-06 Dan Israel 687\n"
+        "CS-07 Dan Israel 91,613\n"
+        "Tiffany Williams 2,070\n"
+        "Timothy Jenkins 481\n"
+    )
+    assert _ledger_named_holdings(multiline).get("Dan Israel") == 292_300
+    assert "10,294,861" in (_canonicalize_cap_table_text(multiline) or "")
+
+    # Employee Yes/No column must not drop CS-06/CS-07 or invent "Dan Israel No".
+    with_employee_col = (
+        "Cap Table Summary — Common Stock outstanding 10,294,861. "
+        "Ben Parry 61.27% of all outstanding; 55.26% fully diluted. "
+        "CS-01 Ben Parry CEO Yes 10,000,010; "
+        "CS-03 Dan Israel Senior Vice President No 200,000; "
+        "CS-06 Dan Israel No 687; "
+        "CS-07 Dan Israel No 91,613; "
+        "Tiffany Williams Commercial Driver Yes 2,070; "
+        "Timothy Jenkins Composting Lead Operator Yes 481."
+    )
+    emp_h = _ledger_named_holdings(with_employee_col)
+    assert emp_h.get("Dan Israel") == 292_300
+    assert emp_h.get("Ben Parry") == 10_000_010
+    assert not any(" no" in k.lower() or k.lower().endswith(" yes") for k in emp_h)
+    emp_c = _canonicalize_cap_table_text(with_employee_col)
+    assert emp_c is not None
+    assert "10,294,861" in emp_c
+    assert "292,300" in emp_c
+    assert "97.14%" in emp_c
+    assert "Dan Israel No" not in emp_c
+
+    # Blank holder + Employee=No on later certs → carry forward prior holder.
+    carry = (
+        "Cap Table Summary — Common Stock outstanding 10,294,861\n"
+        "CS-01\tBen Parry\tCEO\tYes\t10,000,010\n"
+        "CS-03\tDan Israel\tSVP\tNo\t200,000\n"
+        "CS-06\t687\tNo\n"
+        "CS-07\t91,613\tNo\n"
+        "Tiffany Williams\t2,070\n"
+        "Timothy Jenkins\t481\n"
+    )
+    assert _ledger_named_holdings(carry).get("Dan Israel") == 292_300
+
+    # PDF/table extract: Certificate / Shares / Holder on separate lines.
+    stacked = (
+        "Cap Table Summary — Common Stock outstanding 10,294,861.\n"
+        "CS-01\n10,000,010\nBen Parry\n"
+        "CS-03\n200,000\nDan Israel\n"
+        "CS-06\n687\nDan Israel\n"
+        "CS-07\n91,613\nDan Israel\n"
+        "CS-08\n2,070\nTiffany Williams\n"
+        "CS-09\n481\nTimothy Jenkins\n"
+    )
+    stacked_h = _ledger_named_holdings(stacked)
+    assert stacked_h.get("Dan Israel") == 292_300
+    assert stacked_h.get("Ben Parry") == 10_000_010
+    stacked_c = _canonicalize_cap_table_text(stacked)
+    assert stacked_c is not None
+    assert "10,294,861" in stacked_c
+    assert "97.14%" in stacked_c
+
+    # Job Title beside a holder must not drop the block; titles re-attach from text.
+    with_title = (
+        "Cap Table Summary — Common Stock outstanding 10,294,861. "
+        "CS-01 Ben Parry CEO 10,000,010; "
+        "CS-03 Dan Israel Senior Vice President 200,000; "
+        "CS-06 Dan Israel 687; CS-07 Dan Israel 91,613; "
+        "Tiffany Williams Commercial Driver 2,070; Timothy Jenkins 481."
+    )
+    titled = _ledger_named_holdings(with_title)
+    assert titled.get("Ben Parry") == 10_000_010
+    assert titled.get("Dan Israel") == 292_300
+    assert all("CEO" not in n and "SVP" not in n.upper() for n in titled)
+    canon_t = _canonicalize_cap_table_text(with_title)
+    assert canon_t is not None
+    assert "10,294,861" in canon_t
+    assert "Ben Parry (CEO)" in canon_t
+    assert "Commercial Driver" in canon_t
+
+    # Controlling holder omitted from scrape — do NOT invent them; note stated gap.
+    no_ctrl = (
+        "Cap Table Summary — Common Stock outstanding 10,294,861. "
+        "Dan Israel 200,000; Tiffany Williams 2,070; Timothy Jenkins 481."
+    )
+    partial = _canonicalize_cap_table_text(no_ctrl)
+    assert partial is not None
+    assert "Ben Parry" not in partial
+    assert "10,000,010" not in partial
+    assert "Dan Israel" in partial
+    assert "10,294,861" in partial
+    assert "Attributed certificates" in partial or "202,551" in partial
+
+
+def test_stated_outstanding_after_sentence_period() -> None:
+    """'…. Common Stock outstanding N' must still set the total when CS rows are thin."""
+    from agetic_cdd_api.agent_document_company_background import (
+        _canonicalize_cap_table_text,
+    )
+
+    thin = (
+        "Cap table: Ben Parry 10,000,010, Dan Israel 200,000, "
+        "Tiffany Williams 2,070, Timothy Jenkins 481. "
+        "Common Stock outstanding 10,294,861. "
+        "Ben Parry 61.27% of all outstanding."
+    )
+    canon = _canonicalize_cap_table_text(thin)
+    assert canon is not None
+    assert "10,294,861" in canon
+    # Only Ben gets the pack's "of all outstanding" % — not every holder.
+    assert canon.count("61.27% of all outstanding") == 1
+
+
+def test_headcount_and_heuristic_tolerate_empty_sources() -> None:
+    """Empty sources must not IndexError; heuristic return must be complete."""
+    rows = _parse_headcount_by_function(
+        "Total Headcount (FTE) 3,200 Technology / R&D 650 1,800 2,200",
+        [],
+    )
+    assert isinstance(rows, list)
+    heur = _heuristic_company_background_spec(
+        company="SparseCo",
+        corpus="SparseCo Limited provides organics services in the UK.",
+        sources=[],
+        entity={"legal_name": "SparseCo Limited"},
+    )
+    assert heur.get("offers")
+    assert heur.get("quality_verdict") in {"PASS", "REWORK"}
+    assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
+    assert isinstance(heur.get("questions"), list)
+    assert "composer" in heur

@@ -37,6 +37,21 @@ def _proof_rank(level: ProofLevel | None) -> int:
     return PROOF_LEVEL_RANK[level]
 
 
+def _retention_segment_rank(row: ExtractedRow, metric_key: str) -> int:
+    """Higher = prefer for auto-promote (commercial over residential).
+
+    Ranking is caption-driven only — never match fixed deal GRR/NRR ratios.
+    """
+    if metric_key not in {"grr", "nrr"}:
+        return 0
+    cap = (row.caption or "").lower()
+    if "commercial" in cap:
+        return 3
+    if "residential" in cap:
+        return -3
+    return 0
+
+
 def _median(values: list[float]) -> float:
     if not values:
         return 0.0
@@ -535,8 +550,10 @@ def apply_statuses_and_promote(
         if not members:
             continue
         # Deterministic primary for unit/currency/scale when multi-source agree on value.
+        # Retention: prefer commercial-segment captions over residential (caption-only).
         members.sort(
             key=lambda m: (
+                _retention_segment_rank(m, metric_key),
                 caption_plainness(m.caption, metric_key),
                 bool(m.currency),
                 bool(m.scale),

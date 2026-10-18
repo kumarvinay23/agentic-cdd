@@ -76,13 +76,13 @@ def test_verdict_dag_valid() -> None:
     )
 
     assert validate_dag() == []
-    assert len(all_verdict_slugs()) == 7
-    assert len(PHASE4_AGENT_KEYS) == 7
+    assert len(all_verdict_slugs()) == 8
+    assert len(PHASE4_AGENT_KEYS) == 8
     assert set(PHASE4_AGENT_KEYS) == set(all_verdict_slugs())
     assert role_by_slug("not-a-slug") is None
     assert len(_SLUG_MAP) == len(VERDICT_ROLES)
     codes = [role.code for role in VERDICT_ROLES]
-    assert codes == [f"FV-{i:02d}" for i in range(1, 8)]
+    assert codes == [f"FV-{i:02d}" for i in range(1, 9)]
 
     order = topo_order()
     assert order.index("compensation_alignment") < order.index("precedent_transactions")
@@ -90,11 +90,13 @@ def test_verdict_dag_valid() -> None:
     assert order.index("precedent_transactions") < order.index("valuation_modeling")
     assert order.index("valuation_modeling") < order.index("ic_synthesis")
     assert order.index("ic_synthesis") < order.index("recommendation")
+    assert order.index("recommendation") < order.index("appendices")
     assert order[0] in {"execution_risk", "compensation_alignment", "trading_comps"}
 
     blast = cascade_blast_radius("valuation_modeling")
     assert "ic_synthesis" in blast
     assert "recommendation" in blast
+    assert "appendices" in blast
 
 
 def test_validate_dag_detects_cycles() -> None:
@@ -146,7 +148,7 @@ def test_verdict_store_validation() -> None:
     incomplete_store = completeness_of(store={"deal_id": "x"})
     assert incomplete_store["structurally_valid"] is False
     assert incomplete_store["complete"] is False
-    assert len(incomplete_store["missing_agents"]) == 7
+    assert len(incomplete_store["missing_agents"]) == 8
 
     bad = copy.deepcopy(store)
     bad["agents"]["execution_risk"]["status"] = "weird"
@@ -214,7 +216,7 @@ def test_final_verdict_run_writes_verdict_store() -> None:
         assert pipe.status_code == 200
         verdict = next(p for p in pipe.json()["data"]["phases"] if p["phase_id"] == "final_verdict")
         assert verdict["status"] == "completed"
-        assert verdict["completedAgents"] == 7
+        assert verdict["completedAgents"] == 8
 
         out = client.get(
             f"/api/v1/portfolios/{deal_id}/pipeline/agents/recommendation/output",
@@ -227,13 +229,21 @@ def test_final_verdict_run_writes_verdict_store() -> None:
         assert payload["fv_code"] == "FV-07"
         assert payload["stage"] == "C"
 
+        ap_out = client.get(
+            f"/api/v1/portfolios/{deal_id}/pipeline/agents/appendices/output",
+            headers=headers,
+        )
+        assert ap_out.status_code == 200
+        ap_payload = ap_out.json()["data"]["file_output"] or ap_out.json()["data"]["output"]
+        assert ap_payload["spec"].get("fv_code") == "FV-08"
+
         from agetic_cdd_api.services_deals import ensure_deal_folder
 
         store_path = ensure_deal_folder("fv-store-s0") / "library" / "verdict_store.json"
         assert store_path.is_file()
         store = json.loads(store_path.read_text(encoding="utf-8"))
         assert validate_verdict_store(store) == []
-        assert len(store["agents"]) == 7
+        assert len(store["agents"]) == 8
         assert store["completeness"]["complete"] is True
         assert store["completeness"]["stage_ready"] == {"A": True, "B": True, "C": True}
 
@@ -276,9 +286,9 @@ def test_pipeline_phases_final_verdict_shape() -> None:
         res = client.get(f"/api/v1/portfolios/{deal_id}/pipeline/phases", headers=headers)
         assert res.status_code == 200
         verdict = next(p for p in res.json()["data"]["phases"] if p["phase_id"] == "final_verdict")
-        assert len(verdict["agentList"]) == 7
+        assert len(verdict["agentList"]) == 8
         assert verdict["agentList"][0]["agent_key"] == "execution_risk"
-        assert verdict["agentList"][-1]["agent_key"] == "recommendation"
+        assert verdict["agentList"][-1]["agent_key"] == "appendices"
 
 
 def test_partial_rerun_hydrates_upstream_context(monkeypatch) -> None:

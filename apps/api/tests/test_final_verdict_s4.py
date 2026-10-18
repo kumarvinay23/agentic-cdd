@@ -64,7 +64,9 @@ def test_cascade_run_order_valuation_modeling() -> None:
     assert order[0] == "valuation_modeling"
     assert "ic_synthesis" in order
     assert "recommendation" in order
+    assert "appendices" in order
     assert order.index("ic_synthesis") < order.index("recommendation")
+    assert order.index("recommendation") < order.index("appendices")
     assert "trading_comps" not in order
     assert "execution_risk" not in order
 
@@ -75,6 +77,7 @@ def test_cascade_blast_from_trading_comps() -> None:
     assert "valuation_modeling" in order
     assert "ic_synthesis" in order
     assert "recommendation" in order
+    assert "appendices" in order
     assert "precedent_transactions" not in order
 
 
@@ -85,11 +88,12 @@ def test_cascade_blast_from_compensation_alignment() -> None:
     assert "valuation_modeling" in order
     assert "ic_synthesis" in order
     assert "recommendation" in order
+    assert "appendices" in order
 
 
 def test_cascade_blast_from_ic_synthesis() -> None:
     order = cascade_run_order(["ic_synthesis"])
-    assert order == ["ic_synthesis", "recommendation"]
+    assert order == ["ic_synthesis", "recommendation", "appendices"]
 
 
 def test_frozen_upstream_excludes_rerun_set() -> None:

@@ -9,7 +9,12 @@ from agetic_cdd_api.agent_document_customer_segmentation import (
     render_customer_segmentation_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -44,11 +49,14 @@ def test_customer_segmentation_prompt_book_listed() -> None:
     system = compose_system("customer_segmentation", sector="EV", geography="India")
     assert "customer_segmentation" in listed_agents()
     assert "concentration" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("customer_segmentation")
     assert "Ola" not in body and "SoftBank" not in body
     assert "top 1" in body.lower() or "top 10" in body.lower()
     assert "unassessed" in body.lower()
     assert "ledger" in body.lower()
+    assert "overlap" in body.lower() or "reproducib" in body.lower()
 
 
 def test_customer_segmentation_not_company_hardcoded() -> None:
@@ -113,7 +121,10 @@ def test_customer_segmentation_markdown_calculated() -> None:
     assert "## 3. Concentration" in md
     assert "## 4. Largest Contracts" in md
     assert "## 5. Population" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Population Definition QA" in md
+    assert "## 7. Closure Reproducibility" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     conc = heur.get("concentration") or {}
     assert conc.get("calculable") is True
@@ -124,6 +135,10 @@ def test_customer_segmentation_markdown_calculated() -> None:
     assert isinstance(heur.get("segments"), list)
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert heur.get("population_definition_qa")
+    assert heur.get("closure_reproducibility")
 
 
 def test_customer_segmentation_unassessed_withholds_risk() -> None:
@@ -140,6 +155,8 @@ def test_customer_segmentation_unassessed_withholds_risk() -> None:
     assert "unassessed" in body
     assert "withheld" in body or "not high risk" in body or "not a high-risk" in body
     assert "**Recommendation:**" not in md
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
 
 
 def test_normalise_strips_recommendation_and_forces_withheld() -> None:
@@ -177,6 +194,8 @@ def test_normalise_strips_recommendation_and_forces_withheld() -> None:
     assert conc.get("calculable") is False
     assert conc.get("risk_rating") in (None, "withheld")
     assert "invest" not in str(llm.get("insight_snapshot") or "").lower()
+    assert llm.get("questions")
+    assert questions_complete(llm["questions"])
 
 
 def test_render_agent_document_customer_segmentation() -> None:
@@ -188,7 +207,7 @@ def test_render_agent_document_customer_segmentation() -> None:
             "# Customer Segmentation\n\n"
             "## 1. Ledger & Customer Universe\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 9. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -217,6 +236,11 @@ def test_build_customer_segmentation_from_corpus() -> None:
     )
     md = render_customer_segmentation_markdown("Customer Segmentation", spec)
     assert "## 3. Concentration" in md
+    assert "## 6. Population Definition QA" in md
+    assert "## 8. Questions" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-08"
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+    assert spec.get("deal_slots")

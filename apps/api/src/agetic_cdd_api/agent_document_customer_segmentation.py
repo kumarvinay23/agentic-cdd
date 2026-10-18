@@ -1666,6 +1666,355 @@ def _population_discipline(
     return {"statement": statement, "caveats": caveats}
 
 
+def _population_definition_qa(
+    *,
+    universe: dict[str, str],
+    axes: list[dict[str, Any]],
+    concentration: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Population definition QA — reject overlapping buckets / mixed populations."""
+    rows: list[dict[str, str]] = []
+    primary = _population(universe.get("population_label"), default="accounts")
+    conc_pop = _population(concentration.get("population"), default="parents")
+    rows.append({
+        "check": "concentration_population",
+        "population": conc_pop,
+        "status": "PASS" if conc_pop == "parents" else "FAIL",
+        "action": (
+            "Concentration counted on parents (related accounts rolled up)"
+            if conc_pop == "parents"
+            else "Reject — concentration must be on parents, not mixed populations"
+        ),
+    })
+    rows.append({
+        "check": "universe_primary",
+        "population": primary,
+        "status": "PASS" if primary in _POPULATIONS else "FAIL",
+        "action": (
+            f"Primary population stated as {primary}"
+            if primary in _POPULATIONS
+            else "State a single primary population from accounts|parents|locations|subscriptions"
+        ),
+    })
+
+    for axis in axes:
+        if not isinstance(axis, dict):
+            continue
+        axis_key = _axis_key(axis.get("axis"))
+        label = _AXIS_LABEL.get(axis_key, axis_key)
+        pop = _population(axis.get("population"), default=primary)
+        axis_rows = axis.get("rows") if isinstance(axis.get("rows"), list) else []
+        total = _sum_shares(axis_rows)
+        if total is not None and total > 100.5:
+            rows.append({
+                "check": f"overlap_{axis_key}",
+                "population": pop,
+                "status": "REJECTED",
+                "action": (
+                    f"{label} shares sum to {total:g}% — overlapping / double-counted "
+                    "buckets rejected until reconciled to ≤100% + unclassified remainder"
+                ),
+            })
+        elif total is not None:
+            rows.append({
+                "check": f"axis_{axis_key}",
+                "population": pop,
+                "status": "PASS",
+                "action": (
+                    f"{label} counted on {pop}; shares sum to {total:g}% "
+                    f"(remainder shown, not forced)"
+                ),
+            })
+        # Mixed population within one axis table
+        pops_in_rows: set[str] = set()
+        for r in axis_rows:
+            if isinstance(r, dict) and r.get("population"):
+                pops_in_rows.add(_population(r.get("population"), default=pop))
+        if len(pops_in_rows) > 1:
+            rows.append({
+                "check": f"mixed_population_{axis_key}",
+                "population": ",".join(sorted(pops_in_rows)),
+                "status": "REJECTED",
+                "action": (
+                    f"{label} mixes populations in one table — reject; "
+                    "split into separate tables per population"
+                ),
+            })
+
+    if not any(r.get("status") == "REJECTED" for r in rows):
+        # ensure at least a summary when all clean
+        if len(rows) <= 2:
+            rows.append({
+                "check": "no_overlap_flagged",
+                "population": primary,
+                "status": "PASS",
+                "action": "No overlapping buckets flagged on opened axes",
+            })
+    return rows[:12]
+
+
+def _closure_reproducibility(
+    *,
+    ledger: dict[str, str],
+    concentration: dict[str, Any],
+    axes: list[dict[str, Any]],
+    contracts: list[dict[str, Any]],
+) -> dict[str, str]:
+    """Closure reproducibility — same ledger inputs must reproduce published figures."""
+    calculable = bool(concentration.get("calculable"))
+    ledger_status = str(ledger.get("status") or "missing")
+    tests: list[str] = []
+    status = "PASS"
+
+    if ledger_status == "missing":
+        status = "BLOCKED"
+        tests.append(
+            "FAIL: billing ledger / investor workbook not opened — "
+            "concentration and axis reconciles cannot be reproduced"
+        )
+    elif not calculable:
+        status = "FAIL"
+        tests.append(
+            "FAIL: concentration unassessed — top 1/5/10 cannot be reproduced from parent ledger"
+        )
+    else:
+        for label, key in (
+            ("top 1", "top_1_share_pct"),
+            ("top 5", "top_5_share_pct"),
+            ("top 10", "top_10_share_pct"),
+        ):
+            if _is_filled(concentration.get(key)):
+                tests.append(
+                    f"PASS: {label} share {_clean(concentration.get(key), 20)} "
+                    f"reproducible from parent-level revenue {_COMPUTED}"
+                )
+            else:
+                status = "FAIL" if status == "PASS" else status
+                tests.append(f"FAIL: {label} share missing — not reproducible")
+
+    reconciled_axes = 0
+    for axis in axes:
+        if not isinstance(axis, dict) or not axis.get("rows"):
+            continue
+        notes = str(axis.get("reconcile_notes") or "")
+        total = _sum_shares(axis.get("rows") or [])
+        if total is not None and total > 100.5:
+            status = "FAIL" if status == "PASS" else status
+            tests.append(
+                f"FAIL: {_AXIS_LABEL.get(_axis_key(axis.get('axis')), 'axis')} "
+                f"overlap ({total:g}%) — not reproducible until buckets exclusive"
+            )
+        elif _is_filled(axis.get("unclassified_share_pct")) or (
+            total is not None and "reconcile" in notes.lower()
+        ):
+            reconciled_axes += 1
+            tests.append(
+                f"PASS: {_AXIS_LABEL.get(_axis_key(axis.get('axis')), 'axis')} "
+                f"reconcile + remainder shown {_COMPUTED}"
+            )
+
+    named = _contracts_named(contracts)
+    if named:
+        tests.append(
+            f"PASS: {named} named contract(s) with value/share/end/termination {_COMPUTED}"
+        )
+    else:
+        if status == "PASS":
+            status = "LIMITED"
+        tests.append(
+            "LIMITED: largest contracts not named — register required for closure"
+        )
+
+    closure_test = (
+        "Re-open the same billing ledger / investor workbook at parent grain; "
+        "recompute top 1/5/10 and each axis share + unclassified remainder; "
+        "figures must match within rounding."
+    )
+    return {
+        "status": status,
+        "tests": "; ".join(tests[:8]) if tests else _NA,
+        "closure_test": closure_test,
+        "interim_treatment": (
+            "Do not publish READY concentration while closure is FAIL/BLOCKED"
+            if status in {"FAIL", "BLOCKED"}
+            else "None — closure reproducible from stated ledger inputs"
+        ),
+        "source": _COMPUTED if calculable else _NA,
+    }
+
+
+def _questions_from_cs_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    ledger = (
+        spec.get("ledger_resolution")
+        if isinstance(spec.get("ledger_resolution"), dict)
+        else {}
+    )
+    if str(ledger.get("status") or "") != "resolved":
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Open the billing ledger / investor workbook with account, "
+                        "parent and location IDs"
+                    ),
+                    "required_records": (
+                        "Customer-level revenue (and GP if held) for the audited period "
+                        "with account ID, parent ID, location ID"
+                    ),
+                    "decision_effect": (
+                        "Without the ledger, concentration is unassessed and risk rating withheld"
+                    ),
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "ledger_resolution.status = resolved with parent grain",
+                    "interim_treatment": (
+                        "Concentration unassessed; empty table is not high risk"
+                    ),
+                }
+            )
+        )
+
+    conc = spec.get("concentration") if isinstance(spec.get("concentration"), dict) else {}
+    if not conc.get("calculable"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Calculate top 1 / top 5 / top 10 revenue shares at parent level",
+                    "required_records": "Parent-aggregated revenue for the audited period",
+                    "decision_effect": "Concentration cannot support IC value debate until calculated",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial / financial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "concentration.calculable = true with top_1/5/10 filled",
+                    "interim_treatment": "Withhold risk rating; do not describe concentration",
+                }
+            )
+        )
+
+    axes = (
+        spec.get("segments_by_axis")
+        if isinstance(spec.get("segments_by_axis"), list)
+        else []
+    )
+    if not _axes_reconciled(axes):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Reconcile segment revenue to accounts total with unclassified remainder",
+                    "required_records": (
+                        "Service / type / geography / contract-form mix vs accounts revenue"
+                    ),
+                    "decision_effect": "Unreconciled mix cannot support where-revenue-comes-from",
+                    "priority": "signing_condition",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 axis with rows + unclassified remainder reconciling to ~100%",
+                    "interim_treatment": "Do not force unclassified revenue into a segment",
+                }
+            )
+        )
+
+    pop_qa = (
+        spec.get("population_definition_qa")
+        if isinstance(spec.get("population_definition_qa"), list)
+        else []
+    )
+    if any(isinstance(r, dict) and r.get("status") == "REJECTED" for r in pop_qa):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Resolve overlapping / mixed-population segment buckets",
+                    "required_records": (
+                        "Exclusive segment definitions with shares ≤100% + remainder"
+                    ),
+                    "decision_effect": "Overlapping buckets double-count revenue and break concentration",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "No REJECTED rows on population_definition_qa",
+                    "interim_treatment": "Drop overlapping axes from publishable mix",
+                }
+            )
+        )
+
+    contracts = (
+        spec.get("largest_contracts")
+        if isinstance(spec.get("largest_contracts"), list)
+        else []
+    )
+    if _contracts_named(contracts) == 0:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Name largest contracts with value, share, end date and termination rights",
+                    "required_records": "Contract register / top customer contracts extract",
+                    "decision_effect": "Expiry and termination risk on concentrated revenue is untested",
+                    "priority": "signing_condition",
+                    "owner": "legal / commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 named contract with value, share, end_date, termination_rights",
+                    "interim_treatment": "Do not invent counterparty names",
+                }
+            )
+        )
+
+    closure = (
+        spec.get("closure_reproducibility")
+        if isinstance(spec.get("closure_reproducibility"), dict)
+        else {}
+    )
+    if str(closure.get("status") or "") in {"FAIL", "BLOCKED"}:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Close the reproducibility test for concentration and axis reconciles",
+                    "required_records": str(closure.get("closure_test") or "Same ledger recompute"),
+                    "decision_effect": "Figures that cannot be reproduced are not diligence-grade",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "closure_reproducibility.status = PASS",
+                    "interim_treatment": str(
+                        closure.get("interim_treatment")
+                        or "LIMITED reliance until reproducible"
+                    ),
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material customer-segmentation inputs are missing "
+                        "for the stated population"
+                    ),
+                    "required_records": "N/A — ledger, concentration and mix publishable",
+                    "decision_effect": "None — segmentation publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "commercial diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if ledger period or population definition changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
+
+
 # ---------------------------------------------------------------------------
 # legacy dual-write (Ideal Customer Profile / decks)
 # ---------------------------------------------------------------------------
@@ -1925,6 +2274,8 @@ def _quality_reliance(
     axes_reconciled: bool,
     contracts_named: int,
     universe_filled: int,
+    overlap_rejects: int = 0,
+    closure_status: str = "PASS",
 ) -> tuple[str, str, str]:
     evidence = (
         f"{axis_row_count} segment row(s) across service / customer type / geography / "
@@ -1932,9 +2283,16 @@ def _quality_reliance(
         f"{'reconciled to the accounts with the remainder shown' if axes_reconciled else 'not reconciled to the accounts'}; "
         f"{contracts_named} contract(s) named with value, share, end date and "
         f"termination rights; {universe_filled} of 4 customer populations evidenced; "
-        f"ledger {ledger_status}."
+        f"ledger {ledger_status}"
+        + (f"; {overlap_rejects} overlapping-bucket reject(s)" if overlap_rejects else "")
+        + f"; closure {closure_status}."
     )
-    if calculable and (axes_reconciled or contracts_named):
+    if (
+        calculable
+        and (axes_reconciled or contracts_named)
+        and overlap_rejects == 0
+        and closure_status == "PASS"
+    ):
         return (
             "PASS",
             "READY",
@@ -1948,8 +2306,8 @@ def _quality_reliance(
             "PASS",
             "LIMITED",
             (
-                "Concentration is calculated, but segment revenue is neither reconciled "
-                f"to the accounts nor supported by named contracts. {evidence}"
+                "Concentration is calculated, but segment reconcile, overlapping buckets, "
+                f"contracts, or closure reproducibility is incomplete. {evidence}"
             ),
         )
     if axis_row_count or contracts_named or ledger_status == "partial" or universe_filled:
@@ -2022,6 +2380,15 @@ def _heuristic_customer_segmentation_spec(
     discipline = _population_discipline(
         universe=universe, axes=axes, concentration=concentration
     )
+    pop_qa = _population_definition_qa(
+        universe=universe, axes=axes, concentration=concentration
+    )
+    closure = _closure_reproducibility(
+        ledger=ledger,
+        concentration=concentration,
+        axes=axes,
+        contracts=contracts,
+    )
     legacy_fields = _legacy_fields(
         corpus_full,
         legacy,
@@ -2041,6 +2408,9 @@ def _heuristic_customer_segmentation_spec(
         for key in ("accounts_n", "parents_n", "locations_n", "subscriptions_n")
         if _is_filled(universe.get(key))
     )
+    overlap_rejects = sum(
+        1 for r in pop_qa if isinstance(r, dict) and r.get("status") == "REJECTED"
+    )
     quality, reliance, rationale = _quality_reliance(
         calculable=calculable,
         ledger_status=ledger["status"],
@@ -2048,6 +2418,8 @@ def _heuristic_customer_segmentation_spec(
         axes_reconciled=reconciled,
         contracts_named=named,
         universe_filled=universe_filled,
+        overlap_rejects=overlap_rejects,
+        closure_status=str(closure.get("status") or "PASS"),
     )
 
     if calculable:
@@ -2077,13 +2449,13 @@ def _heuristic_customer_segmentation_spec(
                 else " not yet reconciled to the accounts"
             )
             + f"; {conc_txt}; {named} largest contract(s) named with value, share, end "
-            "date and termination rights. Populations are stated per table and never "
-            "mixed."
+            "date and termination rights; population QA and closure reproducibility "
+            f"({closure.get('status')}). Populations are stated per table and never mixed."
         ),
         calculable=calculable,
     )
 
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "ledger_resolution": ledger,
         "customer_universe": universe,
@@ -2091,6 +2463,8 @@ def _heuristic_customer_segmentation_spec(
         "concentration": concentration,
         "largest_contracts": contracts,
         "population_discipline": discipline,
+        "population_definition_qa": pop_qa,
+        "closure_reproducibility": closure,
         "segments": legacy_fields["segments"],
         "geo_mix": legacy_fields["geo_mix"],
         "icp_notes": legacy_fields["icp_notes"],
@@ -2109,6 +2483,8 @@ def _heuristic_customer_segmentation_spec(
             and not legacy_fields["segments"]
         ),
     }
+    out["questions"] = _questions_from_cs_gaps(out)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2124,6 +2500,11 @@ def _llm_customer_segmentation_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -2137,6 +2518,12 @@ def _llm_customer_segmentation_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -2164,6 +2551,11 @@ def _llm_customer_segmentation_spec(
         "largest_contracts: [{name, value, share_pct, end_date, termination_rights, "
         "source}],\n"
         "population_discipline: {statement, caveats},\n"
+        "population_definition_qa: [{check, population, status, action}] "
+        "— REJECT overlapping buckets and mixed populations,\n"
+        "closure_reproducibility: {status, tests, closure_test, interim_treatment, source},\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "segments: [{name, share_pct, avg_age, use_case, key_driver}] — legacy ICP "
         "shape for decks, names only from the evidence,\n"
         "geo_mix: [string] in the form 'Region: 34% revenue share',\n"
@@ -2185,9 +2577,11 @@ def _llm_customer_segmentation_spec(
         "Repeat the top 1 / top 5 calculation for gross profit only if customer-level "
         "margin data exist.\n"
         "Reconcile segment revenue to the revenue total in the accounts and show the "
-        "unclassified remainder — never force revenue into a segment.\n"
+        "unclassified remainder — never force revenue into a segment. Reject overlapping "
+        "buckets (shares > 100%).\n"
         "State which population every count refers to: accounts, parents, locations or "
         "subscriptions. Do NOT mix populations in one table.\n"
+        "Closure must be reproducible from the same ledger inputs.\n"
         "Name the largest contracts with value, share of revenue, end date and "
         "termination rights. Never invent customer or counterparty names — if a name "
         "is not in the evidence, raise a named information request instead.\n"
@@ -2559,6 +2953,22 @@ def _normalise_llm_spec(
                 )
     llm["population_discipline"] = discipline
 
+    if not isinstance(llm.get("population_definition_qa"), list) or not llm.get(
+        "population_definition_qa"
+    ):
+        llm["population_definition_qa"] = _population_definition_qa(
+            universe=universe, axes=axes, concentration=concentration
+        )
+    if not isinstance(llm.get("closure_reproducibility"), dict) or not llm.get(
+        "closure_reproducibility"
+    ):
+        llm["closure_reproducibility"] = _closure_reproducibility(
+            ledger=ledger,
+            concentration=concentration,
+            axes=axes,
+            contracts=contracts,
+        )
+
     # --- legacy dual-write -------------------------------------------------
     heur_legacy = _legacy_fields(
         corpus,
@@ -2606,6 +3016,16 @@ def _normalise_llm_spec(
         for key in ("accounts_n", "parents_n", "locations_n", "subscriptions_n")
         if _is_filled(universe.get(key))
     )
+    pop_qa = (
+        llm.get("population_definition_qa")
+        if isinstance(llm.get("population_definition_qa"), list)
+        else []
+    )
+    closure = (
+        llm.get("closure_reproducibility")
+        if isinstance(llm.get("closure_reproducibility"), dict)
+        else {}
+    )
     quality, reliance, rationale = _quality_reliance(
         calculable=calculable,
         ledger_status=ledger_status,
@@ -2613,6 +3033,10 @@ def _normalise_llm_spec(
         axes_reconciled=_axes_reconciled(axes),
         contracts_named=named,
         universe_filled=universe_filled,
+        overlap_rejects=sum(
+            1 for r in pop_qa if isinstance(r, dict) and r.get("status") == "REJECTED"
+        ),
+        closure_status=str(closure.get("status") or "PASS"),
     )
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
@@ -2634,6 +3058,18 @@ def _normalise_llm_spec(
         )
     if ledger_status == "missing" and axis_row_count == 0 and named == 0:
         llm["reliance_verdict"] = "BLOCKED"
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_cs_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_cs_gaps(llm)
 
     for dead in (
         "recommendation",
@@ -2712,16 +3148,23 @@ def build_customer_segmentation_spec(
             sector=sector,
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_customer_segmentation_spec(
+    heur = _heuristic_customer_segmentation_spec(
         company=target,
         corpus=corpus,
         sources=sources,
@@ -2729,6 +3172,8 @@ def build_customer_segmentation_spec(
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 # ---------------------------------------------------------------------------
@@ -2812,6 +3257,17 @@ def render_customer_segmentation_markdown(
         if isinstance(spec.get("population_discipline"), dict)
         else {}
     )
+    pop_qa = (
+        spec.get("population_definition_qa")
+        if isinstance(spec.get("population_definition_qa"), list)
+        else []
+    )
+    closure = (
+        spec.get("closure_reproducibility")
+        if isinstance(spec.get("closure_reproducibility"), dict)
+        else {}
+    )
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     srcs = sources or spec.get("primary_sources") or spec.get("sources") or []
     calculable = bool(concentration.get("calculable"))
     primary_pop = _population(universe.get("population_label"), default="accounts")
@@ -3006,6 +3462,44 @@ def render_customer_segmentation_markdown(
             ],
         ],
     ))
+    parts.append("---\n\n")
+
+    # --- 6 ----------------------------------------------------------------
+    parts.append("## 6. Population Definition QA (Reject Overlaps)\n\n")
+    parts.append(
+        "Reject overlapping segment buckets (shares > 100%) and mixed populations "
+        "in one table. Concentration must stay on parents.\n\n"
+    )
+    if pop_qa:
+        parts.append(_table(
+            ["Check", "Population", "Status", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 40).replace("_", " "),
+                    _clean(r.get("population"), 40),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("action"), 140),
+                ]
+                for r in pop_qa if isinstance(r, dict)
+            ],
+        ))
+    parts.append("---\n\n")
+
+    # --- 7 ----------------------------------------------------------------
+    parts.append("## 7. Closure Reproducibility\n\n")
+    parts.append(
+        "The same ledger inputs must reproduce published top-1/5/10 and axis reconciles.\n\n"
+    )
+    parts.append(_table(
+        ["Item", "Value"],
+        [
+            ["Status", _clean(closure.get("status") or _NA, 30)],
+            ["Tests", _clean(closure.get("tests"), 420)],
+            ["Closure test", _clean(closure.get("closure_test"), 300)],
+            ["Interim treatment", _clean(closure.get("interim_treatment"), 200)],
+            ["Source", _clean(closure.get("source") or _NA, 40)],
+        ],
+    ))
     parts.append(
         "*This section does not recommend invest or pass. Where concentration cannot be "
         "calculated from parent-level revenue, it is unassessed: the ledger is "
@@ -3015,8 +3509,29 @@ def render_customer_segmentation_markdown(
     )
     parts.append("---\n\n")
 
-    # --- 6 ----------------------------------------------------------------
-    parts.append("## 6. Quality & Reliance\n\n")
+    # --- 8 ----------------------------------------------------------------
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material customer-segmentation gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # --- 9 ----------------------------------------------------------------
+    parts.append("## 9. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

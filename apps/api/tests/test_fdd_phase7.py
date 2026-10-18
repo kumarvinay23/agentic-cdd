@@ -238,6 +238,34 @@ def test_deck_body_respects_six_bullet_cap_with_held_back() -> None:
     assert lines[-1].startswith("Held back:")
 
 
+def test_deck_key_findings_surfaces_gap_overflow() -> None:
+    """SEC-K deck must not hide 7 of 8 pack gaps — overflow note required."""
+    from agetic_cdd_api.fdd_schemas import CommentarySentence, SectionDraft
+    from agetic_cdd_api.services_fdd_assemble import _deck_body_from_draft
+
+    gaps = [
+        CommentarySentence(
+            tag="Q",
+            text=(
+                f"FY202{i} revenue: monthly pack 1.{i} vs investor workbook 1.{i+1} "
+                f"— gap 0.0{i} (contradicted)"
+            ),
+        )
+        for i in range(1, 9)
+    ]
+    draft = SectionDraft(
+        section_id="SEC-K",
+        title="Key findings",
+        action_title="Key findings: closed-year reads",
+        sentences=gaps,
+    )
+    body = _deck_body_from_draft(draft)
+    lines = body.split("\n")
+    assert len(lines) <= 6
+    assert any("more gap line" in ln for ln in lines)
+    assert sum(1 for ln in lines if "(contradicted)" in ln) >= 3
+
+
 def test_refs_dedupe_tokens_from_body(deal_root: Path) -> None:
     from agetic_cdd_api.fdd_schemas import (
         ArtefactStatus,

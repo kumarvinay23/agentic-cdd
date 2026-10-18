@@ -23,7 +23,15 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name, sanitize_report_prose
+from agetic_cdd_api.report_builder_base import (
+    BuildContext,
+    ReportBuilder,
+    _evt,
+    _recover_legal_name,
+    agent_cite_source_names,
+    ctx_cite_source_names,
+    sanitize_report_prose,
+)
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -130,10 +138,32 @@ def _sector(ctx: BuildContext) -> str:
 # Text cleaning / noise filters (logic-driven, no deal hardcoding)
 # ---------------------------------------------------------------------------
 
-def _clean_prose(text: str, max_chars: int = 1200, *, company: str | None = None) -> str:
+def _clean_prose(
+    text: str,
+    max_chars: int = 1200,
+    *,
+    company: str | None = None,
+    sources: list[Any] | None = None,
+    ctx: BuildContext | None = None,
+    agent_keys: tuple[str, ...] = (),
+) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip())
     t = t.replace("\x7f", " ").replace("■", " ").replace("", " ")
-    t = sanitize_report_prose(t, company=company)
+    cite_sources = sources
+    if not cite_sources and ctx is not None:
+        cite_sources = ctx_cite_source_names(
+            ctx, *(agent_keys or ("company_background", "historical_performance"))
+        )
+    t = sanitize_report_prose(t, company=company, sources=cite_sources)
+    if re.search(r"(?i)(?:shares?|options?|cap table|ownership|10,?000,?010)", t):
+        from agetic_cdd_api.agent_document_company_background import (
+            _canonicalize_cap_table_text,
+        )
+
+        t = _canonicalize_cap_table_text(t) or t
+        t = sanitize_report_prose(t, company=company, sources=cite_sources)
+        if re.search(r"(?i)Total evidenced common equity", t):
+            max_chars = max(max_chars, 700)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
@@ -152,6 +182,12 @@ def _is_noisy(text: str) -> bool:
     # Jammed status tables
     if t.count(" compliant") >= 2 and ("risk level" in t or "governing" in t):
         return True
+    # ALL-CAPS slide/chart chrome (CONTRACT POTENTIAL OUR MODEL ASSUMPTION …)
+    caps_runs = re.findall(r"\b[A-Z]{3,}(?:\s+[A-Z]{3,}){2,}\b", raw)
+    if caps_runs and re.search(r"(?i)homes?|waitlist|assumption|potential", raw):
+        return True
+    if len(re.findall(r"\b[A-Z]{4,}\b", raw)) >= 6 and raw.count(".") <= 1:
+        return True
     # Long run-on without sentence structure
     if len(raw) > 420 and raw.count(".") < 2 and raw.count("—") < 1 and raw.count(":") < 3:
         return True
@@ -166,9 +202,14 @@ def _is_meta_finding(text: str) -> bool:
     return bool(_META_FINDING_RE.search((text or "").strip()))
 
 
-def _signal_line(text: str, *, max_chars: int = 280) -> str | None:
+def _signal_line(
+    text: str,
+    *,
+    max_chars: int = 280,
+    sources: list[Any] | None = None,
+) -> str | None:
     """Return cleaned signal text, or None if noisy / meta / empty."""
-    t = _clean_prose(text, max_chars=max_chars + 80)
+    t = _clean_prose(text, max_chars=max_chars + 80, sources=sources)
     if not t or _is_meta_finding(t) or _is_noisy(t):
         return None
     if len(t) > max_chars:
@@ -215,6 +256,7 @@ def _dedupe(lines: list[str]) -> list[str]:
 
 def _findings(agent: dict[str, Any], limit: int = 8, *, clean: bool = True) -> list[str]:
     raw = agent.get("findings") or []
+    srcs = agent_cite_source_names(agent, limit=6)
     out: list[str] = []
     for item in raw:
         text = ""
@@ -227,12 +269,12 @@ def _findings(agent: dict[str, Any], limit: int = 8, *, clean: bool = True) -> l
         if not text:
             continue
         if clean:
-            sig = _signal_line(text)
+            sig = _signal_line(text, sources=srcs)
             if not sig:
                 continue
             out.append(sig)
         else:
-            out.append(_clean_prose(text, 500))
+            out.append(_clean_prose(text, 500, sources=srcs))
         if len(out) >= limit:
             break
     return _dedupe(out)
@@ -258,14 +300,26 @@ def _as_str_list(value: Any, limit: int = 12, *, clean: bool = True) -> list[str
                 or ""
             ).strip()
             if text:
-                extra = item.get("severity") or item.get("impact") or item.get("status")
-                # Append severity/status only for short labelled items
-                if extra is not None and item.get("name") and len(text) < 80:
-                    text = f"{text} ({extra})"
+                # Keep key-person retention / impact / mitigation on risk rows
+                # (IC Memo table keeps these; bullets must too).
+                bits: list[str] = []
+                impact = item.get("impact")
+                mitigation = item.get("mitigation")
+                severity = item.get("severity") or item.get("status")
+                if impact is not None and str(impact).strip():
+                    bits.append(str(impact).strip())
+                if mitigation is not None and str(mitigation).strip():
+                    bits.append(str(mitigation).strip())
+                if not bits and severity is not None and (
+                    item.get("name") or item.get("risk")
+                ):
+                    bits.append(str(severity))
+                if bits and len(text) < 220:
+                    text = f"{text} — {'; '.join(bits)}"
         if not text:
             continue
         if clean:
-            sig = _signal_line(text, max_chars=320)
+            sig = _signal_line(text, max_chars=420)
             if not sig:
                 continue
             out.append(sig)
@@ -1428,7 +1482,48 @@ def _compose_legal(doc: Document, ctx: BuildContext, section: StorylineSection) 
 def _compose_appendices(doc: Document, ctx: BuildContext) -> None:
     _page_break(doc)
     _add_heading(doc, "Appendices — Source Index", level=1)
-    _add_insight(doc, "Agent → primary source document map from this deal's workflow outputs.")
+    appendices = _resolve_agent(ctx, "appendices")
+    ap_spec = _spec(appendices) if appendices else {}
+    snapshot = str(ap_spec.get("insight_snapshot") or "").strip()
+    _add_insight(
+        doc,
+        snapshot[:400]
+        if snapshot
+        else "Agent → primary source document map from this deal's workflow outputs.",
+    )
+    claims = ap_spec.get("claim_register") if isinstance(ap_spec.get("claim_register"), list) else []
+    if claims:
+        _add_heading(doc, "Claim register (Appendices agent)", level=2)
+        claim_rows: list[tuple[str, str, str, str]] = []
+        for c in claims[:15]:
+            if not isinstance(c, dict):
+                continue
+            claim_rows.append(
+                (
+                    str(c.get("claim_id") or "")[:24],
+                    str(c.get("text") or "")[:80],
+                    str(c.get("source_category") or "")[:18],
+                    str(c.get("locator") or "")[:40],
+                )
+            )
+        if claim_rows:
+            _add_agent_source_table(
+                doc,
+                claim_rows,
+                col_headers=("Claim ID", "Text", "Category", "Locator"),
+            )
+    cite = ap_spec.get("citation_check") if isinstance(ap_spec.get("citation_check"), dict) else {}
+    cite_summary = cite.get("summary") if isinstance(cite.get("summary"), dict) else {}
+    if cite_summary:
+        _add_heading(doc, "Citation check summary", level=2)
+        _add_para(
+            doc,
+            f"Claims checked: {cite_summary.get('claims_checked', 0)}; "
+            f"supports={cite_summary.get('supports', 0)}; "
+            f"unverified={cite_summary.get('unverified', 0)}; "
+            f"does_not_support={cite_summary.get('does_not_support', 0)}. "
+            "Availability is not verification.",
+        )
     rows: list[tuple[str, str, str, str]] = []
     for key, agent in sorted(ctx.agent_outputs.items()):
         if not isinstance(agent, dict):

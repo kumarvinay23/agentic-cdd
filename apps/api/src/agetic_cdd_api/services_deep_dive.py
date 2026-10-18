@@ -527,7 +527,10 @@ def _build_market_output(
         perimeter = None
         md_prior = prior.get("market_definition") if isinstance(prior, dict) else None
         if isinstance(md_prior, dict) and isinstance(md_prior.get("spec"), dict):
-            perimeter = md_prior["spec"].get("perimeter")
+            md_spec_prior = md_prior["spec"]
+            # Prefer exported shared fact (date/unit + four axes) over raw perimeter.
+            export = md_spec_prior.get("perimeter_export")
+            perimeter = export if isinstance(export, dict) else md_spec_prior.get("perimeter")
         # Do NOT build a thin corpus from legacy TAM/SAM/SOM raw values — that
         # re-injects segment rows (e.g. hauling-only $498) and blocks TOTAL Current
         # extract from the VDR workbook. Pass corpus=None so gather_market_volume_corpus
@@ -1642,11 +1645,25 @@ def _build_ops_output(
             if isinstance(finding, str) and finding.strip():
                 corpus_bits.append(finding.strip())
         corpus = "\n".join(corpus_bits) or None
+        cash_flow_spec = None
+        prior_cf = prior.get("cash_flow") if isinstance(prior, dict) else None
+        if isinstance(prior_cf, dict) and isinstance(prior_cf.get("spec"), dict):
+            cash_flow_spec = prior_cf["spec"]
+        if cash_flow_spec is None:
+            try:
+                from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+                disk = read_agent_output_file(deal, agent_key="cash_flow") or {}
+                if isinstance(disk.get("spec"), dict):
+                    cash_flow_spec = disk["spec"]
+            except Exception:
+                cash_flow_spec = None
         ops_spec = build_operational_risk_spec(
             deal,
             index=index,
             company=str(payload.get("target_company") or deal.company or deal.name),
             legacy_spec=legacy,
+            cash_flow_spec=cash_flow_spec,
             corpus=corpus,
             sources=list(payload.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
@@ -1881,6 +1898,16 @@ def _build_financial_output(
             hp_spec.get("trend_headline")
         ).startswith("Information"):
             findings.append(str(hp_spec["trend_headline"])[:200])
+        # Surface EBITDA margin range when growth_and_margins computed one.
+        for row in hp_spec.get("growth_and_margins") or []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("metric") or "").lower() != "ebitda margin range":
+                continue
+            val = str(row.get("value") or "").strip()
+            if val and "%" in val:
+                findings.append(f"{val} EBITDA margin")
+                break
         facts = [
             f for f in (hp_spec.get("period_facts") or [])
             if isinstance(f, dict) and f.get("value") is not None
@@ -1940,11 +1967,41 @@ def _build_financial_output(
                     if prior_buying.get(src_key) is not None:
                         legacy["revenue_mix"].setdefault(src_key, prior_buying[src_key])
 
+        stickiness_spec = None
+        prior_stick = prior.get("customer_stickiness") if isinstance(prior, dict) else None
+        if isinstance(prior_stick, dict) and isinstance(prior_stick.get("spec"), dict):
+            stickiness_spec = prior_stick["spec"]
+        if stickiness_spec is None:
+            try:
+                from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+                disk_st = read_agent_output_file(deal, agent_key="customer_stickiness") or {}
+                if isinstance(disk_st.get("spec"), dict):
+                    stickiness_spec = disk_st["spec"]
+            except Exception:
+                stickiness_spec = None
+
+        cash_flow_spec = None
+        prior_cf = prior.get("cash_flow") if isinstance(prior, dict) else None
+        if isinstance(prior_cf, dict) and isinstance(prior_cf.get("spec"), dict):
+            cash_flow_spec = prior_cf["spec"]
+        if cash_flow_spec is None:
+            try:
+                from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+                disk_cf = read_agent_output_file(deal, agent_key="cash_flow") or {}
+                if isinstance(disk_cf.get("spec"), dict):
+                    cash_flow_spec = disk_cf["spec"]
+            except Exception:
+                cash_flow_spec = None
+
         rq_spec = build_revenue_quality_spec(
             deal,
             index=index,
             company=str(out.get("target_company") or deal.company or deal.name),
             legacy_spec=legacy,
+            stickiness_spec=stickiness_spec,
+            cash_flow_spec=cash_flow_spec,
             sources=list(out.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
@@ -1985,7 +2042,80 @@ def _build_financial_output(
         ]
         if nonrep:
             findings.append(f"{len(nonrep)} non-repeating item(s)")
+        qa = rq_spec.get("rq_evidence_qa") or []
+        qa_fail = sum(
+            1 for r in qa
+            if isinstance(r, dict) and r.get("status") == "FAIL"
+        )
+        if qa:
+            findings.append(f"Revenue QA {len(qa) - qa_fail}/{len(qa)} PASS")
         qv, rv = rq_spec.get("quality_verdict"), rq_spec.get("reliance_verdict")
+        if qv or rv:
+            findings.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
+        if not findings:
+            findings = findings_from_financial_spec(role.slug, merged)[:8]
+        out["findings"] = findings[:8]
+
+    if role.slug == "cash_flow":
+        from agetic_cdd_api.agent_document_cash_flow import (
+            build_cash_flow_spec,
+            render_cash_flow_markdown,
+        )
+        from agetic_cdd_api.settings import settings
+
+        legacy = out.get("spec") if isinstance(out.get("spec"), dict) else {}
+        prior_hist = None
+        prior_hp = prior.get("historical_performance") if isinstance(prior, dict) else None
+        if isinstance(prior_hp, dict):
+            prior_hist = (
+                prior_hp.get("spec")
+                if isinstance(prior_hp.get("spec"), dict)
+                else prior_hp
+            )
+        cf_spec = build_cash_flow_spec(
+            deal,
+            index=index,
+            company=str(out.get("target_company") or deal.company or deal.name),
+            legacy_spec=legacy,
+            prior_historical=prior_hist if isinstance(prior_hist, dict) else None,
+            sources=list(out.get("sources") or []),
+            prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
+        )
+        merged = {**legacy, **cf_spec}
+        # Prefer composer bridges; keep legacy metrics when composer thin.
+        if not cf_spec.get("cash_metrics") and legacy.get("cash_metrics"):
+            merged["cash_metrics"] = legacy["cash_metrics"]
+        out["spec"] = merged
+        sources = list(out.get("sources") or [])
+        for s in (cf_spec.get("primary_sources") or legacy.get("sources") or []):
+            if isinstance(s, str) and s and s not in sources:
+                sources.append(s)
+        out["sources"] = sources
+        document = render_cash_flow_markdown(
+            str(out.get("agentName") or "Cash Flow"),
+            merged,
+            sources=sources,
+        )
+        out["document"] = document
+        out["summary"] = str(
+            cf_spec.get("insight_snapshot") or out.get("summary") or ""
+        )[:600]
+        findings = []
+        if cf_spec.get("cash_bridge"):
+            findings.append(f"{len(cf_spec['cash_bridge'])} cash-bridge line(s)")
+        if cf_spec.get("ebitda_to_cash_bridge"):
+            findings.append(
+                f"{len(cf_spec['ebitda_to_cash_bridge'])} EBITDA→cash line(s)"
+            )
+        conv = (cf_spec.get("cash_metrics") or {}).get("cash_conversion_pct")
+        if isinstance(conv, (int, float)):
+            findings.append(f"Cash conversion {conv:g}%")
+        liq = cf_spec.get("liquidity") if isinstance(cf_spec.get("liquidity"), dict) else {}
+        if liq.get("runway_months_computed") is not None:
+            findings.append(f"Runway ~{liq['runway_months_computed']:g} months")
+        elif str(liq.get("pressure") or "") == "unavailable":
+            findings.append("Liquidity inputs incomplete (missing ≠ distress)")
+        qv, rv = cf_spec.get("quality_verdict"), cf_spec.get("reliance_verdict")
         if qv or rv:
             findings.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
         if not findings:
@@ -2000,11 +2130,26 @@ def _build_financial_output(
         from agetic_cdd_api.settings import settings
 
         legacy = out.get("spec") if isinstance(out.get("spec"), dict) else {}
+        hp_spec = None
+        prior_hp = prior.get("historical_performance") if isinstance(prior, dict) else None
+        if isinstance(prior_hp, dict) and isinstance(prior_hp.get("spec"), dict):
+            hp_spec = prior_hp["spec"]
+        if hp_spec is None:
+            try:
+                from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+                disk_hp = read_agent_output_file(deal, agent_key="historical_performance") or {}
+                if isinstance(disk_hp.get("spec"), dict):
+                    hp_spec = disk_hp["spec"]
+            except Exception:
+                hp_spec = None
+
         cs_spec = build_capital_structure_spec(
             deal,
             index=index,
             company=str(out.get("target_company") or deal.company or deal.name),
             legacy_spec=legacy,
+            hp_spec=hp_spec,
             sources=list(out.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
@@ -2042,6 +2187,13 @@ def _build_financial_output(
         gaps = cs_spec.get("schedule_gaps") or []
         if gaps:
             findings.append(f"{len(gaps)} schedule gap(s)")
+        qa = cs_spec.get("cap_evidence_qa") or []
+        qa_fail = sum(
+            1 for r in qa
+            if isinstance(r, dict) and r.get("status") == "FAIL"
+        )
+        if qa:
+            findings.append(f"Capital QA {len(qa) - qa_fail}/{len(qa)} PASS")
         qv, rv = cs_spec.get("quality_verdict"), cs_spec.get("reliance_verdict")
         if qv or rv:
             findings.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
@@ -2081,11 +2233,21 @@ def _build_risk_output(
         from agetic_cdd_api.settings import settings
 
         legacy = payload.get("spec") if isinstance(payload.get("spec"), dict) else {}
+        internal_risk_spec = None
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            disk = read_agent_output_file(deal, agent_key="internal_risk") or {}
+            if isinstance(disk.get("spec"), dict):
+                internal_risk_spec = disk["spec"]
+        except Exception:
+            pass
         mr_spec = build_market_risk_spec(
             deal,
             index=index,
             company=str(payload.get("target_company") or deal.company or deal.name),
             legacy_spec=legacy,
+            internal_risk_spec=internal_risk_spec,
             sources=list(payload.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
@@ -2124,6 +2286,10 @@ def _build_risk_output(
         ]
         if struct:
             findings.append(f"{len(struct)} structure protection(s)")
+        qa = mr_spec.get("mr_evidence_qa") or []
+        qa_fail = sum(1 for r in qa if isinstance(r, dict) and r.get("status") == "FAIL")
+        if qa:
+            findings.append(f"QA {len(qa) - qa_fail}/{len(qa)} PASS")
         qv, rv = mr_spec.get("quality_verdict"), mr_spec.get("reliance_verdict")
         if qv or rv:
             findings.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
@@ -2138,11 +2304,41 @@ def _build_risk_output(
         from agetic_cdd_api.settings import settings
 
         legacy = payload.get("spec") if isinstance(payload.get("spec"), dict) else {}
+        priors: dict[str, dict[str, Any] | None] = {
+            "management_spec": None,
+            "capital_spec": None,
+            "cash_flow_spec": None,
+            "operational_spec": None,
+            "regulatory_spec": None,
+            "tech_spec": None,
+        }
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            for agent_key, attr in (
+                ("management_quality", "management_spec"),
+                ("capital_structure", "capital_spec"),
+                ("cash_flow", "cash_flow_spec"),
+                ("operational_risk", "operational_spec"),
+                ("regulatory_compliance", "regulatory_spec"),
+                ("ip_and_technology", "tech_spec"),
+            ):
+                disk = read_agent_output_file(deal, agent_key=agent_key) or {}
+                if isinstance(disk.get("spec"), dict):
+                    priors[attr] = disk["spec"]
+        except Exception:
+            pass
         ir_spec = build_internal_risk_spec(
             deal,
             index=index,
             company=str(payload.get("target_company") or deal.company or deal.name),
             legacy_spec=legacy,
+            management_spec=priors["management_spec"],
+            capital_spec=priors["capital_spec"],
+            cash_flow_spec=priors["cash_flow_spec"],
+            operational_spec=priors["operational_spec"],
+            regulatory_spec=priors["regulatory_spec"],
+            tech_spec=priors["tech_spec"],
             sources=list(payload.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
@@ -2187,6 +2383,16 @@ def _build_risk_output(
         )
         if tested_n or untested_n:
             findings.append(f"{tested_n} tested / {untested_n} untested control(s)")
+        reg_n = sum(
+            1 for r in (ir_spec.get("risk_register") or [])
+            if isinstance(r, dict) and not str(r.get("risk") or "").startswith("Information")
+        )
+        if reg_n:
+            findings.append(f"{reg_n} register row(s)")
+        qa = ir_spec.get("ir_evidence_qa") or []
+        qa_fail = sum(1 for r in qa if isinstance(r, dict) and r.get("status") == "FAIL")
+        if qa:
+            findings.append(f"QA {len(qa) - qa_fail}/{len(qa)} PASS")
         qv, rv = ir_spec.get("quality_verdict"), ir_spec.get("reliance_verdict")
         if qv or rv:
             findings.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
@@ -2201,11 +2407,29 @@ def _build_risk_output(
         from agetic_cdd_api.settings import settings
 
         legacy = payload.get("spec") if isinstance(payload.get("spec"), dict) else {}
+        strategy_spec = synergies_spec = None
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            for agent_key, attr in (
+                ("strategic_direction", "strategy"),
+                ("synergies", "synergies"),
+            ):
+                disk = read_agent_output_file(deal, agent_key=agent_key) or {}
+                if isinstance(disk.get("spec"), dict):
+                    if attr == "strategy":
+                        strategy_spec = disk["spec"]
+                    else:
+                        synergies_spec = disk["spec"]
+        except Exception:
+            pass
         go_spec = build_growth_opportunities_spec(
             deal,
             index=index,
             company=str(payload.get("target_company") or deal.company or deal.name),
             legacy_spec=legacy,
+            strategy_spec=strategy_spec,
+            synergies_spec=synergies_spec,
             sources=list(payload.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
@@ -2243,6 +2467,10 @@ def _build_risk_output(
         upside = [o for o in opts if "Additional" in str(o.get("plan_status") or "")]
         if upside:
             findings.append(f"{len(upside)} additional vs plan")
+        qa = go_spec.get("go_evidence_qa") or []
+        qa_fail = sum(1 for r in qa if isinstance(r, dict) and r.get("status") == "FAIL")
+        if qa:
+            findings.append(f"QA {len(qa) - qa_fail}/{len(qa)} PASS")
         qv, rv = go_spec.get("quality_verdict"), go_spec.get("reliance_verdict")
         if qv or rv:
             findings.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
@@ -2257,11 +2485,21 @@ def _build_risk_output(
         from agetic_cdd_api.settings import settings
 
         legacy = payload.get("spec") if isinstance(payload.get("spec"), dict) else {}
+        growth_opportunities_spec = None
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            disk = read_agent_output_file(deal, agent_key="growth_opportunities") or {}
+            if isinstance(disk.get("spec"), dict):
+                growth_opportunities_spec = disk["spec"]
+        except Exception:
+            pass
         syn_spec = build_synergies_spec(
             deal,
             index=index,
             company=str(payload.get("target_company") or deal.company or deal.name),
             legacy_spec=legacy,
+            growth_opportunities_spec=growth_opportunities_spec,
             sources=list(payload.get("sources") or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )

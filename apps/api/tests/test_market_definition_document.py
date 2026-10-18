@@ -10,7 +10,7 @@ from agetic_cdd_api.agent_document_market_definition import (
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
 from agetic_cdd_api.deep_dive_roles import role_by_slug
-from agetic_cdd_api.prompt_book import compose_system, listed_agents
+from agetic_cdd_api.prompt_book import compose_system, listed_agents, questions_complete
 
 
 class _FakeDeal:
@@ -42,6 +42,9 @@ def test_market_definition_prompt_book_listed() -> None:
     assert "four axes" in system.lower() or "four dimensions" in system.lower() or "Perimeter" in system
     assert "context only" in system.lower() or "context, not the market" in system.lower()
     assert "operating footprint" in system.lower()
+    assert "right-to-win" in system.lower() or "right to win" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
 
 
 def test_market_definition_markdown_follows_prompt_book() -> None:
@@ -49,6 +52,7 @@ def test_market_definition_markdown_follows_prompt_book() -> None:
         company="Test3",
         corpus=_market_corpus(),
         sources=["11_Market_Competition_Analysis.pdf", "03_Investment_Thesis.pdf"],
+        as_of_date="2024-12-31",
     )
     md = render_market_definition_markdown("Market Definition", heur)
 
@@ -58,14 +62,27 @@ def test_market_definition_markdown_follows_prompt_book() -> None:
     assert "## 4. Addressable" in md
     assert "## 5. Published Figures" in md
     assert "## 6. Approval Gate" in md
-    assert "## 7. Quality & Reliance" in md
+    assert "## 7. Questions" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "industry label" in md.lower() or "operating footprint" in md.lower()
     assert "context" in md.lower()
+    assert "right-to-win" in md.lower() or "deferred" in md.lower()
     assert heur.get("approval_gate", {}).get("blocks_downstream_market_agents") is True
+    assert heur.get("right_to_win_deferred") is True
+    assert isinstance(heur.get("perimeter_export"), dict)
+    assert heur["perimeter_export"].get("right_to_win") == "deferred"
+    assert heur["perimeter_export"].get("as_of_date") == "2024-12-31"
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert heur.get("perimeter_consistency_qa")
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
     assert not market_definition_approved(heur)  # not yet explicitly approved
+    addr = heur.get("addressable_market") or {}
+    assert addr.get("formula")
+    obt = heur.get("obtainable_market") or {}
+    assert obt.get("formula")
 
 
 def test_downstream_market_agents_depend_on_definition() -> None:
@@ -91,7 +108,7 @@ def test_render_agent_document_market_definition() -> None:
             "# Market Definition\n\n"
             "## 1. Perimeter — Four Axes\n\n"
             "Seeded.\n\n"
-            "## 7. Quality & Reliance\n\n"
+            "## 8. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -116,13 +133,37 @@ def test_build_market_definition_from_corpus() -> None:
             "category_counts": {"market_competition": 1},
         },
         company="Test3",
+        prefer_heuristic=True,
     )
     md = render_market_definition_markdown("Market Definition", spec)
     assert "## 1. Perimeter" in md
     assert "## 6. Approval Gate" in md
+    assert "## 7. Questions" in md
     assert spec.get("composer") in {"heuristic_v1", "llm_v1"}
+    assert isinstance(spec.get("perimeter_export"), dict)
+    assert spec.get("right_to_win_deferred") is True
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
     # Composer must not bake a specific target company into the prompt path.
     from agetic_cdd_api.prompt_book import agent_prompt
 
     body = agent_prompt("market_definition")
     assert "Ola" not in body and "SoftBank" not in body
+
+
+def test_thin_corpus_emits_axis_questions() -> None:
+    heur = _heuristic_market_definition_spec(
+        company="ThinCo",
+        corpus="No usable market perimeter language here.",
+        sources=["empty.pdf"],
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert any(
+        "axis" in q.get("question", "").lower() or "service" in q.get("question", "").lower()
+        for q in heur["questions"]
+    )
+    assert heur.get("approval_gate", {}).get("status") in {
+        "blocked",
+        "pending_approval",
+    }

@@ -116,6 +116,42 @@ def test_scope_methodology_markdown_follows_prompt_book() -> None:
     assert "comprehensive" not in (heur.get("coverage_conclusion") or "").lower() or "not" in (
         heur.get("coverage_conclusion") or ""
     ).lower()
+    # Agent coverage matrix covers Phase 2–4 slugs
+    from agetic_cdd_api.pipeline_catalog import (
+        PHASE2_AGENT_KEYS,
+        PHASE3_AGENT_KEYS,
+        PHASE4_AGENT_KEYS,
+    )
+
+    matrix = heur.get("agent_coverage") or []
+    slugs = {r["agent_slug"] for r in matrix}
+    for key in PHASE2_AGENT_KEYS + PHASE3_AGENT_KEYS + PHASE4_AGENT_KEYS:
+        assert key in slugs
+    assert all(r["status"] in {"completed", "planned", "unavailable"} for r in matrix)
+    assert heur.get("vdr_retrieval_log")
+    assert heur.get("questions")
+    from agetic_cdd_api.prompt_book import questions_complete
+
+    assert questions_complete(heur["questions"])
+    assert "Agent Coverage Matrix" in md
+    assert "Questions and Inputs Required" in md
+    assert "Reliance Limitation" in md
+    assert "VDR Retrieval Log" in md
+
+
+def test_scope_fails_comprehensive_when_must_close() -> None:
+    corpus = " ".join(d["excerpt"] for d in _ola_index()["documents"])
+    heur = _heuristic_scope_methodology_spec(
+        company="Test3",
+        corpus=corpus,
+        sources=[d["filename"] for d in _ola_index()["documents"]],
+        index=_ola_index(),
+        covered=["Deal / Strategy", "Financial"],
+        gaps=["Customer", "Operations"],
+    )
+    conclusion = (heur.get("coverage_conclusion") or "").lower()
+    assert any(u.get("gate") == "must_close" for u in heur["unfinished"])
+    assert "comprehensive" not in conclusion or "not" in conclusion or "incomplete" in conclusion
 
 
 def test_phase1_scope_embeds_coverage_document() -> None:

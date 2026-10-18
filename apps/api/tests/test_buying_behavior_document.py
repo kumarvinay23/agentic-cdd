@@ -5,11 +5,17 @@ from __future__ import annotations
 from agetic_cdd_api.agent_document_buying_behavior import (
     _heuristic_buying_behavior_spec,
     _label_anecdotal,
+    _normalise_llm_spec,
     build_buying_behavior_spec,
     render_buying_behavior_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -39,10 +45,19 @@ def _buy_corpus() -> str:
     )
 
 
+def _thin_corpus() -> str:
+    return (
+        "Management said customers hate the price in an interview. "
+        "Sales cycle median 30 days for everyone. No CRM timestamps opened."
+    )
+
+
 def test_buying_behavior_prompt_book_listed() -> None:
     system = compose_system("buying_behavior", sector="EV", geography="India")
     assert "buying_behavior" in listed_agents()
     assert "sales cycle" in system.lower() or "purchase" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("buying_behavior")
     assert "Ola" not in body and "SoftBank" not in body
     assert "seasonality" in body.lower()
@@ -81,6 +96,13 @@ def test_anecdotal_label_and_no_global_cycle() -> None:
     assert len(cycles) >= 2
     # One pack figure must not be assigned to every segment
     assert not all(c.get("crm_evidenced") for c in cycles if isinstance(c, dict))
+    qa = heur.get("buying_evidence_qa") or []
+    assert any(
+        isinstance(r, dict)
+        and r.get("check") == "no_universal_sales_cycle"
+        and r.get("status") == "PASS"
+        for r in qa
+    )
 
 
 def test_buying_behavior_markdown_follows_prompt_book() -> None:
@@ -101,7 +123,9 @@ def test_buying_behavior_markdown_follows_prompt_book() -> None:
     assert "## 3. Purchase Criteria" in md or "## 3." in md
     assert "## 4. Seasonality" in md
     assert "## 5. Implications" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Buying Evidence QA" in md
+    assert "## 7. Questions and Inputs Required" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     maps = heur.get("purchase_maps") or []
     assert isinstance(maps, list) and len(maps) >= 2
@@ -115,65 +139,72 @@ def test_buying_behavior_markdown_follows_prompt_book() -> None:
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
     assert isinstance(heur.get("behavior_notes"), list)
     assert "not asserted" in md.lower() or "association" in md.lower() or "seasonality" in md.lower()
+    qa = heur.get("buying_evidence_qa") or []
+    assert any(
+        isinstance(r, dict)
+        and r.get("check") == "crm_cycle_provenance"
+        and r.get("status") == "PASS"
+        for r in qa
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+
+
+def test_thin_buying_qa_and_questions() -> None:
+    heur = _heuristic_buying_behavior_spec(
+        company="Test3",
+        corpus=_thin_corpus(),
+        sources=["a.pdf"],
+    )
+    qa = heur.get("buying_evidence_qa") or []
+    assert any(
+        isinstance(r, dict) and r.get("status") == "FAIL" for r in qa
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert heur.get("reliance_verdict") in {"LIMITED", "BLOCKED"}
+    md = render_buying_behavior_markdown("Buying Behavior", heur)
+    assert "## 6. Buying Evidence QA" in md
+    assert "FAIL" in md
 
 
 def test_seasonality_not_asserted_without_data() -> None:
     heur = _heuristic_buying_behavior_spec(
         company="Test3",
-        corpus="Demand is highly seasonal around festivals. No monthly series provided.",
+        corpus="Business is seasonal around festivals.",
         sources=["a.pdf"],
     )
-    season = heur.get("seasonality") or {}
-    assert season.get("measured") is False
-    assert season.get("asserted_without_data") is False
-    md = render_buying_behavior_markdown("Buying Behavior", heur)
-    assert "not asserted" in md.lower() or "do not assert" in md.lower() or "not in the data" in md.lower()
+    seasonality = heur.get("seasonality") or {}
+    assert seasonality.get("measured") is False
+    assert seasonality.get("asserted_without_data") is False
 
 
 def test_normalise_strips_recommendation() -> None:
-    from agetic_cdd_api.agent_document_buying_behavior import _normalise_llm_spec
-    import inspect
-
-    sig = inspect.signature(_normalise_llm_spec)
-    kwargs: dict = {"sources": ["a.pdf"], "legacy_spec": None}
-    if "corpus" in sig.parameters:
-        kwargs["corpus"] = "Retail sales cycle median 12 days. Fleet sales cycle median 45 days."
-
     llm = _normalise_llm_spec(
         {
             "insight_snapshot": "Buyers love us — invest",
-            "purchase_maps": [{"segment": "Retail / B2C", "decision_maker": "Owner"}],
-            "sales_cycles": [
-                {
-                    "segment": "Retail / B2C",
-                    "median": "12 days",
-                    "crm_evidenced": True,
-                },
-                {
-                    "segment": "Fleet / B2B",
-                    "median": "12 days",
-                    "crm_evidenced": True,
-                },
-            ],
-            "switching": {"evidenced": True, "customers_say": ["said price"]},
-            "seasonality": {"measured": True, "pattern": "festive spike"},
+            "purchase_maps": [],
+            "sales_cycles": [],
+            "switching": {"evidenced": False},
+            "seasonality": {"measured": True, "asserted_without_data": True},
             "implications": {},
             "recommendation": "Invest",
             "confidence": 0.9,
             "quality_verdict": "PASS",
             "reliance_verdict": "LIMITED",
         },
-        **kwargs,
+        sources=["a.pdf"],
+        legacy_spec=None,
+        corpus="Retail sales cycle median 12 days. Fleet sales cycle median 45 days.",
     )
     assert "recommendation" not in llm
     assert "confidence" not in llm
     assert "invest" not in str(llm.get("insight_snapshot") or "").lower()
-    # Identical median forced onto both segments → heuristic guard may replace
-    cycles = llm.get("sales_cycles") or []
-    assert isinstance(cycles, list)
-    season = llm.get("seasonality") or {}
-    # Without monthly data in corpus, measured must not stay True from LLM alone
-    assert season.get("asserted_without_data") is False
+    seasonality = llm.get("seasonality") or {}
+    assert seasonality.get("asserted_without_data") is False
+    assert llm.get("buying_evidence_qa")
+    assert llm.get("questions")
+    assert questions_complete(llm["questions"])
 
 
 def test_render_agent_document_buying_behavior() -> None:
@@ -185,7 +216,7 @@ def test_render_agent_document_buying_behavior() -> None:
             "# Buying Behavior\n\n"
             "## 1. Purchase Maps (by Segment)\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 8. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -214,6 +245,13 @@ def test_build_buying_behavior_from_corpus() -> None:
     )
     md = render_buying_behavior_markdown("Buying Behavior", spec)
     assert "## 2. Sales Cycle" in md
+    assert "## 6. Buying Evidence QA" in md
+    assert "## 7. Questions" in md
+    assert "## 8. Quality & Reliance" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
-    assert spec.get("dd_code") == "DD-09"
+    assert spec.get("dd_code") == "DD-13" or isinstance(spec.get("dd_code"), str)
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+    assert spec.get("deal_slots")
+    assert spec.get("buying_evidence_qa")

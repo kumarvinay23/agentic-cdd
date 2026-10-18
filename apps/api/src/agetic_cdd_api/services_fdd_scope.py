@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -91,16 +92,21 @@ def _resolve_scope_entity(deal_slug: str, company: str | None) -> str:
     for cand in candidates:
         if not is_placeholder_company(cand, deal_slug):
             return cand
-    # Last resort: Compost Crew-style name from documents folder.
+    # Last resort: recover a Title-Case company stem from a document filename
+    # (e.g. "Acme_Organics_CIM.pdf") — never a fixed deal name.
     try:
         from agetic_cdd_api.services_deals import deals_root
 
         docs = deals_root() / deal_slug / "documents"
         if docs.is_dir():
             for p in docs.iterdir():
-                name = p.name
-                if "compost crew" in name.lower():
-                    return "Compost Crew"
+                stem = p.stem.replace("_", " ").replace("-", " ")
+                m = re.search(
+                    r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b",
+                    stem,
+                )
+                if m and not is_placeholder_company(m.group(1), deal_slug):
+                    return m.group(1)
     except OSError:
         pass
     return (company or deal_slug).strip() or deal_slug

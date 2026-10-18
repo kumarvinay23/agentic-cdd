@@ -10,7 +10,12 @@ from agetic_cdd_api.agent_document_competitive_differentiation import (
     render_competitive_differentiation_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -29,6 +34,7 @@ def _diff_corpus() -> str:
         "Economic effect: ~8% price premium and higher retention vs peers. "
         "Manufacturing scale is an ordinary capability every large OEM has. "
         "Seller CIM asserts unique brand loyalty without customer evidence. "
+        "Seller also claims best-in-class industry-leading brand without peer metrics. "
         "Replication: a peer would need ~USD 50m and 24–36 months to match software depth; "
         "erosion risk over a 5-year hold if peers close the feature gap. "
         "Technology in use is not IP; patents not evidenced."
@@ -39,10 +45,13 @@ def test_competitive_differentiation_prompt_book_listed() -> None:
     system = compose_system("competitive_differentiation", sector="EV", geography="India")
     assert "competitive_differentiation" in listed_agents()
     assert "moat" in system.lower() or "durable" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("competitive_differentiation")
     assert "Ola" not in body and "SoftBank" not in body
     assert "technology" in body.lower()
     assert "intellectual" in body.lower() and "property" in body.lower()
+    assert "unsupported" in body.lower() or "benchmark" in body.lower()
 
 
 def test_competitive_differentiation_not_company_hardcoded() -> None:
@@ -88,7 +97,10 @@ def test_competitive_differentiation_markdown_follows_prompt_book() -> None:
     assert "## 3." in md  # Capability Separation
     assert "## 4." in md  # Economic
     assert "## 5." in md  # Replication
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Moat Cross-Checks" in md
+    assert "## 7. Unsupported Benchmarks" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     body_lower = md.lower()
     if "moat" in body_lower:
@@ -96,6 +108,18 @@ def test_competitive_differentiation_markdown_follows_prompt_book() -> None:
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
     assert isinstance(heur.get("differentiators"), list)
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert heur.get("moat_cross_checks")
+    assert heur.get("unsupported_benchmarks")
+    assert any(
+        isinstance(b, dict) and b.get("status") == "REJECTED"
+        for b in heur["unsupported_benchmarks"]
+    )
+    assert any(
+        isinstance(r, dict) and r.get("hold_period")
+        for r in (heur.get("replication") or [])
+    )
 
 
 def test_moat_softened_in_normalise() -> None:
@@ -146,6 +170,9 @@ def test_moat_softened_in_normalise() -> None:
     )
     assert "moat" not in str(llm.get("insight_snapshot") or "").lower()
     assert "durable advantage" in str(llm.get("insight_snapshot") or "").lower()
+    assert llm.get("questions")
+    assert questions_complete(llm["questions"])
+    assert llm.get("moat_cross_checks")
 
 
 def test_render_agent_document_competitive_differentiation() -> None:
@@ -157,7 +184,7 @@ def test_render_agent_document_competitive_differentiation() -> None:
             "# Competitive Differentiation\n\n"
             "## 1. Claimed Advantages\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 9. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -186,6 +213,26 @@ def test_build_competitive_differentiation_from_corpus() -> None:
     )
     md = render_competitive_differentiation_markdown("Competitive Differentiation", spec)
     assert "## 2. Advantage Tests" in md
-    assert "## 5." in md
+    assert "## 6. Moat Cross-Checks" in md
+    assert "## 8. Questions" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+    assert spec.get("deal_slots")
+
+
+def test_thin_corpus_emits_differentiation_questions() -> None:
+    heur = _heuristic_competitive_differentiation_spec(
+        company="Test3",
+        corpus="General commentary with no advantage claims.",
+        sources=["empty.pdf"],
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert any(
+        "claim" in q.get("question", "").lower()
+        or "advantage" in q.get("question", "").lower()
+        for q in heur["questions"]
+    )
+    assert heur.get("reliance_verdict") == "BLOCKED"

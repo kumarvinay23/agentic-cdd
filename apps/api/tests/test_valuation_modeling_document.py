@@ -83,6 +83,22 @@ def _legacy() -> dict:
     }
 
 
+def _cash_flow_ready() -> dict:
+    return {
+        "ebitda_to_cash_bridge": [
+            {"label": "EBITDA", "value": 100.0, "sign": "+"},
+            {"label": "Working capital", "value": -20.0, "sign": "−"},
+            {"label": "Capex", "value": -30.0, "sign": "−"},
+            {"label": "Free cash flow", "value": 50.0, "sign": "="},
+        ],
+        "cash_bridge": [
+            {"label": "Opening cash", "value": 40.0, "sign": "+"},
+            {"label": "Free cash flow", "value": 50.0, "sign": "+"},
+            {"label": "Closing cash", "value": 90.0, "sign": "="},
+        ],
+    }
+
+
 def test_valuation_modeling_prompt_book_listed() -> None:
     system = compose_system("valuation_modeling", sector="EV", geography="India")
     assert "valuation_modeling" in listed_agents()
@@ -92,6 +108,9 @@ def test_valuation_modeling_prompt_book_listed() -> None:
     assert "median" in body.lower()
     assert "reconcile" in body.lower()
     assert "invest" in body.lower() or "pass" in body.lower()
+    assert "cash flow" in body.lower() or "bridge" in body.lower()
+    assert "questions" in body.lower()
+    assert "deal perimeter" in body.lower() or "[deal_perimeter]" in body.lower()
 
 
 def test_valuation_modeling_not_company_hardcoded() -> None:
@@ -188,10 +207,19 @@ def test_render_no_invest() -> None:
     assert "## 3. Precedent Transactions" in md
     assert "## 4. Discounted Cash Flow" in md
     assert "## 5. Method Reconciliation" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Valuation Modeling Evidence QA" in md
+    assert "## 7. Questions and Inputs Required" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
     assert "median" in md.lower()
+    qa = {
+        r.get("check"): r
+        for r in (heur.get("valuation_modeling_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert qa.get("no_invest_pass_endorsement", {}).get("status") == "FAIL"
+    assert heur.get("questions")
 
 
 def test_render_agent_document_dispatch() -> None:
@@ -227,7 +255,78 @@ def test_build_prefers_heuristic_when_flagged() -> None:
         legacy_spec=_legacy(),
         trading_comps=_trading_comps(),
         precedent_transactions=_precedents(),
+        cash_flow_spec=_cash_flow_ready(),
     )
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("fv_code") == "FV-05" or spec.get("dd_code") == "FV-05"
     assert isinstance(spec.get("earnings_basis"), dict)
+    assert isinstance(spec.get("sensitivity_analysis"), dict)
+    assert isinstance(spec.get("final_valuation_range"), dict)
+    assert spec.get("consumes_trading_comps") is True
+    assert spec.get("consumes_precedent_transactions") is True
+    assert spec.get("consumes_cash_flow") is True
+    dcf = spec.get("dcf_view") or {}
+    assert dcf.get("supported") is True
+    assert dcf.get("cf_bridge_ready") is True
+
+
+def test_dcf_blocked_without_cash_flow_bridge() -> None:
+    heur = _heuristic_valuation_modeling_spec(
+        company="Test3",
+        corpus=_val_corpus(),
+        sources=["13_Valuation_Retention_Comparable_Analysis.pdf"],
+        legacy_spec=_legacy(),
+        trading_comps=_trading_comps(),
+        precedent_transactions=_precedents(),
+    )
+    dcf = heur.get("dcf_view") or {}
+    assert dcf.get("cf_bridge_ready") is False
+    assert dcf.get("supported") is False
+    assert dcf.get("enterprise_value_usd_b") is not None  # triangulation kept
+    qa = {
+        r.get("check"): r
+        for r in (heur.get("valuation_modeling_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert qa.get("dcf_gated_on_cash_flow_bridge", {}).get("status") == "FAIL"
+    assert heur.get("questions")
+    assert heur.get("reliance_verdict") != "READY"
+    assert heur.get("reliance_verdict") in {"LIMITED", "BLOCKED"}
+
+
+def test_dcf_supported_with_cash_flow_bridge() -> None:
+    heur = _heuristic_valuation_modeling_spec(
+        company="Test3",
+        corpus=_val_corpus(),
+        sources=["13_Valuation_Retention_Comparable_Analysis.pdf"],
+        legacy_spec=_legacy(),
+        trading_comps=_trading_comps(),
+        precedent_transactions=_precedents(),
+        cash_flow_spec=_cash_flow_ready(),
+        deal_slots={"as_of_date": "2024-03-31", "review_periods": "FY2022–FY2024E"},
+    )
+    dcf = heur.get("dcf_view") or {}
+    assert dcf.get("cf_bridge_ready") is True
+    assert dcf.get("supported") is True
+    qa = {
+        r.get("check"): r
+        for r in (heur.get("valuation_modeling_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert "one_earnings_basis" in qa
+    assert "comps_precedents_as_method_inputs" in qa
+    assert "dcf_gated_on_cash_flow_bridge" in qa
+    assert qa["dcf_gated_on_cash_flow_bridge"]["status"] == "PASS"
+    assert qa["comps_precedents_as_method_inputs"]["status"] == "PASS"
+    assert qa["one_earnings_basis"]["status"] == "PASS"
+    assert all(
+        r.get("status") == "PASS"
+        for r in qa.values()
+        if r.get("check") != "no_invest_pass_endorsement"
+    )
+    assert heur.get("consumes_cash_flow") is True
+    assert heur.get("deal_slots", {}).get("as_of_date") == "2024-03-31"
+    # Open QA FAILs must not leave READY — here all material checks pass
+    assert heur.get("reliance_verdict") in {"READY", "LIMITED"}
+    if any(r.get("status") == "FAIL" for r in qa.values()):
+        assert heur.get("reliance_verdict") != "READY"

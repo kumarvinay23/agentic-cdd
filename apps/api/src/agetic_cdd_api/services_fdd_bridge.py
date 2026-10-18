@@ -81,6 +81,42 @@ _MONEY_METRIC_KEYS: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Percent / ratio metrics — keep "%" even when the pack table scale is money.
+_PERCENT_METRIC_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "gross_margin",
+        "ebitda_margin",
+        "operating_margin",
+        "net_margin",
+        "nrr",
+        "grr",
+        "cash_conversion",
+        "revenue_growth",
+        "ebitda_growth",
+    }
+)
+
+
+def _is_percent_metric(metric_key: str | None) -> bool:
+    mk = (metric_key or "").strip().lower()
+    if not mk:
+        return False
+    if mk in _PERCENT_METRIC_KEYS:
+        return True
+    if "margin" in mk or mk.endswith("_pct") or mk.endswith("_rate"):
+        return True
+    if mk.endswith("_delta_pp") or mk.endswith("_pp"):
+        return True
+    return False
+
+
+def _as_percent_points(value: float) -> float:
+    """Normalise ratio margins (0.30 / 1.07) to percent points (30 / 107)."""
+    v = float(value)
+    if abs(v) <= 1.5:
+        return v * 100.0
+    return v
+
 # Whole-token BS / debt / WC routers (no raw substring ``in``).
 _DEBT_TOKENS: Final[frozenset[str]] = frozenset(
     {"debt", "loan", "borrow", "revolver", "facility", "lease", "cash"}
@@ -140,13 +176,29 @@ def _sanitize_money_unit(
     unit: str | None,
     scale: str | None,
 ) -> str | None:
-    """Drop spurious % units on money lines (e.g. Shareholders' Equity)."""
+    """Drop spurious % units on money lines (e.g. Shareholders' Equity).
+
+    Percent metrics keep "%" even when the pack table header scale is money.
+    """
     unt = (unit or "").strip()
     scl = (scale or "").strip()
     mk = (metric_key or "").strip().lower()
-    if unt in {"%", "pp", "pct", "percent"} and (
-        mk in _MONEY_METRIC_KEYS or scl in {"M", "B", "K", "Cr", "m", "b", "k"}
-    ):
+    if _is_percent_metric(mk):
+        if unt in {"%", "pp", "pct", "percent"} or not unt:
+            return "%" if unt in {"", "pct", "percent"} else unt
+        return unt
+    if unt in {"%", "pp", "pct", "percent"} and mk in _MONEY_METRIC_KEYS:
+        return None
+    # Scale alone must not strip % from unknown non-money metrics that said %.
+    if unt in {"%", "pp", "pct", "percent"} and scl in {
+        "M",
+        "B",
+        "K",
+        "Cr",
+        "m",
+        "b",
+        "k",
+    }:
         return None
     return unit
 
@@ -187,12 +239,15 @@ def eight_labels_from_cell(cell: ReleasedCell) -> EightLabels:
     raw_unit = _sanitize_money_unit(
         cell.metric_key, unit=cell.unit, scale=cell.scale
     )
-    unit = _display_unit_parts(cell.currency, cell.scale, raw_unit) or None
-    if unit in {"%", "pp", "pct", "percent"} and (
-        (cell.scale or "").strip() in {"M", "B", "K", "Cr", "m", "b", "k"}
-        or (cell.metric_key or "").lower() in _MONEY_METRIC_KEYS
-    ):
-        unit = None
+    if _is_percent_metric(cell.metric_key):
+        # Percent metrics must not inherit currency×money-scale composition.
+        unit = raw_unit or "%"
+    else:
+        unit = _display_unit_parts(cell.currency, cell.scale, raw_unit) or None
+        if unit in {"%", "pp", "pct", "percent"} and (
+            cell.metric_key or ""
+        ).lower() in _MONEY_METRIC_KEYS:
+            unit = None
     basis = cell.source_basis.value if cell.source_basis else None
     source: str | None = None
     if cell.source_ref is not None:
@@ -344,11 +399,21 @@ def released_cell_to_fact(
     labels = eight_labels_from_cell(cell)
     release_status = _map_release_status(cell.status)
     # Keep proven/doubtful from the release — draft_mode is a run banner, not a
-    # blanket demotion of every pack actual to "draft".
+    # blanket demotion of every pack actual to "draft". Plan years are demoted
+    # later in facts_to_exhibit_cells once the period tag is known.
     status = release_status
     value, sources, alternatives = _prefer_workbook_value(cell)
     unit = _sanitize_money_unit(cell.metric_key, unit=cell.unit, scale=cell.scale)
-    if unit != cell.unit and labels.unit and "%" in (labels.unit or ""):
+    currency = cell.currency
+    scale = cell.scale
+    if _is_percent_metric(cell.metric_key):
+        if value is not None:
+            value = _as_percent_points(float(value))
+        unit = "%"
+        currency = None
+        scale = None
+        labels = labels.model_copy(update={"unit": "%"})
+    elif unit != cell.unit and labels.unit and "%" in (labels.unit or ""):
         labels = labels.model_copy(update={"unit": None})
     return FddFact(
         fact_id=fact_id_for_cell(cell, release),
@@ -361,8 +426,8 @@ def released_cell_to_fact(
         labels=labels,
         labels_complete=labels.complete,
         draft_flagged=draft_mode,
-        currency=cell.currency,
-        scale=cell.scale,
+        currency=currency,
+        scale=scale,
         unit=unit,
         row_id=cell.row_id,
         proof_level=cell.proof_level.value if cell.proof_level else None,
@@ -481,6 +546,15 @@ def _period_tag_for_fact(fact: FddFact) -> str:
 def facts_to_exhibit_cells(facts: list[FddFact]) -> list[ExhibitCell]:
     cells: list[ExhibitCell] = []
     for fact in facts:
+        # Optional retention ratios without a locator are dropped — source or omit.
+        if fact.metric_key in _CONTRACT_OPTIONAL_METRICS:
+            has_src = bool(fact.sources) or bool(
+                fact.labels.source if fact.labels else None
+            )
+            # Caption alone (Commercial NRR / GRR) is enough to keep the cell.
+            line_l = (fact.labels.line if fact.labels else "") or ""
+            if not has_src and not re.search(r"(?i)\b(nrr|grr|retention)\b", line_l):
+                continue
         if fact.metric_key in _COST_METRICS:
             meta = ("ex_db_costs", "Costs and people (databook)", "SEC-D")
         else:
@@ -493,14 +567,144 @@ def facts_to_exhibit_cells(facts: list[FddFact]) -> list[ExhibitCell]:
         exhibit_id, _title, _sec = meta
         # Slugify so tokens never embed spaces/parens from human metric labels
         cell_id = metric_cell_id(fact.metric_key, fact.fiscal_year)
-        base_label = fact.labels.line or humanize_metric_key(fact.metric_key)
-        period = _period_tag_for_fact(fact)
-        label = f"{base_label} ({period})"
-        figure_type = FigureType.REPORTED
-        if "YTD" in period or "plan" in period:
-            figure_type = (
-                FigureType.ESTIMATED if "plan" in period else FigureType.REPORTED
+        raw_line = fact.labels.line if fact.labels else None
+        # Retention KPIs: caption/line segment wins over workbook filename cues.
+        if fact.metric_key in {"nrr", "grr"}:
+            from agetic_cdd_api.services_databook_map import display_metric_label
+
+            base_label = display_metric_label(
+                fact.metric_key, raw_line or humanize_metric_key(fact.metric_key)
             )
+            line_l = (raw_line or "").lower()
+            seg_l = str(getattr(fact.labels, "segment", None) or "").lower()
+            alt_caps = []
+            for alt in fact.alternatives or []:
+                if isinstance(alt, dict):
+                    for c in alt.get("captions") or []:
+                        alt_caps.append(str(c).lower())
+                    note = str(alt.get("note") or "").lower()
+                    if note:
+                        alt_caps.append(note)
+            alt_blob = " ".join(alt_caps)
+            src_blob = " ".join(
+                [
+                    *(str(s) for s in (fact.sources or [])[:4]),
+                    str((fact.labels.source if fact.labels else None) or ""),
+                ]
+            ).lower()
+
+            def _retention_equiv(a: float, b: float) -> bool:
+                if abs(a - b) < 1e-6:
+                    return True
+                return abs(a * 100.0 - b) < 0.15 or abs(b * 100.0 - a) < 0.15
+
+            # If an alternative is commercial-captioned and matches this value
+            # (ratio or %), treat the cell as Commercial even when sources say
+            # Residential (fixes Residential NRR 106.56 = commercial series).
+            commercial_alt_match = False
+            try:
+                fact_v = float(fact.value) if fact.value is not None else None
+            except (TypeError, ValueError):
+                fact_v = None
+            if fact_v is not None:
+                for alt in fact.alternatives or []:
+                    if not isinstance(alt, dict):
+                        continue
+                    caps_l = " ".join(str(c).lower() for c in (alt.get("captions") or []))
+                    if "commercial" not in caps_l or "residential" in caps_l:
+                        continue
+                    try:
+                        av = float(alt["value"]) if alt.get("value") is not None else None
+                    except (TypeError, ValueError):
+                        av = None
+                    if av is not None and _retention_equiv(fact_v, av):
+                        commercial_alt_match = True
+                        break
+                    # Note-only commercial supersession without value echo.
+                    if "commercial" in str(alt.get("note") or "").lower():
+                        commercial_alt_match = True
+                        break
+
+            # Caption / segment / commercial-alt first — never let a residential
+            # sheet name relabel a Commercial NRR/GRR value (or the reverse).
+            if (
+                "commercial" in line_l
+                or "commercial" in seg_l
+                or "commercial" in base_label.lower()
+                or commercial_alt_match
+                or ("commercial" in alt_blob and "residential" not in line_l)
+            ):
+                base_label = (
+                    "Commercial NRR"
+                    if fact.metric_key == "nrr"
+                    else "Commercial GRR"
+                )
+            elif "residential" in line_l or "residential" in seg_l:
+                base_label = (
+                    "Residential NRR" if fact.metric_key == "nrr" else "Residential GRR"
+                )
+            elif "commercial" in src_blob and "residential" not in src_blob:
+                base_label = (
+                    "Commercial NRR"
+                    if fact.metric_key == "nrr"
+                    else "Commercial GRR"
+                )
+            elif "residential" in src_blob and "commercial" not in src_blob:
+                base_label = (
+                    "Residential NRR" if fact.metric_key == "nrr" else "Residential GRR"
+                )
+            # NRR above 100% is net expansion — if the stamp is Residential but a
+            # commercial cue exists (alt / source / caption), prefer Commercial.
+            if (
+                fact.metric_key == "nrr"
+                and str(base_label).startswith("Residential")
+                and fact_v is not None
+            ):
+                v_pp = fact_v * 100.0 if abs(fact_v) <= 3.0 else fact_v
+                if v_pp > 100.5 and (
+                    commercial_alt_match
+                    or "commercial" in alt_blob
+                    or "commercial" in src_blob
+                    or "commercial" in line_l
+                ):
+                    base_label = "Commercial NRR"
+            # else keep display_metric_label / raw_line as-is
+        else:
+            base_label = raw_line or humanize_metric_key(fact.metric_key)
+        # Strip any period already embedded in the caption so we never double it.
+        base_label = re.sub(
+            r"\s*\(\s*FY\s*20?\d{2}E?(?:\s*\(plan\))?\s*\)\s*$",
+            "",
+            base_label or "",
+            flags=re.IGNORECASE,
+        ).strip()
+        base_label = re.sub(
+            r"\s+FY\s*20?\d{2}E?(?:\s*\(plan\))?\s*$",
+            "",
+            base_label or "",
+            flags=re.IGNORECASE,
+        ).strip() or (fact.labels.line or humanize_metric_key(fact.metric_key))
+        period = _period_tag_for_fact(fact)
+        # Closed-year FY lives only in the exhibit suffix. Plan / YTD stay on
+        # the label with a middle-dot (never nested parentheses).
+        if "YTD" in period or "plan" in period:
+            label = f"{base_label} · {period}"
+        else:
+            label = base_label
+        figure_type = FigureType.REPORTED
+        cell_status = fact.status
+        from datetime import date as _date
+
+        open_year = int(fact.fiscal_year) > (_date.today().year - 1)
+        if "YTD" in period or "plan" in period or open_year:
+            figure_type = (
+                FigureType.ESTIMATED
+                if ("plan" in period or open_year)
+                else FigureType.REPORTED
+            )
+            # Open / plan / YTD years are not proven closed actuals.
+            if cell_status == CellStatus.PROVEN:
+                cell_status = CellStatus.DOUBTFUL
         from agetic_cdd_api.services_fdd_sources import (
             classify_source,
             display_source_name,
@@ -514,6 +718,13 @@ def facts_to_exhibit_cells(facts: list[FddFact]) -> list[ExhibitCell]:
             basis = f"{basis} · YTD actuals"
         elif "plan" in period:
             basis = f"{basis} · full-year plan"
+        unit = fact.unit
+        currency = fact.currency
+        scale = fact.scale
+        if _is_percent_metric(fact.metric_key):
+            unit = "%"
+            currency = None
+            scale = None
         cells.append(
             ExhibitCell(
                 cell_id=cell_id,
@@ -521,15 +732,15 @@ def facts_to_exhibit_cells(facts: list[FddFact]) -> list[ExhibitCell]:
                 label=label,
                 value=fact.value,
                 display=fact.display,
-                unit=fact.unit,
-                currency=fact.currency,
-                scale=fact.scale,
+                unit=unit,
+                currency=currency,
+                scale=scale,
                 fiscal_year=fact.fiscal_year,
                 metric_key=fact.metric_key,
                 fact_id=fact.fact_id,
                 figure_type=figure_type,
                 evidence_tier=_basis_to_tier(fact.labels.basis),
-                status=fact.status,
+                status=cell_status,
                 draft_flagged=fact.draft_flagged,
                 basis_label=basis,
                 labels=fact.labels,
@@ -759,15 +970,26 @@ def bridge_release_into_run(
         store = apply_facts_to_store(store, facts)
         header = _scale_header_from_facts(facts, company=company)
         if header:
-            # Always refresh — sticky headers previously froze an old release id
-            store = store.model_copy(
-                update={
-                    "exhibits": [
-                        e.model_copy(update={"scale_header": header})
-                        for e in store.exhibits
-                    ]
-                }
-            )
+            # Always refresh — sticky headers previously froze an old release id.
+            # Percent-only exhibits keep a % banner, not USD M.
+            refreshed = []
+            for e in store.exhibits:
+                cells = e.cells or []
+                if cells and all(
+                    _is_percent_metric(c.metric_key)
+                    or (c.unit or "").strip() in {"%", "pp"}
+                    or (c.scale or "").strip() in {"%", "pp"}
+                    for c in cells
+                ):
+                    pct_header = " · ".join(
+                        p for p in (company, "%") if p
+                    )
+                    refreshed.append(
+                        e.model_copy(update={"scale_header": pct_header})
+                    )
+                else:
+                    refreshed.append(e.model_copy(update={"scale_header": header}))
+            store = store.model_copy(update={"exhibits": refreshed})
     store = persist_store(deal_slug, run_id, store)
 
     manifest = manifest.model_copy(

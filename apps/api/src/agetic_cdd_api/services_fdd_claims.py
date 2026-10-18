@@ -405,7 +405,7 @@ def extract_claims_from_agent(
     return claims
 
 
-def values_agree(claimed: float, databook: float) -> bool:
+def _values_agree_raw(claimed: float, databook: float) -> bool:
     delta = abs(float(claimed) - float(databook))
     scale = max(abs(float(databook)), abs(float(claimed)), 1.0)
     # For typical $M diligence figures, absolute floor catches 0.007–0.030 gaps.
@@ -415,14 +415,42 @@ def values_agree(claimed: float, databook: float) -> bool:
     return delta <= max(CLAIMS_ABS_TOLERANCE, CLAIMS_VALUE_TOLERANCE * scale)
 
 
+def values_agree(claimed: float, databook: float) -> bool:
+    """True when figures match, including ratio↔percent (0.762 vs 76.2)."""
+    a = float(claimed)
+    b = float(databook)
+    if _values_agree_raw(a, b):
+        return True
+    # Retention / margin often appear as a fraction in one pack and percent-points
+    # in another — treat 0.762 and 76.2 as the same figure.
+    lo, hi = (a, b) if abs(a) <= abs(b) else (b, a)
+    if 0.0 < abs(lo) <= 2.0 and abs(hi) >= 2.0:
+        if _values_agree_raw(lo * 100.0, hi):
+            return True
+        if abs(hi) <= 200.0 and _values_agree_raw(hi / 100.0, lo):
+            return True
+    return False
+
+
 def _claim_source_label(claim: ClaimsLedgerEntry) -> str:
-    """Human source name for agent claims (QBO/accounts vs generic agent)."""
+    """Human source name for agent claims — prefer monthly pack."""
     agent = (claim.source_agent or "").lower()
     text = (claim.text or "").lower()
-    if agent in {"historical_performance", "revenue_quality", "cost_structure"}:
+    if (
+        "qbo" in text
+        or "quickbooks" in text
+        or "accounting_records" in text
+        or "accounts extract" in text
+    ):
         return "QBO ledger"
-    if "qbo" in text or "accounting_records" in text or "accounts extract" in text:
-        return "QBO ledger"
+    if agent in {
+        "historical_performance",
+        "revenue_quality",
+        "cost_structure",
+        "cash_flow",
+        "capital_structure",
+    }:
+        return "monthly pack"
     if agent:
         return f"{agent.replace('_', ' ')} claim"
     return "agent claim"

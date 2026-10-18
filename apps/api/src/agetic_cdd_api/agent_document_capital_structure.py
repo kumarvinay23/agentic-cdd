@@ -1,10 +1,11 @@
 """Compose DiligenceIQ Capital Structure — funding position at completion.
 
 Facility-by-facility schedule, debt-like items, cash split (freely available /
-restricted / operating minimum), change-of-control triggers, and a sourced
-net-debt bridge. Dual-writes legacy Intrinsic Value Statement fields
-(debt_instruments / debt_total_usd_m / leverage_ratios / dcf_metrics /
-capital_notes).
+restricted / operating minimum), change-of-control triggers, sourced net-debt
+bridge, fully diluted cap table, approved-EBITDA leverage discipline, and
+existing vs acquisition financing. Dual-writes legacy Intrinsic Value
+Statement fields (debt_instruments / debt_total_usd_m / leverage_ratios /
+dcf_metrics / capital_notes).
 
 No invest/pass. No company allowlists. Do not calculate leverage from an
 incomplete facility schedule.
@@ -59,6 +60,35 @@ _NET_DEBT_RULE = (
 _LEVERAGE_RULE = (
     "Leverage is not calculated from an incomplete facility schedule — a "
     "partial schedule gives a wrong ratio, not an approximate one."
+)
+_CAP_TABLE_RULE = (
+    "The equity capitalisation table is stated on a fully diluted basis — "
+    "options, warrants, convertibles and prefs are included, not omitted."
+)
+_APPROVED_EBITDA_RULE = (
+    "Leverage uses approved EBITDA only. If EBITDA is negative or unapproved, "
+    "state alternative metrics (e.g. debt / revenue) and withhold net debt / EBITDA."
+)
+_FINANCING_LINK_RULE = (
+    "Existing / refinancing facilities are separated from acquisition / "
+    "transaction financing — the buyer must see what is new money vs take-out."
+)
+_CAP_TABLE_CUE = re.compile(
+    r"(?i)\b(cap\s*table|capitalisation\s+table|capitalization\s+table|"
+    r"fully\s+diluted|ordinary\s+shares?|preference\s+shares?|"
+    r"warrants?|options?\s+pool|convertible\s+(?:notes?|prefs?))\b"
+)
+_EBITDA_CUE = re.compile(
+    r"(?i)\b((?:approved|adjusted|reported|LTM|NTM)\s+)?EBITDA\b"
+)
+_ACQ_FINANCE_CUE = re.compile(
+    r"(?i)\b(acquisition\s+(?:facility|financing|debt|loan)|"
+    r"transaction\s+financing|new\s+money|take[- ]out|"
+    r"refinanc(?:e|ing)|existing\s+(?:facility|debt|loan))\b"
+)
+_SHAREHOLDER_LINE_RE = re.compile(
+    r"(?i)([A-Za-z][A-Za-z0-9 &.\-]{1,40}?)\s*[—\-–:]\s*"
+    r"([\d,]+(?:\.\d+)?)\s*%(?:\s*(?:fully\s+diluted|FD))?"
 )
 
 _DEBT_LINE_RE = re.compile(
@@ -781,6 +811,314 @@ def _net_debt_bridge(
     return rows
 
 
+def _extract_cap_table(corpus: str, legacy: dict[str, Any]) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for item in legacy.get("cap_table") or legacy.get("shareholders") or []:
+        if not isinstance(item, dict):
+            continue
+        holder = _clean(
+            item.get("holder") or item.get("shareholder") or item.get("name"), 60
+        )
+        if not holder or holder.lower() in seen:
+            continue
+        seen.add(holder.lower())
+        pct = _num(item.get("fully_diluted_pct") or item.get("pct") or item.get("share_pct"))
+        rows.append({
+            "holder": holder,
+            "instrument": _clean(item.get("instrument") or item.get("class") or "Equity", 40),
+            "shares": item.get("shares") if item.get("shares") is not None else _NA,
+            "fully_diluted_pct": pct if pct is not None else _info_request(
+                f"fully diluted % for {holder}"
+            ),
+            "source": "legacy extract",
+            "notes": _CAP_TABLE_RULE,
+        })
+
+    for m in _SHAREHOLDER_LINE_RE.finditer(text):
+        holder = _clean(m.group(1), 60)
+        if not holder or holder.lower() in seen:
+            continue
+        if re.search(r"(?i)^(total|fully|ordinary|preference|debt|cash)", holder):
+            continue
+        seen.add(holder.lower())
+        rows.append({
+            "holder": holder,
+            "instrument": "Equity / as stated",
+            "shares": _NA,
+            "fully_diluted_pct": float(m.group(2).replace(",", "")),
+            "source": _DOC_CITE,
+            "notes": _CAP_TABLE_RULE,
+        })
+        if len(rows) >= 8:
+            break
+
+    diluted_hit = bool(re.search(r"(?i)\bfully\s+diluted\b", text))
+    if _CAP_TABLE_CUE.search(text) and not rows:
+        sent = next((s for s in _sentences(text) if _CAP_TABLE_CUE.search(s)), None)
+        rows.append({
+            "holder": _clean(sent, 80) if sent else _info_request("shareholder / holder"),
+            "instrument": _info_request("instrument class (ordinary / pref / option / warrant)"),
+            "shares": _NA,
+            "fully_diluted_pct": _info_request("fully diluted ownership %"),
+            "source": _DOC_CITE if sent else _NA,
+            "notes": _CAP_TABLE_RULE,
+            "fully_diluted_basis": diluted_hit,
+        })
+
+    if not rows:
+        for label in ("Founders / management", "Financial sponsor / PE", "Other / options pool"):
+            rows.append({
+                "holder": _info_request(label),
+                "instrument": _info_request("instrument class"),
+                "shares": _NA,
+                "fully_diluted_pct": _info_request("fully diluted %"),
+                "source": _NA,
+                "notes": _CAP_TABLE_RULE,
+                "fully_diluted_basis": False,
+            })
+    else:
+        for row in rows:
+            row.setdefault("fully_diluted_basis", diluted_hit or any(
+                isinstance(r.get("fully_diluted_pct"), (int, float)) for r in rows
+            ))
+    return rows[:10]
+
+
+def _financing_vs_acquisition(
+    facilities: list[dict[str, Any]],
+    corpus: str,
+) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    for f in facilities:
+        if not isinstance(f, dict):
+            continue
+        name = str(f.get("facility") or "")
+        if not _is_filled(name) or name.startswith("Information"):
+            continue
+        blob = f"{name} {f.get('notes') or ''} {f.get('lender') or ''}"
+        kind = "existing / refinancing"
+        if re.search(
+            r"(?i)\b(acquisition|transaction\s+financ|new\s+money|bridge\s+to\s+sale)\b",
+            blob,
+        ):
+            kind = "acquisition / transaction financing"
+        elif re.search(r"(?i)\brefinanc", blob):
+            kind = "refinancing / take-out"
+        rows.append({
+            "facility": _clean(name, 60),
+            "classification": kind,
+            "drawn_balance": f.get("drawn_balance"),
+            "evidence": _clean(name, 80),
+            "source": f.get("source") or _DOC_CITE,
+            "notes": _FINANCING_LINK_RULE,
+        })
+
+    for s in _sentences(text):
+        if not _ACQ_FINANCE_CUE.search(s):
+            continue
+        kind = "acquisition / transaction financing"
+        if re.search(r"(?i)\brefinanc|existing\s+(?:facility|debt)|take[- ]out\b", s):
+            kind = "existing / refinancing"
+        if any(
+            isinstance(r, dict) and _clean(s, 40) in str(r.get("evidence") or "")
+            for r in rows
+        ):
+            continue
+        rows.append({
+            "facility": _clean(s, 60),
+            "classification": kind,
+            "drawn_balance": _NA,
+            "evidence": _clean(s, 140),
+            "source": _DOC_CITE,
+            "notes": _FINANCING_LINK_RULE,
+        })
+        if len(rows) >= 8:
+            break
+
+    if not rows:
+        rows.append({
+            "facility": _info_request("existing / refinancing facilities"),
+            "classification": "existing / refinancing",
+            "drawn_balance": _NA,
+            "evidence": _NA,
+            "source": _NA,
+            "notes": _FINANCING_LINK_RULE,
+        })
+        rows.append({
+            "facility": _info_request("acquisition / transaction financing"),
+            "classification": "acquisition / transaction financing",
+            "drawn_balance": _NA,
+            "evidence": _NA,
+            "source": _NA,
+            "notes": _FINANCING_LINK_RULE,
+        })
+    return rows[:10]
+
+
+def _leverage_discipline(
+    *,
+    schedule_complete: bool,
+    schedule_gaps: list[str],
+    legacy: dict[str, Any],
+    corpus: str,
+    net_debt: list[dict[str, Any]],
+    hp_spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Approved-EBITDA leverage; alt metrics if EBITDA negative / missing."""
+    text = _prose(corpus)
+    ebitda: float | None = None
+    ebitda_label = _info_request("approved EBITDA")
+    ebitda_source = _NA
+    approved = False
+
+    # Prefer explicit approved / adjusted EBITDA in corpus
+    m = re.search(
+        r"(?i)\b(approved|adjusted|quality\s+of\s+earnings)\s+EBITDA\b"
+        r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*([-]?[\d,]+(?:\.\d+)?)\s*(M|Cr|mn)?",
+        text,
+    )
+    if m:
+        ebitda = float(m.group(2).replace(",", ""))
+        unit = (m.group(3) or "M").upper()
+        ebitda_label = f"Approved/adjusted EBITDA {ebitda:g} {unit}"
+        ebitda_source = _DOC_CITE
+        approved = True
+    else:
+        m2 = re.search(
+            r"(?i)\b(LTM|NTM|reported)?\s*EBITDA\b"
+            r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*([-]?[\d,]+(?:\.\d+)?)\s*(M|Cr|mn)?",
+            text,
+        )
+        if m2:
+            ebitda = float(m2.group(2).replace(",", ""))
+            unit = (m2.group(3) or "M").upper()
+            ebitda_label = f"EBITDA {ebitda:g} {unit} (not labelled approved)"
+            ebitda_source = _DOC_CITE
+            approved = False
+
+    if ebitda is None and isinstance(hp_spec, dict):
+        perf = hp_spec.get("performance_metrics") if isinstance(
+            hp_spec.get("performance_metrics"), dict
+        ) else {}
+        for key in ("ebitda_fy2024", "ebitda_fy2025", "ebitda_fy2023", "ebitda"):
+            if isinstance(perf.get(key), (int, float)):
+                ebitda = float(perf[key])
+                ebitda_label = f"Historical Performance {key}"
+                ebitda_source = "(PRIOR: historical_performance)"
+                approved = False
+                break
+        if ebitda is None:
+            for row in hp_spec.get("pl_lines") or []:
+                if not isinstance(row, dict):
+                    continue
+                if "ebitda" in str(row.get("line") or row.get("metric") or "").lower():
+                    n = _num(row.get("amount") or row.get("value"))
+                    if n is not None:
+                        ebitda = n
+                        ebitda_label = "Historical Performance P&L EBITDA"
+                        ebitda_source = "(PRIOR: historical_performance)"
+                        approved = False
+                        break
+
+    net = next(
+        (
+            r.get("amount") for r in net_debt
+            if isinstance(r, dict)
+            and "net debt" in str(r.get("component") or "").lower()
+            and isinstance(r.get("amount"), (int, float))
+        ),
+        None,
+    )
+
+    ratios: dict[str, Any] = {}
+    alt_metrics: list[str] = []
+    status = "withheld"
+
+    if not schedule_complete:
+        status = "withheld_incomplete_schedule"
+        ratios["leverage_withheld"] = (
+            "Not calculated — facility schedule incomplete. "
+            + ("; ".join(schedule_gaps[:3]) if schedule_gaps else _LEVERAGE_RULE)
+        )
+    elif ebitda is None:
+        status = "withheld_no_approved_ebitda"
+        ratios["leverage_withheld"] = (
+            "Net debt / EBITDA withheld — approved EBITDA not evidenced. "
+            + _APPROVED_EBITDA_RULE
+        )
+        for k, v in (legacy.get("leverage_ratios") or {}).items():
+            key = str(k).lower()
+            if "ebitda" in key:
+                continue
+            ratios[str(k)] = v
+            if "revenue" in key or "equity" in key or "interest" in key:
+                alt_metrics.append(f"{k}={v}")
+        if not alt_metrics:
+            alt_metrics.append(_info_request("debt / revenue or interest cover as alt metric"))
+    elif ebitda <= 0:
+        status = "alt_metrics_negative_ebitda"
+        ratios["leverage_withheld"] = (
+            f"Net debt / EBITDA withheld — EBITDA {ebitda:g} is negative/zero. "
+            + _APPROVED_EBITDA_RULE
+        )
+        # Preserve non-EBITDA legacy ratios as alternatives
+        for k, v in (legacy.get("leverage_ratios") or {}).items():
+            key = str(k).lower()
+            if "ebitda" in key:
+                continue
+            if "revenue" in key or "equity" in key or "interest" in key or "burn" in key:
+                ratios[str(k)] = v
+                alt_metrics.append(f"{k}={v}")
+        if not alt_metrics:
+            alt_metrics.append(_info_request("debt / revenue (EBITDA negative)"))
+            alt_metrics.append(_info_request("interest cover N/A — negative EBITDA"))
+    elif not approved:
+        status = "withheld_unapproved_ebitda"
+        ratios["leverage_withheld"] = (
+            f"EBITDA {ebitda:g} present but not labelled approved — "
+            "withhold net debt / EBITDA until QoE / approved figure. "
+            + _APPROVED_EBITDA_RULE
+        )
+        for k, v in (legacy.get("leverage_ratios") or {}).items():
+            key = str(k).lower()
+            if "ebitda" in key:
+                continue
+            if "revenue" in key or "burn" in key or "liquidity" in key:
+                ratios[str(k)] = v
+    else:
+        status = "computed_on_approved_ebitda"
+        if net is not None and ebitda:
+            ratios["net_debt_ebitda"] = round(float(net) / float(ebitda), 2)
+        for k, v in (legacy.get("leverage_ratios") or {}).items():
+            key = str(k).lower()
+            if "ebitda" in key and k not in ratios:
+                ratios[str(k)] = v
+            elif "revenue" in key or "burn" in key:
+                ratios[str(k)] = v
+
+    # Always keep liquidity cues
+    for k, v in (legacy.get("leverage_ratios") or {}).items():
+        key = str(k).lower()
+        if ("burn" in key or "liquidity" in key or "runway" in key) and k not in ratios:
+            ratios[str(k)] = v
+
+    return {
+        "status": status,
+        "ebitda": ebitda if ebitda is not None else _NA,
+        "ebitda_label": ebitda_label,
+        "ebitda_approved": approved,
+        "ebitda_source": ebitda_source,
+        "ratios": ratios,
+        "alt_metrics": alt_metrics[:6],
+        "notes": f"{_LEVERAGE_RULE} {_APPROVED_EBITDA_RULE}",
+        "source": ebitda_source,
+    }
+
+
 def _legacy_dual_write(
     *,
     facilities: list[dict[str, Any]],
@@ -788,6 +1126,7 @@ def _legacy_dual_write(
     schedule_gaps: list[str],
     legacy: dict[str, Any],
     corpus: str,
+    leverage_discipline: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], float | None, dict[str, Any], dict[str, float], list[str]]:
     instruments: list[dict[str, Any]] = []
     for f in facilities:
@@ -805,12 +1144,13 @@ def _legacy_dual_write(
         if isinstance(i.get("amount_usd_m"), (int, float))
     )
     legacy_total = _num(legacy.get("debt_total_usd_m"))
-    # Prefer reported total when present; scheduled sum is shown in the BS bridge.
     total = legacy_total if legacy_total is not None else (scheduled or None)
 
-    # Preserve legacy leverage only when schedule is complete; otherwise mark withheld
     leverage: dict[str, Any] = {}
-    if schedule_complete:
+    disc = leverage_discipline if isinstance(leverage_discipline, dict) else {}
+    if disc.get("ratios"):
+        leverage = dict(disc["ratios"])
+    elif schedule_complete:
         for k, v in (legacy.get("leverage_ratios") or {}).items():
             leverage[str(k)] = v
     else:
@@ -818,7 +1158,6 @@ def _legacy_dual_write(
             "Not calculated — facility schedule incomplete. "
             + ("; ".join(schedule_gaps[:3]) if schedule_gaps else _LEVERAGE_RULE)
         )
-        # Keep non-leverage liquidity cues that are not debt ratios if useful? Prefer withhold all ratio calc.
         for k, v in (legacy.get("leverage_ratios") or {}).items():
             key = str(k).lower()
             if "burn" in key or "liquidity" in key or "runway" in key:
@@ -834,7 +1173,10 @@ def _legacy_dual_write(
     for note in legacy.get("capital_notes") or []:
         if isinstance(note, str) and note.strip():
             notes.append(_soften_invest(_clean(note, 200)))
-    for rule in (_FACILITY_RULE, _DEBT_LIKE_RULE, _CASH_RULE, _COC_RULE, _NET_DEBT_RULE, _LEVERAGE_RULE):
+    for rule in (
+        _FACILITY_RULE, _DEBT_LIKE_RULE, _CASH_RULE, _COC_RULE, _NET_DEBT_RULE,
+        _LEVERAGE_RULE, _CAP_TABLE_RULE, _APPROVED_EBITDA_RULE, _FINANCING_LINK_RULE,
+    ):
         if not any(rule[:28].lower() in n.lower() for n in notes):
             notes.append(rule)
     if not schedule_complete:
@@ -843,7 +1185,8 @@ def _legacy_dual_write(
         notes.append(
             "Pack cites leverage figures; they are not used until the facility schedule is complete."
         )
-    # Dedupe
+    if disc.get("status") == "alt_metrics_negative_ebitda":
+        notes.append("EBITDA negative — alternative leverage metrics only.")
     deduped: list[str] = []
     seen: set[str] = set()
     for n in notes:
@@ -852,7 +1195,287 @@ def _legacy_dual_write(
             continue
         seen.add(key)
         deduped.append(n)
-    return instruments[:12], total, leverage, dcf, deduped[:8]
+    return instruments[:12], total, leverage, dcf, deduped[:10]
+
+
+def _cap_evidence_qa(
+    *,
+    facilities: list[dict[str, Any]],
+    debt_like: list[dict[str, Any]],
+    cash: list[dict[str, Any]],
+    coc: list[dict[str, Any]],
+    net_debt: list[dict[str, Any]],
+    cap_table: list[dict[str, Any]],
+    financing_link: list[dict[str, Any]],
+    leverage_disc: dict[str, Any],
+    schedule_complete: bool,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    rows.append({
+        "check": "facility_schedule_complete",
+        "status": "PASS" if schedule_complete else "FAIL",
+        "finding": (
+            "Facility schedule complete"
+            if schedule_complete
+            else _info_request("complete facility schedule (lender/rate/maturity/security/covenants)")
+        ),
+        "action": _FACILITY_RULE,
+    })
+
+    dl_ok = any(
+        isinstance(d, dict)
+        and _is_filled(d.get("item"))
+        and not str(d.get("item")).startswith("Information")
+        for d in debt_like
+    )
+    rows.append({
+        "check": "debt_like_catalogue",
+        "status": "PASS" if dl_ok else "FAIL",
+        "finding": (
+            f"{sum(1 for d in debt_like if isinstance(d, dict))} debt-like row(s)"
+            if dl_ok
+            else _info_request("debt-like catalogue sized")
+        ),
+        "action": _DEBT_LIKE_RULE,
+    })
+
+    cash_buckets = {
+        str(c.get("bucket") or "")
+        for c in cash if isinstance(c, dict)
+    }
+    cash_ok = (
+        any("Freely" in b for b in cash_buckets)
+        and any("Restricted" in b for b in cash_buckets)
+        and any("Operating" in b or "minimum" in b.lower() for b in cash_buckets)
+        and any(
+            isinstance(c, dict)
+            and "freely" in str(c.get("bucket") or "").lower()
+            and _is_filled(c.get("amount"))
+            and not str(c.get("amount")).startswith("Information")
+            for c in cash
+        )
+    )
+    rows.append({
+        "check": "cash_split_free_restricted_minimum",
+        "status": "PASS" if cash_ok else "FAIL",
+        "finding": (
+            "Cash split evidenced (free / restricted / operating minimum)"
+            if cash_ok
+            else _info_request("cash split: freely available / restricted / operating minimum")
+        ),
+        "action": _CASH_RULE,
+    })
+
+    coc_ok = any(
+        isinstance(r, dict)
+        and _is_filled(r.get("trigger"))
+        and not str(r.get("trigger")).startswith("Information")
+        for r in coc
+    )
+    rows.append({
+        "check": "change_of_control_consents",
+        "status": "PASS" if coc_ok else "FAIL",
+        "finding": (
+            "CoC / prepayment / consent evidence present"
+            if coc_ok
+            else _info_request("change-of-control / prepayment / consent clauses")
+        ),
+        "action": _COC_RULE,
+    })
+
+    net_ok = any(
+        isinstance(r, dict)
+        and "net debt" in str(r.get("component") or "").lower()
+        and isinstance(r.get("amount"), (int, float))
+        for r in net_debt
+    )
+    sourced = all(
+        isinstance(r, dict) and _is_filled(r.get("source")) and r.get("source") != _NA
+        for r in net_debt
+        if isinstance(r, dict) and "net debt" not in str(r.get("component") or "").lower()
+    ) if net_debt else False
+    rows.append({
+        "check": "net_debt_bridge_sourced",
+        "status": "PASS" if net_ok and (sourced or schedule_complete) else "FAIL",
+        "finding": (
+            "Net debt bridge closed with sourced lines"
+            if net_ok
+            else _info_request("sourced net debt bridge (gross − free cash + debt-like)")
+        ),
+        "action": _NET_DEBT_RULE,
+    })
+
+    cap_filled = any(
+        isinstance(r, dict)
+        and _is_filled(r.get("holder"))
+        and not str(r.get("holder")).startswith("Information")
+        and (
+            isinstance(r.get("fully_diluted_pct"), (int, float))
+            or r.get("fully_diluted_basis")
+        )
+        for r in cap_table
+    )
+    rows.append({
+        "check": "cap_table_fully_diluted",
+        "status": "PASS" if cap_filled else "FAIL",
+        "finding": (
+            "Fully diluted cap table present"
+            if cap_filled
+            else _info_request("fully diluted capitalisation table")
+        ),
+        "action": _CAP_TABLE_RULE,
+    })
+
+    lev_status = str(leverage_disc.get("status") or "")
+    lev_ok = lev_status in {
+        "computed_on_approved_ebitda",
+        "alt_metrics_negative_ebitda",
+    }
+    rows.append({
+        "check": "approved_ebitda_leverage",
+        "status": "PASS" if lev_ok else "FAIL",
+        "finding": (
+            f"Leverage discipline: {lev_status}"
+            if lev_ok
+            else _info_request("approved EBITDA (or alt metrics if negative)")
+        ),
+        "action": _APPROVED_EBITDA_RULE,
+    })
+
+    classes = {
+        str(r.get("classification") or "")
+        for r in financing_link if isinstance(r, dict)
+    }
+    fin_ok = any(
+        isinstance(r, dict)
+        and _is_filled(r.get("facility"))
+        and not str(r.get("facility")).startswith("Information")
+        for r in financing_link
+    ) and (
+        any("acquisition" in c for c in classes)
+        or any("existing" in c or "refinanc" in c for c in classes)
+    )
+    rows.append({
+        "check": "financing_vs_acquisition",
+        "status": "PASS" if fin_ok else "FAIL",
+        "finding": (
+            f"Financing classes: {', '.join(sorted(classes)) or 'none'}"
+            if fin_ok
+            else _info_request("existing/refi vs acquisition financing classification")
+        ),
+        "action": _FINANCING_LINK_RULE,
+    })
+
+    # Silence unused facilities warning for QA context
+    _ = facilities
+    return rows
+
+
+def _questions_from_cap_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("cap_evidence_qa")
+        if isinstance(spec.get("cap_evidence_qa"), list) else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("facility_schedule_complete"):
+        out.append(normalize_question({
+            "question": "Complete the facility schedule (lender, drawn, rate, maturity, security, covenants)",
+            "required_records": "Loan agreements + debt ledger reconcile",
+            "decision_effect": "Incomplete schedule makes leverage wrong, not approximate",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "facility_schedule_complete QA PASS",
+            "interim_treatment": "BLOCKED — withhold leverage",
+        }))
+    if _qa_fail("debt_like_catalogue"):
+        out.append(normalize_question({
+            "question": "Catalogue and size debt-like items (overdue creditors, dividends, leases, etc.)",
+            "required_records": "AP ageing + notes to accounts + lease schedule",
+            "decision_effect": "Off-schedule obligations understate funding need",
+            "priority": "signing_condition",
+            "owner": "financial diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "debt_like_catalogue QA PASS",
+            "interim_treatment": "LIMITED — treat catalogue as open",
+        }))
+    if _qa_fail("cash_split_free_restricted_minimum"):
+        out.append(normalize_question({
+            "question": "Split cash into freely available, restricted and operating minimum",
+            "required_records": "Bank confirmations + escrow / lien schedule",
+            "decision_effect": "Only free cash counts against debt in full",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "cash_split_free_restricted_minimum QA PASS",
+            "interim_treatment": "Do not net restricted cash against debt",
+        }))
+    if _qa_fail("change_of_control_consents"):
+        out.append(normalize_question({
+            "question": "Extract CoC, prepayment and consent triggers from facility documents",
+            "required_records": "Facility agreements + intercreditor",
+            "decision_effect": "Unexpected prepay / consent can break the funding plan",
+            "priority": "signing_condition",
+            "owner": "legal / financial diligence",
+            "timing": "before signing",
+            "closure_test": "change_of_control_consents QA PASS",
+            "interim_treatment": "LIMITED — assume CoC risk open",
+        }))
+    if _qa_fail("net_debt_bridge_sourced"):
+        out.append(normalize_question({
+            "question": "Produce a sourced net debt bridge (gross − free cash + debt-like)",
+            "required_records": "Facility schedule + cash split + debt-like sizes",
+            "decision_effect": "Completion funding position is unproven",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "net_debt_bridge_sourced QA PASS",
+            "interim_treatment": "BLOCKED — no invented net debt",
+        }))
+    if _qa_fail("cap_table_fully_diluted"):
+        out.append(normalize_question({
+            "question": "Provide a fully diluted capitalisation table (options, warrants, convertibles)",
+            "required_records": "Cap table + option / warrant / convertible registers",
+            "decision_effect": "Undiluted equity misstates ownership and proceeds",
+            "priority": "signing_condition",
+            "owner": "legal / financial diligence",
+            "timing": "per deal timetable",
+            "closure_test": "cap_table_fully_diluted QA PASS",
+            "interim_treatment": "LIMITED — treat dilution as open",
+        }))
+    if _qa_fail("approved_ebitda_leverage"):
+        out.append(normalize_question({
+            "question": "Supply approved EBITDA for leverage, or alt metrics if EBITDA is negative",
+            "required_records": "QoE / approved EBITDA bridge (or debt/revenue if negative)",
+            "decision_effect": "Unapproved or negative EBITDA makes ND/EBITDA misleading",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "approved_ebitda_leverage QA PASS",
+            "interim_treatment": "Withhold ND/EBITDA until approved figure",
+        }))
+    if _qa_fail("financing_vs_acquisition"):
+        out.append(normalize_question({
+            "question": "Classify facilities as existing/refinancing vs acquisition/transaction financing",
+            "required_records": "Sources & uses + facility purpose schedules",
+            "decision_effect": "Buyer must see new money vs take-out clearly",
+            "priority": "signing_condition",
+            "owner": "financial diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "financing_vs_acquisition QA PASS",
+            "interim_treatment": "LIMITED — do not blend facility purposes",
+        }))
+    return out
 
 
 def _quality_reliance(
@@ -944,6 +1567,7 @@ def _heuristic_capital_structure_spec(
     sources: list[str],
     geography: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    hp_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del geography
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
@@ -956,13 +1580,37 @@ def _heuristic_capital_structure_spec(
     net_debt = _net_debt_bridge(
         facilities, debt_like, cash, legacy, schedule_complete=complete
     )
+    cap_table = _extract_cap_table(corpus, legacy)
+    financing_link = _financing_vs_acquisition(facilities, corpus)
+    leverage_disc = _leverage_discipline(
+        schedule_complete=complete,
+        schedule_gaps=gaps,
+        legacy=legacy,
+        corpus=corpus,
+        net_debt=net_debt,
+        hp_spec=hp_spec,
+    )
     instruments, total, leverage, dcf, notes = _legacy_dual_write(
         facilities=facilities,
         schedule_complete=complete,
         schedule_gaps=gaps,
         legacy=legacy,
         corpus=corpus,
+        leverage_discipline=leverage_disc,
     )
+    cap_qa = _cap_evidence_qa(
+        facilities=facilities,
+        debt_like=debt_like,
+        cash=cash,
+        coc=coc,
+        net_debt=net_debt,
+        cap_table=cap_table,
+        financing_link=financing_link,
+        leverage_disc=leverage_disc,
+        schedule_complete=complete,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in cap_qa)
+
     quality, reliance, rationale = _quality_reliance(
         facilities=facilities,
         debt_like=debt_like,
@@ -972,6 +1620,9 @@ def _heuristic_capital_structure_spec(
         schedule_complete=complete,
         schedule_gaps=gaps,
     )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "Capital structure QA has open FAILs — reliance limited. " + rationale
 
     bits = [f"Capital Structure for {company}"]
     if total is not None:
@@ -981,7 +1632,7 @@ def _heuristic_capital_structure_spec(
     if gaps:
         bits.append(f"{len(gaps)} gap(s)")
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "facilities": facilities,
         "balance_sheet_reconciliation": reconciliation,
@@ -989,6 +1640,10 @@ def _heuristic_capital_structure_spec(
         "cash_split": cash,
         "change_of_control": coc,
         "net_debt_bridge": net_debt,
+        "cap_table": cap_table,
+        "financing_vs_acquisition": financing_link,
+        "leverage_discipline": leverage_disc,
+        "cap_evidence_qa": cap_qa,
         "schedule_complete": complete,
         "schedule_gaps": gaps,
         # Legacy dual-write
@@ -996,7 +1651,7 @@ def _heuristic_capital_structure_spec(
         "debt_total_usd_m": total,
         "leverage_ratios": leverage,
         "dcf_metrics": dcf,
-        "capital_notes": notes,
+        "capital_notes": notes[:10],
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": rationale,
@@ -1006,6 +1661,8 @@ def _heuristic_capital_structure_spec(
         "dd_code": legacy.get("dd_code") or _DD_CODE,
         "empty": not instruments and total is None,
     }
+    out["questions"] = _questions_from_cap_gaps(out)
+    return out
 
 
 def _llm_capital_structure_spec(
@@ -1016,6 +1673,11 @@ def _llm_capital_structure_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -1028,6 +1690,12 @@ def _llm_capital_structure_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -1047,6 +1715,11 @@ def _llm_capital_structure_spec(
         "cash_split: [{bucket, amount, counts_against_debt, detail, source, notes}],\n"
         "change_of_control: [{trigger, kind, consequence, source, notes}],\n"
         "net_debt_bridge: [{component, amount, sign, source, notes}],\n"
+        "cap_table: [{holder, instrument, shares, fully_diluted_pct, source, notes}],\n"
+        "financing_vs_acquisition: [{facility, classification, drawn_balance, "
+        "evidence, source, notes}],\n"
+        "leverage_discipline: {status, ebitda, ebitda_label, ebitda_approved, "
+        "ratios, alt_metrics, notes, source},\n"
         "schedule_complete: boolean,\n"
         "schedule_gaps: [string],\n"
         "debt_instruments: [{name, amount_usd_m}],\n"
@@ -1054,10 +1727,18 @@ def _llm_capital_structure_spec(
         "leverage_ratios: {string: number|string},\n"
         "dcf_metrics: {string: number},\n"
         "capital_notes: [string],\n"
+        "cap_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "facility_schedule_complete, debt_like_catalogue, "
+        "cash_split_free_restricted_minimum, change_of_control_consents, "
+        "net_debt_bridge_sourced, cap_table_fully_diluted, approved_ebitda_leverage, "
+        "financing_vs_acquisition,\n"
+        "questions: [{question, required_records, decision_effect, priority, owner, "
+        "timing, closure_test, interim_treatment}],\n"
         "quality_verdict: PASS|REWORK,\n"
         "reliance_verdict: READY|LIMITED|BLOCKED,\n"
         "quality_reliance_rationale: string.\n"
         "Do NOT calculate leverage if the facility schedule is incomplete. "
+        "Leverage only on approved EBITDA; alt metrics if negative. "
         "No invest or pass."
     )
     try:
@@ -1072,6 +1753,8 @@ def _normalise_llm_spec(
     heur: dict[str, Any],
     sources: list[str],
     legacy: dict[str, Any],
+    corpus: str = "",
+    hp_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     llm = dict(raw) if isinstance(raw, dict) else {}
 
@@ -1110,6 +1793,16 @@ def _normalise_llm_spec(
         row["notes"] = _NET_DEBT_RULE
     llm["net_debt_bridge"] = net_debt
 
+    cap_table = _rows("cap_table", "holder")
+    for row in cap_table:
+        row["notes"] = _CAP_TABLE_RULE
+    llm["cap_table"] = cap_table or heur.get("cap_table") or []
+
+    financing_link = _rows("financing_vs_acquisition", "facility")
+    for row in financing_link:
+        row["notes"] = _FINANCING_LINK_RULE
+    llm["financing_vs_acquisition"] = financing_link or heur.get("financing_vs_acquisition") or []
+
     complete_heur, gaps_heur = _schedule_complete(facilities)
     if "schedule_complete" in llm:
         complete = bool(llm.get("schedule_complete")) and complete_heur
@@ -1120,7 +1813,21 @@ def _normalise_llm_spec(
     llm["schedule_complete"] = complete
     llm["schedule_gaps"] = gaps[:8]
 
-    # Force leverage withhold when incomplete
+    leverage_disc = _leverage_discipline(
+        schedule_complete=complete,
+        schedule_gaps=gaps,
+        legacy={
+            **legacy,
+            "leverage_ratios": llm.get("leverage_ratios")
+            if isinstance(llm.get("leverage_ratios"), dict)
+            else legacy.get("leverage_ratios"),
+        },
+        corpus=corpus,
+        net_debt=net_debt,
+        hp_spec=hp_spec,
+    )
+    llm["leverage_discipline"] = leverage_disc
+
     instruments, total, leverage, dcf, notes = _legacy_dual_write(
         facilities=facilities,
         schedule_complete=complete,
@@ -1138,13 +1845,28 @@ def _normalise_llm_spec(
             else legacy.get("capital_notes"),
             "debt_total_usd_m": llm.get("debt_total_usd_m", legacy.get("debt_total_usd_m")),
         },
-        corpus="",
+        corpus=corpus,
+        leverage_discipline=leverage_disc,
     )
     llm["debt_instruments"] = instruments or heur.get("debt_instruments") or []
     llm["debt_total_usd_m"] = total if total is not None else heur.get("debt_total_usd_m")
     llm["leverage_ratios"] = leverage
     llm["dcf_metrics"] = dcf or heur.get("dcf_metrics") or {}
     llm["capital_notes"] = notes
+
+    cap_qa = _cap_evidence_qa(
+        facilities=facilities,
+        debt_like=debt_like,
+        cash=cash,
+        coc=coc,
+        net_debt=net_debt,
+        cap_table=llm["cap_table"],
+        financing_link=llm["financing_vs_acquisition"],
+        leverage_disc=leverage_disc,
+        schedule_complete=complete,
+    )
+    llm["cap_evidence_qa"] = cap_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in cap_qa)
 
     quality, reliance, rationale = _quality_reliance(
         facilities=facilities,
@@ -1164,6 +1886,24 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "Capital structure QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_cap_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_cap_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
@@ -1185,6 +1925,7 @@ def build_capital_structure_spec(
     index: dict[str, Any] | None = None,
     company: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    hp_spec: dict[str, Any] | None = None,
     corpus: str | None = None,
     sources: list[str] | None = None,
     prefer_heuristic: bool = False,
@@ -1229,7 +1970,9 @@ def build_capital_structure_spec(
         sources=srcs,
         geography=vars_.get("geography"),
         legacy_spec=legacy,
+        hp_spec=hp_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
     if prefer_heuristic:
         return heur
 
@@ -1240,10 +1983,24 @@ def build_capital_structure_spec(
         sector=vars_.get("sector"),
         geography=vars_.get("geography"),
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if not llm_raw:
         return heur
-    return _normalise_llm_spec(llm_raw, heur=heur, sources=srcs, legacy=legacy)
+    out = _normalise_llm_spec(
+        llm_raw,
+        heur=heur,
+        sources=srcs,
+        legacy=legacy,
+        corpus=full_corpus,
+        hp_spec=hp_spec,
+    )
+    out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return out
 
 
 def render_capital_structure_markdown(
@@ -1442,10 +2199,72 @@ def render_capital_structure_markdown(
         ))
     else:
         parts.append(f"**{_info_request('sourced net debt bridge')}**\n\n")
+    cap_table = spec.get("cap_table") if isinstance(spec.get("cap_table"), list) else []
+    financing_link = (
+        spec.get("financing_vs_acquisition")
+        if isinstance(spec.get("financing_vs_acquisition"), list) else []
+    )
+    leverage_disc = (
+        spec.get("leverage_discipline")
+        if isinstance(spec.get("leverage_discipline"), dict) else {}
+    )
+
+    if cap_table:
+        parts.append("### Fully diluted cap table\n\n")
+        parts.append(f"{_CAP_TABLE_RULE}\n\n")
+        parts.append(_table(
+            ["Holder", "Instrument", "Shares", "Fully diluted %", "Source"],
+            [
+                [
+                    _clean(r.get("holder"), 60),
+                    _clean(r.get("instrument"), 40),
+                    _clean(r.get("shares"), 40),
+                    (
+                        f"{float(r['fully_diluted_pct']):g}%"
+                        if isinstance(r.get("fully_diluted_pct"), (int, float))
+                        else _clean(r.get("fully_diluted_pct"), 40)
+                    ),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in cap_table if isinstance(r, dict)
+            ],
+        ))
+
+    if financing_link:
+        parts.append("### Financing vs acquisition debt\n\n")
+        parts.append(f"{_FINANCING_LINK_RULE}\n\n")
+        parts.append(_table(
+            ["Facility", "Classification", "Drawn", "Evidence", "Source"],
+            [
+                [
+                    _clean(r.get("facility"), 60),
+                    _clean(r.get("classification"), 40),
+                    (
+                        _fmt_amt(r.get("drawn_balance"))
+                        if isinstance(r.get("drawn_balance"), (int, float))
+                        else _clean(r.get("drawn_balance"), 40)
+                    ),
+                    _clean(r.get("evidence"), 80),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in financing_link if isinstance(r, dict)
+            ],
+        ))
+
     if leverage:
         parts.append("### Leverage / related metrics\n\n")
+        parts.append(f"{_APPROVED_EBITDA_RULE}\n\n")
         if not complete or "leverage_withheld" in leverage:
             parts.append(f"*{_LEVERAGE_RULE}*\n\n")
+        if leverage_disc:
+            parts.append(
+                f"- Discipline status: `{_clean(leverage_disc.get('status'), 60)}`\n"
+                f"- EBITDA: {_clean(leverage_disc.get('ebitda_label'), 120)} "
+                f"(approved: {'yes' if leverage_disc.get('ebitda_approved') else 'no'})\n"
+            )
+            for alt in (leverage_disc.get("alt_metrics") or [])[:4]:
+                parts.append(f"- Alt: {_clean(alt, 160)}\n")
+            parts.append("\n")
         for k, v in list(leverage.items())[:10]:
             if isinstance(v, (int, float)):
                 parts.append(f"- `{k}`: {v:g}\n")
@@ -1465,20 +2284,83 @@ def render_capital_structure_markdown(
     parts.append(
         "*This section does not recommend invest or pass. Leverage is not calculated "
         "from an incomplete facility schedule. Only freely available cash counts "
-        "against debt in full.*\n\n"
+        "against debt in full. Cap table is fully diluted. Existing / refi facilities "
+        "are separated from acquisition financing.*\n\n"
     )
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    cap_qa = (
+        spec.get("cap_evidence_qa")
+        if isinstance(spec.get("cap_evidence_qa"), list) else []
+    )
+    parts.append("## 6. Capital Structure Evidence QA\n\n")
+    parts.append(
+        "QA enforces facility-schedule completeness, debt-like catalogue, cash split, "
+        "CoC/consents, sourced net-debt bridge, fully diluted cap table, approved-EBITDA "
+        "leverage discipline, and financing vs acquisition classification.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in cap_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('capital structure evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material capital-structure gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
     rationale = spec.get("quality_reliance_rationale") or _NA
-    parts.append(f"**Quality:** {qv}  \n")
-    parts.append(f"**Reliance:** {rv}  \n\n")
-    parts.append(f"{_soften_invest(_clean(rationale, 600))}\n\n")
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _soften_invest(_clean(rationale, 460))],
+        ],
+    ))
+    parts.append(f"**Quality:** {_clean(qv, 20)} — is the funding map accurate and honest about limits?\n\n")
+    parts.append(
+        f"**Reliance:** {_clean(rv, 20)} — can diligence rest on this completion "
+        "funding position?\n\n"
+    )
     parts.append(
         "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open capital-structure QA FAILs cap READY → LIMITED. "
         "This agent does not issue an invest or pass recommendation.*\n\n"
     )
     parts.append("---\n\n")

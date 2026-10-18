@@ -31,6 +31,7 @@ def _valuation() -> dict:
         "earnings_basis": {
             "metric": "Revenue",
             "period": "FY2024E",
+            "as_of_date": "2024-03-31",
             "amount": 590.0,
             "unit": "USD M",
             "source": "(DOC: data room financials)",
@@ -41,11 +42,15 @@ def _valuation() -> dict:
             "range_multiple_high": 2.1,
             "implied_ev_usd_b_low": 0.47,
             "implied_ev_usd_b_high": 1.24,
+            "multiple_basis": "forward",
+            "selection_rationale": "Peers matched on EV two-wheeler market and growth stage",
         },
         "precedents_summary": {
             "median_multiple": 2.1,
             "implied_ev_usd_b_low": 1.0,
             "implied_ev_usd_b_high": 2.5,
+            "multiple_basis": "LTM",
+            "selection_rationale": "Control transactions in adjacent mobility platforms",
         },
         "dcf": {
             "wacc_pct": 9.0,
@@ -148,6 +153,8 @@ def test_final_range_prompt_book_listed() -> None:
     assert "Ola" not in body and "SoftBank" not in body
     assert "synerg" in body.lower()
     assert "net debt" in body.lower()
+    assert "questions" in body.lower()
+    assert "ltm" in body.lower() or "forward" in body.lower()
 
 
 def test_final_range_not_company_hardcoded() -> None:
@@ -220,6 +227,22 @@ def test_range_published_when_ready() -> None:
     assert stand.get("synergies_credited") is False
     assert fvr.get("quality_verdict") == "PASS"
     assert fvr.get("reliance_verdict") == "READY"
+    basis = fvr.get("common_date_basis") or {}
+    assert basis.get("bound") is True
+    qa = {
+        r.get("check"): r
+        for r in (fvr.get("final_valuation_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert "common_date_basis" in qa
+    assert "comp_rationale_ltm_forward" in qa
+    assert "ev_equity_bridge_ready" in qa
+    assert "standalone_synergy_split" in qa
+    assert "walk_away_vs_hurdles" in qa
+    assert "publish_gate_earnings_nd_wc" in qa
+    assert "no_go_bid_endorsement" in qa
+    assert all(r.get("status") == "PASS" for r in qa.values())
+    assert fvr.get("questions") == []
 
 
 def test_walk_away_must_be_above_high() -> None:
@@ -248,8 +271,42 @@ def test_render_no_invest_and_gate() -> None:
     assert "## 1. Low / Base / High Enterprise Value" in md
     assert "## 3. Walk-away Price" in md
     assert "## 4. Stand-alone vs Buyer Synergies" in md
+    assert "## 6. Final Valuation Evidence QA" in md
+    assert "## 7. Questions and Inputs Required" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
+    qa = {
+        r.get("check"): r
+        for r in (fvr.get("final_valuation_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert qa.get("no_go_bid_endorsement", {}).get("status") == "FAIL"
+    assert qa.get("publish_gate_earnings_nd_wc", {}).get("status") == "PASS"
+    assert fvr.get("questions")
+    assert fvr.get("reliance_verdict") == "BLOCKED"
+
+
+def test_go_bid_language_caps_ready() -> None:
+    fvr = _heuristic_final_range_spec(
+        company="Test3",
+        corpus="Working Capital Build (% of Revenue growth) 6%. We should bid at USD 5.0B.",
+        sources=["13_Valuation.pdf"],
+        valuation_spec=_valuation(),
+        capital_structure=_capital_complete(),
+        revenue_quality=_revenue_quality_ok(),
+        sensitivity_analysis=_valuation()["sensitivity_analysis"],
+    )
+    assert fvr.get("range_published") is True
+    qa = {
+        r.get("check"): r
+        for r in (fvr.get("final_valuation_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert qa.get("no_go_bid_endorsement", {}).get("status") == "FAIL"
+    assert fvr.get("questions")
+    assert fvr.get("reliance_verdict") in {"LIMITED", "BLOCKED"}
+    assert fvr.get("reliance_verdict") != "READY"
 
 
 def test_valuation_document_embeds_final_range() -> None:

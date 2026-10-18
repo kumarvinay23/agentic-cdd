@@ -21,7 +21,15 @@ from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Inches, Pt
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt, _recover_legal_name, sanitize_report_prose
+from agetic_cdd_api.report_builder_base import (
+    BuildContext,
+    ReportBuilder,
+    _evt,
+    _recover_legal_name,
+    agent_cite_source_names,
+    ctx_cite_source_names,
+    sanitize_report_prose,
+)
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -93,28 +101,43 @@ def _sector_display(ctx: BuildContext) -> str:
     return sector_label("generic")
 
 
-def _clean(text: str, max_chars: int = 280) -> str:
+def _clean(
+    text: str,
+    max_chars: int = 280,
+    *,
+    sources: list[Any] | None = None,
+    ctx: BuildContext | None = None,
+    agent_keys: tuple[str, ...] = (),
+) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip()).replace("\x7f", " ")
-    t = sanitize_report_prose(t)
-    if re.search(r"(?i)(?:shares?|options?|cap table|ownership)", t):
+    cite_sources = sources
+    if not cite_sources and ctx is not None:
+        cite_sources = ctx_cite_source_names(
+            ctx, *(agent_keys or ("company_background", "market_definition"))
+        )
+    t = sanitize_report_prose(t, sources=cite_sources)
+    if re.search(r"(?i)(?:shares?|options?|cap table|ownership|10,?000,?010)", t):
         from agetic_cdd_api.agent_document_company_background import _canonicalize_cap_table_text
 
         t = _canonicalize_cap_table_text(t) or t
-        t = sanitize_report_prose(t)  # drop Ownership:/Total evidenced duplication after canonicalize
+        t = sanitize_report_prose(t, sources=cite_sources)
+        if re.search(r"(?i)Total evidenced common equity", t):
+            max_chars = max(max_chars, 700)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
 
 
 def _findings(agent: dict[str, Any], limit: int = 6) -> list[str]:
+    srcs = agent_cite_source_names(agent, limit=6)
     out: list[str] = []
     for item in agent.get("findings") or []:
         if isinstance(item, str) and item.strip():
-            out.append(_clean(item, 320))
+            out.append(_clean(item, 320, sources=srcs))
         elif isinstance(item, dict):
             text = item.get("finding") or item.get("note") or item.get("name") or item.get("risk")
             if text:
-                out.append(_clean(str(text), 320))
+                out.append(_clean(str(text), 320, sources=srcs))
         if len(out) >= limit:
             break
     return out
@@ -650,21 +673,18 @@ def _slide_market_primer(prs: Presentation, ctx: BuildContext, page: int, total:
     bg = _resolve(ctx, "company_background")
     bg_offers = _spec(bg).get("offers") if isinstance(_spec(bg).get("offers"), dict) else {}
     bg_sells = str(bg_offers.get("sells") or "").strip()
+    cite_srcs = ctx_cite_source_names(ctx, "market_definition", "company_background")
     if bg_sells and (
         not service
         or re.search(r"(?i)DOC:\s*data room financials", service)
     ):
         cites = ""
-        bg_sources = bg.get("sources") if isinstance(bg.get("sources"), list) else []
-        if bg_sources:
-            n = min(3, len(bg_sources))
-            cites = " (" + ", ".join(f"DOC: [{i}]" for i in range(1, n + 1)) + ")"
+        names = agent_cite_source_names(bg) or cite_srcs
+        if names:
+            cites = " (" + ", ".join(f"DOC: {n}" for n in names[:3]) + ")"
         service = f"{bg_sells}{cites}"
     elif service:
-        service = sanitize_report_prose(
-            service,
-            sources=mdef.get("sources") if isinstance(mdef.get("sources"), list) else None,
-        )
+        service = sanitize_report_prose(service, sources=cite_srcs)
     insight = (
         service
         or framing_text.strip()
@@ -949,13 +969,50 @@ def _slide_risks(prs: Presentation, ctx: BuildContext, page: int, total: int) ->
     execution = _resolve(ctx, "execution_risk")
     regulatory = _resolve(ctx, "regulatory_compliance")
     _section_title(slide, "Risk register — internal, market, execution", "", eyebrow="Section 05")
+    # Prefer IC / recommendation key-person retention CP for MITIGATION WATCH.
+    mitigation_watch = ""
+    ics = _resolve(ctx, "ic_synthesis")
+    rec = _resolve(ctx, "recommendation")
+    for src in (ics, rec):
+        if mitigation_watch:
+            break
+        spec = _spec(src)
+        for key in ("primary_risks", "conditions_precedent", "open_items"):
+            rows = spec.get(key) if isinstance(spec.get(key), list) else []
+            for row in rows:
+                if not isinstance(row, dict):
+                    text = str(row or "")
+                else:
+                    text = str(
+                        row.get("mitigation")
+                        or row.get("action")
+                        or row.get("risk")
+                        or row.get("item")
+                        or ""
+                    )
+                low = text.lower()
+                if "retention" in low or "key-person" in low or "key person" in low:
+                    mitigation_watch = text
+                    break
+    if not mitigation_watch:
+        for line in _findings(internal, 4) + _findings(execution, 4):
+            low = line.lower()
+            if "retention" in low or "key-person" in low or "key person" in low:
+                mitigation_watch = line
+                break
+    if not mitigation_watch:
+        mitigation_watch = (
+            _findings(execution, 2)[-1:]
+            or _findings(market, 2)[-1:]
+            or ["Track key-person retention conditions in IC Memo."]
+        )[0]
     cards = [
         ("INTERNAL RISK", (_findings(internal, 1) or ["Internal risk findings."])[0]),
         ("MARKET RISK", (_findings(market, 1) or ["Market risk findings."])[0]),
         ("EXECUTION RISK", (_findings(execution, 1) or ["Execution risk findings."])[0]),
         ("REGULATORY", (_findings(regulatory, 1) or ["Regulatory / compliance findings."])[0]),
         ("OPERATIONAL", (_findings(_resolve(ctx, "operational_risk"), 1) or ["Ops risk cross-check."])[0]),
-        ("MITIGATION WATCH", (_findings(execution, 2)[-1:] or _findings(market, 2)[-1:] or ["Track mitigations in IC Memo."])[0]),
+        ("MITIGATION WATCH", mitigation_watch),
     ]
     _finding_grid(slide, [(a, _clean(str(b), 140)) for a, b in cards], top=1.7)
     _chrome(slide, company=company, section="Operations & Risk", page=page, total=total, part="05")

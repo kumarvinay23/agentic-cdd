@@ -35,10 +35,9 @@ class MetricFamily(str, Enum):
     UNKNOWN = "unknown"
 
 
-# Retention / ARR metrics require an allowlisted sector pack to auto-promote.
+# ARR / logo churn stay SaaS-pack-only. Commercial NRR/GRR appear on organics
+# and other non-SaaS packs (Commercial Summary sheet) and must auto-promote.
 DEFAULT_SAAS_ONLY_METRICS: tuple[str, ...] = (
-    "grr",
-    "nrr",
     "arr",
     "logo_churn",
     "revenue_churn",
@@ -73,11 +72,19 @@ class DealDatabookParams(BaseModel):
     expected_doc_profile: str | None = None  # generic | saas | None→sector_pack
 
     def blocks_saas_metric(self, metric_key: str | None) -> bool:
-        """True when metric_key is SaaS-only and the active pack is not allowlisted."""
+        """True when metric_key is SaaS-only and the active pack is not allowlisted.
+
+        Commercial NRR/GRR live on the generic CoA (organics and other non-SaaS
+        packs). Never SaaS-gate them — older deal ``meta.json`` params may still
+        list ``nrr``/``grr`` under ``saas_only_metrics`` from before the move.
+        """
         if not metric_key:
             return False
+        key = metric_key.strip().lower()
+        if key in {"nrr", "grr", "nrr_commercial", "grr_commercial"}:
+            return False
         only = {m.strip().lower() for m in self.saas_only_metrics if m}
-        if metric_key.strip().lower() not in only:
+        if key not in only:
             return False
         pack = (self.sector_pack or "").strip().lower()
         allowed = {p.strip().lower() for p in self.saas_metric_packs if p}

@@ -59,6 +59,10 @@ _VDR_POINTER_RE = re.compile(r"(?i)please\s+see")
 _REPORT_COMPANY: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "report_company", default=None
 )
+# Data-room source rows for upgrading generic DOC: tags during report build.
+_REPORT_SOURCES: contextvars.ContextVar[list[Any] | None] = contextvars.ContextVar(
+    "report_sources", default=None
+)
 
 # Keyword hints → sector id when deal metadata is still "generic".
 _SECTOR_HINTS: list[tuple[str, tuple[str, ...]]] = [
@@ -175,137 +179,327 @@ def strip_corporate_boilerplate(text: str) -> str:
 
 
 def strip_unsupported_entity_suffixes(text: str, *, company: str | None = None) -> str:
-    """Drop Inc./LLC/Benefit Corporation when the deal name itself lacks that suffix."""
+    """Drop Inc./LLC only when clearly invented; keep Benefit Corporation when present.
+
+    Cap-table titles often read ``Compost Crew Inc., A Benefit Corporation`` —
+    those suffixes are evidenced and must survive. Invented jurisdiction
+    parentheticals are handled by ``strip_corporate_boilerplate``.
+    """
     t = str(text or "")
     if not t:
         return t
     company = (company or "").strip()
     if company and re.search(_UNSUPPORTED_ENTITY_SUFFIX, company, flags=re.I):
         return t  # evidenced on the deal name — keep matching uses
-    if company:
+    # Keep Inc. / Benefit Corporation — only strip bare LLC/Ltd when the deal
+    # name itself has no corporate suffix (legacy invented-entity hygiene).
+    if company and not re.search(r"(?i)\b(?:Inc|LLC|Ltd|Corp|Corporation)\b", company):
         t = re.sub(
-            rf"(?i)\b({re.escape(company)})\s+{_UNSUPPORTED_ENTITY_SUFFIX}\b\.?",
+            rf"(?i)\b({re.escape(company)})\s+(?:LLC|L\.L\.C\.|Ltd\.?|Limited)\b\.?",
             r"\1",
             t,
         )
-    # Always strip Benefit Corporation — never evidenced in this VDR pattern
-    t = re.sub(
-        rf"(?i)\b([A-Z][\w&'’.-]*(?:\s+[A-Z][\w&'’.-]*){{0,4}})\s+"
-        r"(?:Public\s+)?Benefit\s+Corporation\b\.?",
-        r"\1",
-        t,
-    )
     return t
+
+
+_FINANCIAL_CITE_HINTS = (
+    "financial",
+    "workbook",
+    "p&l",
+    "pnl",
+    "income",
+    "balance",
+    "cash flow",
+    "cashflow",
+    "cim",
+    "management account",
+    "monthly pack",
+    "databook",
+    "trading",
+    "qbo",
+    "ledger",
+)
+
+
+def _cite_source_names(sources: list[Any] | dict[str, Any] | None) -> list[str]:
+    """Flatten source rows / report sources dict into unique basenames."""
+    from pathlib import Path
+
+    rows: list[Any] = []
+    if isinstance(sources, dict):
+        rows.extend(sources.get("cited_files") or [])
+        rows.extend(sources.get("files") or [])
+    elif isinstance(sources, list):
+        rows = sources
+    names: list[str] = []
+    seen: set[str] = set()
+    for src in rows:
+        raw = ""
+        if isinstance(src, str) and src.strip():
+            raw = src.strip()
+        elif isinstance(src, dict):
+            name = src.get("filename") or src.get("name") or src.get("title")
+            if isinstance(name, str) and name.strip():
+                raw = name.strip()
+        if not raw:
+            continue
+        short = Path(raw).name or raw
+        key = short.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(short)
+    return names
+
+
+def agent_cite_source_names(agent: dict[str, Any] | None, *, limit: int = 3) -> list[str]:
+    """Filenames from an agent payload for DOC: upgrades."""
+    if not isinstance(agent, dict):
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    spec = agent.get("spec") if isinstance(agent.get("spec"), dict) else {}
+    for s in list(agent.get("sources") or []) + list(spec.get("sources") or []):
+        raw = ""
+        if isinstance(s, str) and s.strip():
+            raw = s.strip()
+        elif isinstance(s, dict):
+            name = s.get("filename") or s.get("name") or s.get("title")
+            if isinstance(name, str) and name.strip():
+                raw = name.strip()
+        if not raw:
+            continue
+        short = Path(raw).name or raw
+        key = short.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(short)
+        if len(names) >= limit:
+            break
+    return names
+
+
+def ctx_cite_source_names(
+    ctx: BuildContext,
+    *agent_keys: str,
+    limit: int = 3,
+) -> list[str]:
+    """Collect cite filenames from agents, falling back to the VDR inventory."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for key in agent_keys:
+        if not key:
+            continue
+        resolved_key, agent = _resolve_agent_output(ctx.agent_outputs or {}, key)
+        _ = resolved_key
+        for n in agent_cite_source_names(agent, limit=limit):
+            if n.lower() in seen:
+                continue
+            seen.add(n.lower())
+            names.append(n)
+            if len(names) >= limit:
+                return names
+    if not names and getattr(ctx, "deal_slug", None):
+        try:
+            inv = _data_room_inventory(str(ctx.deal_slug))
+            for f in (inv.get("files") or [])[:limit]:
+                n = Path(str(f)).name if f else ""
+                if n and n.lower() not in seen:
+                    seen.add(n.lower())
+                    names.append(n)
+                if len(names) >= limit:
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+    return names
 
 
 def upgrade_generic_doc_cites(
     text: str,
-    sources: list[Any] | None,
+    sources: list[Any] | dict[str, Any] | None,
     *,
     limit: int = 3,
 ) -> str:
-    """Replace '(DOC: data room financials)' with numbered source cites when available."""
+    """Replace 'DOC: data room financials' with specific document filenames.
+
+    Prefer short basenames so the committee can reopen the VDR file — never
+    leave the generic placeholder, and avoid opaque ``DOC: [n]`` indexes.
+    Prefer financial / workbook-looking names when available.
+    """
     t = str(text or "")
-    if not t or not re.search(r"(?i)\(DOC:\s*data room financials\)", t):
+    if not t or not re.search(r"(?i)DOC:\s*data room financials", t):
         return t
-    names: list[str] = []
-    for src in sources or []:
-        if isinstance(src, str) and src.strip():
-            names.append(src.strip())
-        elif isinstance(src, dict):
-            name = src.get("filename") or src.get("name") or src.get("title")
-            if isinstance(name, str) and name.strip():
-                names.append(name.strip())
-        if len(names) >= limit:
-            break
+    names = _cite_source_names(sources)
     if not names:
         return t
-    cites = ", ".join(f"DOC: [{i}]" for i in range(1, len(names) + 1))
-    return re.sub(r"(?i)\(DOC:\s*data room financials\)", f"({cites})", t)
+
+    def _score(name: str) -> tuple[int, str]:
+        low = name.lower()
+        hit = any(h in low for h in _FINANCIAL_CITE_HINTS)
+        return (0 if hit else 1, low)
+
+    ranked = sorted(names, key=_score)[:limit]
+    cites = ", ".join(f"DOC: {n}" for n in ranked)
+    # Parenthesised form first, then bare tags.
+    t = re.sub(r"(?i)\(DOC:\s*data room financials\)", f"({cites})", t)
+    t = re.sub(r"(?i)(?<!\()DOC:\s*data room financials", cites, t)
+    return t
 
 
-def sanitize_dc_contract_framing(text: str) -> str:
-    """Correct mislabeled / incomplete DC municipal contract framing.
+def coerce_percent_points(value: float, *, family: str = "", unit: str = "") -> float:
+    """Convert ratio-form retention/margins (0.87 / 1.07) to percent points (87 / 107).
 
-    Evidenced FY2025A municipal revenue is ~$3.0M; $4.0M is the FY2026 model
-    projection; $10.4M is plan collection revenue; $22.2M is full-contract potential.
+    Values already in percent points are left unchanged. Generic — not deal-specific.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return value
+    fam = (family or "").lower()
+    unt = (unit or "").lower()
+    is_pct = (
+        unt in {"%", "pp", "pct", "percent", "percent_points"}
+        or "margin" in fam
+        or fam in {"nrr", "grr", "retention", "wacc"}
+        or fam.endswith("_pct")
+    )
+    if not is_pct:
+        return v
+    # Retention can exceed 1.0 (NRR 1.07); margins sit in 0–1 as ratios.
+    if fam in {"nrr", "grr", "retention"} or "retention" in fam:
+        return v * 100.0 if abs(v) <= 3.0 + 1e-9 else v
+    if "margin" in fam or fam.endswith("_pct") or unt in {"%", "pp", "pct", "percent"}:
+        return v * 100.0 if abs(v) <= 1.5 + 1e-9 else v
+    return v
+
+
+def sanitize_chart_label_paste(text: str) -> str:
+    """Rewrite jammed CIM/slide chart chrome into readable clauses.
+
+    Detects ALL-CAPS label runs (CONTRACT POTENTIAL / MODEL ASSUMPTION / …)
+    mixed with home counts — never invents figures, only re-punctuates.
     """
     t = str(text or "")
     if not t:
         return t
-    looks_dc = bool(
-        re.search(r"(?i)D\.?C\.?\s+municipal|municipal contract|12,?000\s+homes", t)
+    caps = re.findall(r"\b[A-Z]{3,}\b", t)
+    chartish = bool(
+        re.search(
+            r"(?i)\b(?:CONTRACT\s+POTENTIAL|MODEL\s+ASSUMPTION|HOMES?\s+TODAY|"
+            r"WAITLIST|HOMES?\s+BY\s+\d{4})\b",
+            t,
+        )
     )
-    has_4m = "$4.0" in t or "4.0M" in t
-    has_homes_plan = bool(
-        re.search(r"(?i)homes?\s+(?:today|currently).{0,40}homes?\s+by\s+20\d{2}", t)
-    )
-    if not looks_dc and not has_4m and not has_homes_plan:
+    if not chartish and len(caps) < 4:
         return t
+    out = t
+    out = re.sub(r"(?i)\bOUR\s+MODEL\s+ASSUMPTION\b", "Model assumption:", out)
+    out = re.sub(r"(?i)\bMODEL\s+ASSUMPTION\b", "Model assumption:", out)
+    out = re.sub(r"(?i)\bCONTRACT\s+POTENTIAL\b", "Contract potential:", out)
+    out = re.sub(r"(?i)\bWAITLIST\s*=\s*", "waitlist ", out)
+    out = re.sub(r":\s*:", ": ", out)
+    out = re.sub(
+        r"(?i)\b([\d,]+)\s+HOMES?\s+TODAY\b",
+        r"\1 homes today;",
+        out,
+    )
+    out = re.sub(
+        r"(?i)\b([\d,]+)\s+HOMES?\s+BY\s+(\d{4})\b",
+        r"\1 homes by \2;",
+        out,
+    )
+    # Drop residual ALL-CAPS chrome tokens (keep mixed-case / numbers / $).
+    out = re.sub(r"\b[A-Z]{4,}(?:\s+[A-Z]{4,})+\b", " ", out)
+    out = re.sub(r"\s{2,}", " ", out)
+    out = re.sub(r"\s*;\s*", "; ", out)
+    out = re.sub(r"\s*:\s*", ": ", out)
+    out = out.strip(" ;.,")
+    if out and out[-1] not in ".!?":
+        out += "."
+    return out
 
-    # "from $4.0M to $10.4M-$22.2M" (often after "today" / "active homes")
-    t = re.sub(
-        r"(?i)(from\s+)\$4\.0M(\s+to\s+\$10\.4M(?:-\$22\.2M)?)",
-        r"\1$3.0M (FY2025A)\2",
-        t,
-    )
-    t = re.sub(
-        r"(?i)(increasing\s+(?:municipal\s+)?(?:contract\s+)?revenue\s+potential\s+from\s+)\$4\.0M",
-        r"\1$3.0M (FY2025A)",
-        t,
-    )
-    t = re.sub(
-        r"(?i)representing\s+\$4\.0M\s+in\s+current\s+annual\s+revenue",
-        "representing $3.0M in FY2025A municipal revenue",
-        t,
-    )
-    t = re.sub(
-        r"(?i)\$4\.0M\s+(?:in\s+)?(?:current|today)(?:\s+annual)?(?:\s+D\.?C\.?)?(?:\s+municipal)?(?:\s+contract)?(?:\s+revenue)?",
-        "$3.0M FY2025A municipal revenue",
-        t,
-    )
-    t = re.sub(
-        r"(?i)(?:current|today)(?:\s+annual)?(?:\s+D\.?C\.?)?(?:\s+municipal)?(?:\s+contract)?(?:\s+revenue)?\s+(?:of\s+|at\s+)?\$4\.0M",
-        "FY2025A municipal revenue of $3.0M",
-        t,
-    )
-    t = re.sub(
-        r"(?i)4\.0M\s+USD\s*\(\s*Current\s+D\.?C\.?\s+Revenue\s*\)",
-        "3.0M USD (FY2025A D.C. Revenue)",
-        t,
-    )
-    t = re.sub(
-        r"(?i)Tested contract terms support\s+\$4\.0M\s+current\s+D\.?C\.?\s+revenue",
-        "Tested contract terms support $3.0M FY2025A D.C. revenue ($4.0M is FY2026 model)",
-        t,
-    )
 
-    # Homes-expansion framing that omits the $3.0M FY2025A baseline entirely
-    if looks_dc or has_homes_plan:
-        if not re.search(r"\$3\.0\s*M", t, flags=re.I):
-            t = re.sub(
-                r"(?i)(from\s+~?[\d,]+\s+homes?\s+(?:today|currently))",
-                r"\1 ($3.0M FY2025A municipal revenue)",
-                t,
-                count=1,
-            )
-        # Plan $10.4xM without full-contract $22.2M potential
-        if re.search(r"\$10\.4\d*\s*M", t) and "$22.2" not in t:
-            if re.search(r"(?i)up to\s+\$10\.4\d*\s*M\s+in\s+recurring\s+collection\s+revenue", t):
-                t = re.sub(
-                    r"(?i)(up to\s+\$10\.4\d*\s*M\s+in\s+recurring\s+collection\s+revenue)",
-                    r"\1 (vs $22.2M full-contract potential)",
-                    t,
-                    count=1,
-                )
-            else:
-                t = re.sub(
-                    r"(?i)(up to\s+\$10\.4\d*\s*M\b)",
-                    r"\1 (vs $22.2M full-contract potential)",
-                    t,
-                    count=1,
-                )
+def sanitize_dc_contract_framing(text: str) -> str:
+    """Structural cleanup for contract/homes framing — never invents deal-specific figures.
+
+    Relabels dollars using cues already in the same string (FY…A / plan / projected).
+    Does not inject baselines that are absent from the text.
+    """
+    t = str(text or "")
+    if not t:
+        return t
+    t = re.sub(
+        r"(?i)municipal\s+revenuely\b",
+        "municipal revenue",
+        t,
+    )
+    # Un-nest "homes ($XM (vs $YM …) revenue)" using the same figures in-text.
+    t = re.sub(
+        r"(?i)([\d,]+)\s*[-–—]\s*([\d,]+)\s+homes?\s*"
+        r"\(\s*(\$[\d.]+M)\s*\(\s*vs\s*(\$[\d.]+M)[^)]*\)\s*revenue\s*\)",
+        r"\1–\2 homes generating \3 to \4",
+        t,
+        count=1,
+    )
+    t = re.sub(
+        r"(?i)(\$[\d.]+M)\s*\(\s*vs\s*(\$[\d.]+M)\s+full-contract\s+potential\s*\)\s*revenue",
+        r"\1 to \2",
+        t,
+        count=1,
+    )
+    t = re.sub(
+        r"(?i)generating\s+(\$[\d.]+M)\s*\(\s*vs\s*(\$[\d.]+M)\s+full-contract\s+potential\s*\)",
+        r"generating \1 to \2",
+        t,
+        count=1,
+    )
+    # If the same string already carries a labeled FY…A / actual dollar AND an
+    # unlabeled "~$XM revenue" beside homes, prefer the labeled actual phrase.
+    actual = re.search(
+        r"(?i)(\$[\d.]+M)\s*(?:\(?\s*)?(FY\d{4}A|FY\d{4}\s+actual)(?:\s+municipal\s+revenue)?",
+        t,
+    )
+    if actual:
+        labeled = actual.group(0).strip()
+        if not re.search(r"(?i)municipal\s+revenue", labeled):
+            labeled = f"{labeled} municipal revenue"
+        t = re.sub(
+            r"(?i)\(~?\$[\d.]+M\s+revenue\)",
+            f"({labeled})",
+            t,
+            count=1,
+        )
+        t = re.sub(
+            r"(?i)~?\$[\d.]+M\s+revenue(?!\s*\([^)]*FY)(?!\s+FY)",
+            labeled,
+            t,
+            count=1,
+        )
     return t
+
+
+def _sanitize_ownership_totals(text: str) -> str:
+    """Re-sum ownership lines from share quantities present in the text.
+
+    Does not invent holders, titles, or totals from another deal. Thin one-holder
+    lines stay thin unless the same string already carries the other components.
+    """
+    t = str(text or "")
+    if not t:
+        return t
+    if not re.search(
+        r"(?i)(?:Total evidenced|common equity|cap table|ownership|"
+        r"shares?\s+outstanding|\d{1,3}(?:,\d{3}){2,})",
+        t,
+    ):
+        return t
+    from agetic_cdd_api.agent_document_company_background import (
+        _canonicalize_cap_table_text,
+    )
+
+    fixed = _canonicalize_cap_table_text(t)
+    return fixed if fixed else t
 
 
 def sanitize_report_prose(
@@ -319,10 +513,14 @@ def sanitize_report_prose(
     if not t:
         return t
     company = company or _REPORT_COMPANY.get()
+    cite_sources = sources if sources is not None else _REPORT_SOURCES.get()
     t = strip_corporate_boilerplate(t)
     t = strip_unsupported_entity_suffixes(t, company=company)
+    # Keep ledger Job Titles when present in the text; do not invent them.
+    t = sanitize_chart_label_paste(t)
     t = sanitize_dc_contract_framing(t)
-    t = upgrade_generic_doc_cites(t, sources)
+    t = _sanitize_ownership_totals(t)
+    t = upgrade_generic_doc_cites(t, cite_sources)
     # Ownership finding already leads with "Total evidenced…" — drop redundant label
     t = re.sub(
         r"(?i)^(Ownership:\s*)+(Total evidenced common equity/option shares:)",
@@ -333,6 +531,18 @@ def sanitize_report_prose(
         r"(?i)(Total evidenced common equity/option shares:[^.]*\.)\s*"
         r"(?:Ownership:\s*)?Total evidenced common equity/option shares:[^.]*\.\s*",
         r"\1 ",
+        t,
+    )
+    # Collapse repeated gap notes from re-sanitize loops.
+    t = re.sub(
+        r"(?i)(\s*Stated common outstanding:\s*[\d,]+\.)(?:\s*Stated common outstanding:\s*[\d,]+\.)+",
+        r"\1",
+        t,
+    )
+    t = re.sub(
+        r"(?i)(\s*Attributed certificates sum to [\d,]+ \(stated common outstanding [\d,]+\).)"
+        r"(?:\s*Attributed certificates sum to [\d,]+ \(stated common outstanding [\d,]+\).)+",
+        r"\1",
         t,
     )
     return re.sub(r"\s{2,}", " ", t).strip()
@@ -723,6 +933,9 @@ class ReportBuilder(ABC):
             ingest = self.ingest_data_room()
             profile = self.build_profile()
             _REPORT_COMPANY.set((profile.company or "").strip() or None)
+            # Prefetch sources so sanitize_report_prose can upgrade DOC: tags mid-build.
+            early_sources = self.build_sources()
+            _REPORT_SOURCES.set(early_sources or None)
 
             # 3. start (now has resolved company name)
             rt_label = REPORT_TYPES.get(self.report_type, {}).get("label", self.report_type)
@@ -747,8 +960,9 @@ class ReportBuilder(ABC):
             yield _evt("build", f"composing {rt_label}")
             yield from self.build_sections(self.ctx)
 
-            # 7. sources
-            sources = self.build_sources()
+            # 7. sources (reuse early prefetch)
+            sources = early_sources if early_sources else self.build_sources()
+            self.ctx.sources = sources
 
             # 8. export
             artifact = self.export_artifact(self.ctx)

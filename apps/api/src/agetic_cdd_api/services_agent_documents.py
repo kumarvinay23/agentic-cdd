@@ -293,6 +293,7 @@ def build_agent_suggestions(deal: Deal, agent_key: str, *, after_prompt: str | N
         "operational_risk",
         "cost_structure",
         "historical_performance",
+        "cash_flow",
         "revenue_quality",
         "capital_structure",
         "valuation_modeling",
@@ -303,6 +304,7 @@ def build_agent_suggestions(deal: Deal, agent_key: str, *, after_prompt: str | N
         "swot_analysis",
         "recommendation",
         "ic_synthesis",
+        "appendices",
     } and catalog:
         cards = [
             {

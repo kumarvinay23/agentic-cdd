@@ -1,9 +1,12 @@
 """Compose DiligenceIQ Valuation Model — one earnings basis, three methods.
 
-Declares one earnings figure and uses it for comps, precedents and DCF.
+Declares one earnings figure and uses trading comps / precedents as method
+inputs plus DCF only when the Cash Flow EBITDA→cash bridge is ready.
 Shows range and median (not only average). Reconciles methods without
 averaging disagreements. Dual-writes legacy FV-05 football-field fields
-(dcf / football_field / valuation_flags).
+(dcf / football_field / valuation_flags). Nests Sensitivity Analysis and
+Final Valuation Range. Code-enforced QA + Questions; READY→LIMITED on
+open QA FAILs.
 
 No invest/pass. No company allowlists. Every published multiple must
 arithmetically reconcile to the declared earnings figure.
@@ -48,8 +51,16 @@ _PREC_RULE = (
     "and multiple, with the source. Non-public terms are noted."
 )
 _DCF_RULE = (
-    "Where the forecast supports a DCF: cash flows, discount-rate build-up, "
-    "terminal assumption, and implied exit multiple as a sanity check."
+    "Where the Cash Flow bridge supports a DCF: cash flows, discount-rate "
+    "build-up, terminal assumption, and implied exit multiple as a sanity check."
+)
+_CF_GATE_RULE = (
+    "DCF is not supported until the Cash Flow agent's EBITDA-to-cash bridge "
+    "is ready — do not invent forecast cash flows."
+)
+_METHOD_INPUT_RULE = (
+    "Trading comps and precedent transactions are method inputs into this "
+    "model — prefer upstream agent specs over narrative-only invention."
 )
 _RECON_RULE = (
     "Methods are reconciled. Material disagreement is explained — not averaged away."
@@ -57,6 +68,19 @@ _RECON_RULE = (
 _ARITH_RULE = (
     "Every multiple must reconcile to the declared earnings figure; the check "
     "is arithmetic before publishing."
+)
+_NEST_RULE = (
+    "Sensitivity Analysis and Final Valuation Range nest under Valuation "
+    "Model — they consume this reconciled basis and do not replace it."
+)
+_NO_BID_RULE = (
+    "Valuation Model does not issue an invest or pass recommendation — "
+    "Quality and Reliance only."
+)
+_GO_BID_RE = re.compile(
+    r"(?i)\b(?:go\s+(?:decision|vote)|bid\s+(?:now|at)|submit\s+(?:a\s+)?bid|"
+    r"recommend(?:ed)?\s+(?:to\s+)?(?:invest|pass|bid|buy)|"
+    r"we\s+(?:should|must)\s+(?:bid|invest|pass))\b"
 )
 
 _EV_REV_RE = re.compile(
@@ -722,14 +746,56 @@ def _build_precedents(
     return rows, summary
 
 
+def _cash_flow_bridge_ready(
+    cash_flow: dict[str, Any] | None,
+) -> tuple[bool, dict[str, Any]]:
+    """DCF requires an EBITDA→cash bridge from the Cash Flow agent."""
+    cf = cash_flow if isinstance(cash_flow, dict) else {}
+    ebitda_bridge = (
+        cf.get("ebitda_to_cash_bridge")
+        if isinstance(cf.get("ebitda_to_cash_bridge"), list)
+        else []
+    )
+    cash_bridge = cf.get("cash_bridge") if isinstance(cf.get("cash_bridge"), list) else []
+    ebitda_ok = len([r for r in ebitda_bridge if isinstance(r, dict)]) >= 2
+    has_open = any(
+        "opening" in str(r.get("label") or "").lower()
+        for r in cash_bridge
+        if isinstance(r, dict)
+    )
+    has_close = any(
+        "closing" in str(r.get("label") or "").lower()
+        for r in cash_bridge
+        if isinstance(r, dict)
+    )
+    period_ok = has_open and has_close
+    # Prefer both bridges; require at least EBITDA→cash to support DCF
+    ready = ebitda_ok
+    detail = {
+        "ebitda_to_cash_ready": ebitda_ok,
+        "ebitda_bridge_rows": len(ebitda_bridge),
+        "opening_closing_ready": period_ok,
+        "cash_bridge_rows": len(cash_bridge),
+        "cash_flow_prior_present": bool(cf),
+        "unblock": (
+            "Complete Cash Flow EBITDA→FCF bridge (and opening→closing cash where available)"
+            if not ready
+            else "Cash Flow bridge ready for DCF"
+        ),
+    }
+    return ready, detail
+
+
 def _build_dcf(
     *,
     corpus: str,
     legacy: dict[str, Any],
     earnings: dict[str, Any],
+    cash_flow: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     text = _prose(corpus)
     dcf_legacy = legacy.get("dcf") if isinstance(legacy.get("dcf"), dict) else {}
+    cf_ready, cf_detail = _cash_flow_bridge_ready(cash_flow)
 
     wacc = _num(dcf_legacy.get("wacc_pct"))
     if wacc is None:
@@ -770,13 +836,29 @@ def _build_dcf(
         "detail": _info_request("earnings figure to sanity-check implied exit multiple"),
     }
 
+    has_inputs = bool(wacc is not None or ev_b is not None or scenarios)
+    # Gate: pack inputs alone do not make DCF supported without CF bridge
+    supported = has_inputs and cf_ready
+
+    if cf_ready:
+        cash_flows = (
+            f"{len(scenarios)} scenario path(s) on Cash Flow bridge basis"
+            if scenarios
+            else "Cash Flow bridge ready — forecast FCF by period still preferred"
+        )
+    else:
+        cash_flows = (
+            _info_request(
+                "Cash Flow EBITDA→cash bridge before publishing DCF "
+                f"({cf_detail.get('unblock')})"
+            )
+        )
+
     return {
-        "supported": bool(wacc is not None or ev_b is not None or scenarios),
-        "cash_flows": (
-            _info_request("forecast free cash flows by period")
-            if not scenarios
-            else f"{len(scenarios)} scenario path(s) evidenced in pack"
-        ),
+        "supported": supported,
+        "cf_bridge_ready": cf_ready,
+        "cf_bridge_detail": cf_detail,
+        "cash_flows": cash_flows,
         "discount_rate_pct": wacc if wacc is not None else _info_request("WACC / discount rate"),
         "discount_rate_buildup": _info_request(
             "discount-rate build-up (risk-free, ERP, beta, size, country)"
@@ -784,6 +866,7 @@ def _build_dcf(
         "terminal_assumption": _info_request(
             "terminal growth or exit multiple assumption"
         ),
+        # Keep triangulation figures for Sensitivity / FVR nesting even when blocked
         "enterprise_value_usd_b": ev_b,
         "equity_value_usd_b": _num(dcf_legacy.get("equity_value_usd_b")),
         "implied_share_price_inr": share,
@@ -792,8 +875,11 @@ def _build_dcf(
         ),
         "scenarios": scenarios[:6],
         "arithmetic": arith,
-        "source": _DOC_CITE if (wacc is not None or ev_b is not None) else _NA,
-        "notes": _DCF_RULE,
+        "source": _DOC_CITE if has_inputs else _NA,
+        "notes": f"{_DCF_RULE} {_CF_GATE_RULE}",
+        "blocked_reason": None if supported else (
+            None if not has_inputs else cf_detail.get("unblock")
+        ),
     }
 
 
@@ -827,7 +913,7 @@ def _build_reconciliation(
     if dcf.get("enterprise_value_usd_b") is not None:
         methods.append(
             (
-                "DCF",
+                "DCF" if dcf.get("supported") else "DCF (blocked — CF bridge)",
                 dcf.get("enterprise_value_usd_b"),
                 dcf.get("enterprise_value_usd_b"),
                 dcf.get("implied_exit_multiple"),
@@ -835,6 +921,7 @@ def _build_reconciliation(
         )
 
     for name, low, high, mult in methods:
+        dcf_blocked = "blocked" in str(name).lower()
         rows.append(
             {
                 "method": name,
@@ -843,7 +930,11 @@ def _build_reconciliation(
                 "multiple_on_declared_earnings": mult,
                 "uses_declared_earnings": True,
                 "source": _COMPUTED,
-                "notes": _RECON_RULE,
+                "notes": (
+                    f"{_CF_GATE_RULE} Indicative only until Cash Flow bridge clears."
+                    if dcf_blocked
+                    else _RECON_RULE
+                ),
             }
         )
 
@@ -983,6 +1074,254 @@ def _legacy_dual_write(
     return dcf_out, football[:8], deduped[:8]
 
 
+def _valuation_modeling_evidence_qa(
+    *,
+    earnings: dict[str, Any],
+    comps: list[dict[str, Any]],
+    comps_summary: dict[str, Any],
+    precedents: list[dict[str, Any]],
+    prec_summary: dict[str, Any],
+    dcf: dict[str, Any],
+    recon: list[dict[str, Any]],
+    consumes_trading_comps: bool,
+    consumes_precedent_transactions: bool,
+    corpus: str,
+    insight_snapshot: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    earn_ok = _is_filled(earnings.get("amount")) and not str(
+        earnings.get("amount")
+    ).startswith("Information")
+    rows.append({
+        "check": "one_earnings_basis",
+        "status": "PASS" if earn_ok else "FAIL",
+        "finding": (
+            f"Declared {earnings.get('metric')} {earnings.get('amount')} "
+            f"{earnings.get('unit')} ({earnings.get('period')})"
+            if earn_ok
+            else "One earnings figure not declared for all methods"
+        ),
+        "action": _EARNINGS_RULE,
+    })
+
+    ariths = [
+        (comps_summary.get("arithmetic") or {}).get("status"),
+        (prec_summary.get("arithmetic") or {}).get("status"),
+        (dcf.get("arithmetic") or {}).get("status") if dcf.get("supported") else "unchecked",
+    ]
+    arith_fail = any(s == "fail" for s in ariths)
+    arith_ok = not arith_fail and (
+        any(s == "pass" for s in ariths) or not earn_ok
+    )
+    # If earnings present and a multiple was published, require at least one pass
+    published_mult = (
+        comps_summary.get("median_multiple") is not None
+        or prec_summary.get("median_multiple") is not None
+        or (
+            dcf.get("supported")
+            and isinstance(dcf.get("implied_exit_multiple"), (int, float))
+        )
+    )
+    if earn_ok and published_mult:
+        arith_ok = any(s == "pass" for s in ariths) and not arith_fail
+    rows.append({
+        "check": "arithmetic_on_published_multiples",
+        "status": "PASS" if arith_ok else "FAIL",
+        "finding": (
+            "Published multiples reconcile to declared earnings"
+            if arith_ok
+            else "Arithmetic reconcile failed or missing for published multiples"
+        ),
+        "action": _ARITH_RULE,
+    })
+
+    comps_n = sum(
+        1
+        for r in comps
+        if isinstance(r, dict)
+        and isinstance(r.get("multiple"), (int, float))
+        and not r.get("is_subject")
+    )
+    prec_n = sum(
+        1
+        for r in precedents
+        if isinstance(r, dict) and isinstance(r.get("multiple"), (int, float))
+    )
+    method_inputs_ok = (
+        (consumes_trading_comps and comps_n >= 1)
+        or (consumes_precedent_transactions and prec_n >= 1)
+        or (comps_n >= 2 or prec_n >= 2)
+    )
+    rows.append({
+        "check": "comps_precedents_as_method_inputs",
+        "status": "PASS" if method_inputs_ok else "FAIL",
+        "finding": (
+            f"Method inputs: comps={comps_n} (upstream={consumes_trading_comps}); "
+            f"precedents={prec_n} (upstream={consumes_precedent_transactions})"
+            if method_inputs_ok
+            else "Trading comps / precedents method inputs thin or missing"
+        ),
+        "action": _METHOD_INPUT_RULE,
+    })
+
+    has_dcf_inputs = bool(
+        dcf.get("enterprise_value_usd_b") is not None
+        or dcf.get("scenarios")
+        or isinstance(dcf.get("discount_rate_pct"), (int, float))
+    )
+    cf_ready = bool(dcf.get("cf_bridge_ready"))
+    if not has_dcf_inputs:
+        dcf_ok = True
+        dcf_finding = "No DCF inputs claimed — CF gate not required"
+    elif cf_ready and dcf.get("supported"):
+        dcf_ok = True
+        dcf_finding = "DCF supported on Cash Flow bridge basis"
+    else:
+        dcf_ok = False
+        dcf_finding = (
+            str(dcf.get("blocked_reason") or "DCF claimed without Cash Flow bridge")
+        )
+    rows.append({
+        "check": "dcf_gated_on_cash_flow_bridge",
+        "status": "PASS" if dcf_ok else "FAIL",
+        "finding": dcf_finding,
+        "action": _CF_GATE_RULE,
+    })
+
+    recon_notes = " ".join(
+        str(r.get("notes") or "")
+        for r in recon
+        if isinstance(r, dict) and r.get("method") == "Reconciliation"
+    ).lower()
+    recon_ok = bool(recon) and (
+        "not averag" in recon_notes
+        or "explain" in recon_notes
+        or "disagree" in recon_notes
+        or "overlap" in recon_notes
+        or "information request" in recon_notes
+    )
+    rows.append({
+        "check": "reconcile_explains_not_averages",
+        "status": "PASS" if recon_ok else "FAIL",
+        "finding": (
+            "Reconciliation explains method differences without averaging"
+            if recon_ok
+            else "Reconciliation missing or averages methods without explanation"
+        ),
+        "action": _RECON_RULE,
+    })
+
+    scrubbed = re.sub(
+        r"(?i)[^.!?\n]*(?:"
+        r"do\s+not\s+recommend|"
+        r"range\s+evidence\s+only|"
+        r"no\s+deal\s+verdict|"
+        r"quality\s+and\s+reliance\s+only"
+        r")[^.!?\n]*[.!?]?",
+        " ",
+        f"{corpus or ''} {insight_snapshot or ''}",
+    )
+    bid_lang = bool(_GO_BID_RE.search(scrubbed)) or bool(_INVEST_LANG.search(scrubbed))
+    rows.append({
+        "check": "no_invest_pass_endorsement",
+        "status": "PASS" if not bid_lang else "FAIL",
+        "finding": (
+            "No invest/pass endorsement in Valuation Model narrative"
+            if not bid_lang
+            else "Invest/pass language present — strip before publishing"
+        ),
+        "action": _NO_BID_RULE,
+    })
+
+    return rows
+
+
+def _questions_from_vm_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    qa = (
+        spec.get("valuation_modeling_evidence_qa")
+        if isinstance(spec.get("valuation_modeling_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    out: list[dict[str, str]] = []
+    if _qa_fail("one_earnings_basis"):
+        out.append(normalize_question({
+            "question": "Declare one earnings figure (period, adjustments, source) for all methods",
+            "required_records": "Historical P&L / CIM earnings bridge",
+            "decision_effect": "Multiples cannot be compared without a common basis",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "one_earnings_basis QA PASS",
+            "interim_treatment": "BLOCKED until earnings declared",
+        }))
+    if _qa_fail("arithmetic_on_published_multiples"):
+        out.append(normalize_question({
+            "question": "Re-perform multiple × earnings arithmetic before publishing",
+            "required_records": "Declared earnings + comps/precedent multiples",
+            "decision_effect": "Broken arithmetic misstates implied EV",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "arithmetic_on_published_multiples QA PASS",
+            "interim_treatment": "LIMITED until arithmetic passes",
+        }))
+    if _qa_fail("comps_precedents_as_method_inputs"):
+        out.append(normalize_question({
+            "question": "Complete trading comps and/or precedent transactions as method inputs",
+            "required_records": "trading_comps + precedent_transactions agent outputs",
+            "decision_effect": "Model has no side-by-side method triangulation",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "comps_precedents_as_method_inputs QA PASS",
+            "interim_treatment": "LIMITED until method inputs present",
+        }))
+    if _qa_fail("dcf_gated_on_cash_flow_bridge"):
+        out.append(normalize_question({
+            "question": "Complete Cash Flow EBITDA→cash bridge before supporting DCF",
+            "required_records": "cash_flow.ebitda_to_cash_bridge (+ opening→closing preferred)",
+            "decision_effect": "DCF without a cash bridge invents free cash flows",
+            "priority": "mandatory_pre_decision",
+            "owner": "Cash Flow + Valuation leads",
+            "timing": "before IC",
+            "closure_test": "dcf_gated_on_cash_flow_bridge QA PASS",
+            "interim_treatment": "DCF unsupported — comps/precedents only",
+        }))
+    if _qa_fail("reconcile_explains_not_averages"):
+        out.append(normalize_question({
+            "question": "Explain material method disagreement — do not average",
+            "required_records": "Method reconciliation notes on growth/margin/control",
+            "decision_effect": "Averaging hides the valuation risk",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "reconcile_explains_not_averages QA PASS",
+            "interim_treatment": "LIMITED until reconcile explained",
+        }))
+    if _qa_fail("no_invest_pass_endorsement"):
+        out.append(normalize_question({
+            "question": "Remove invest/pass language from Valuation Model",
+            "required_records": "Valuation narrative with Quality/Reliance only",
+            "decision_effect": "Endorsement here bypasses Recommendations / IC Synthesis",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "no_invest_pass_endorsement QA PASS",
+            "interim_treatment": "REWORK until endorsement removed",
+        }))
+    return [q for q in out if q]
+
+
 def _quality_reliance(
     *,
     earnings: dict[str, Any],
@@ -991,6 +1330,7 @@ def _quality_reliance(
     precedents: list[dict[str, Any]],
     dcf: dict[str, Any],
     recon: list[dict[str, Any]],
+    qa_fail: bool = False,
 ) -> tuple[str, str, str]:
     earn_ok = _is_filled(earnings.get("amount")) and not str(earnings.get("amount")).startswith("Information")
     comps_n = sum(
@@ -1018,12 +1358,17 @@ def _quality_reliance(
     else:
         quality = "REWORK"
 
+    # READY needs side-by-side methods; DCF optional if comps+prec enough,
+    # but unsupported DCF-with-inputs is handled via QA FAIL → LIMITED
     if earn_ok and (comps_n >= 2 or prec_n >= 2) and (dcf_ok or recon_ok) and arith_pass >= 1:
         reliance = "READY"
     elif earn_ok or comps_n or prec_n:
         reliance = "LIMITED"
     else:
         reliance = "BLOCKED"
+
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
 
     bits = [
         f"Quality {quality}: earnings basis "
@@ -1039,7 +1384,15 @@ def _quality_reliance(
         bits.append("Comparable set thin or missing.")
     if prec_n == 0:
         bits.append("Precedent set thin or missing.")
+    if not dcf_ok and (
+        dcf.get("enterprise_value_usd_b") is not None or dcf.get("scenarios")
+    ):
+        bits.append(_CF_GATE_RULE)
+    if qa_fail:
+        bits.append("Open Valuation Modeling QA FAILs cap READY → LIMITED.")
     bits.append(_ARITH_RULE)
+    bits.append(_NEST_RULE)
+    bits.append(_NO_BID_RULE)
     return quality, reliance, " ".join(bits)
 
 
@@ -1058,9 +1411,12 @@ def _heuristic_valuation_modeling_spec(
     trading_comps: dict[str, Any] | None = None,
     precedent_transactions: dict[str, Any] | None = None,
     historical_performance: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
+    deal_slots: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del geography
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
+    slots = deal_slots if isinstance(deal_slots, dict) else {}
     earnings = _earnings_basis(
         company=company,
         corpus=corpus,
@@ -1068,6 +1424,12 @@ def _heuristic_valuation_modeling_spec(
         trading_comps=trading_comps,
         historical=historical_performance,
     )
+    # Bind as-of from deal slots when earnings lack one
+    if not _is_filled(earnings.get("as_of_date")) and _is_filled(slots.get("as_of_date")):
+        earnings = {**earnings, "as_of_date": slots.get("as_of_date")}
+    if not _is_filled(earnings.get("period")) and _is_filled(slots.get("review_periods")):
+        earnings = {**earnings, "period": slots.get("review_periods")}
+
     comps, comps_summary = _build_comps(
         company=company,
         corpus=corpus,
@@ -1079,7 +1441,12 @@ def _heuristic_valuation_modeling_spec(
         precedent=precedent_transactions,
         earnings=earnings,
     )
-    dcf = _build_dcf(corpus=corpus, legacy=legacy, earnings=earnings)
+    dcf = _build_dcf(
+        corpus=corpus,
+        legacy=legacy,
+        earnings=earnings,
+        cash_flow=cash_flow_spec,
+    )
     recon = _build_reconciliation(
         comps_summary=comps_summary,
         prec_summary=prec_summary,
@@ -1093,14 +1460,11 @@ def _heuristic_valuation_modeling_spec(
         recon=recon,
         legacy=legacy,
     )
-    quality, reliance, rationale = _quality_reliance(
-        earnings=earnings,
-        comps=comps,
-        comps_summary=comps_summary,
-        precedents=precedents,
-        dcf=dcf,
-        recon=recon,
-    )
+    if not dcf.get("supported"):
+        flags = [
+            _CF_GATE_RULE,
+            *[f for f in flags if "WACC" in f or "median" in f.lower() or "share" in f.lower()],
+        ][:8]
 
     bits = [f"Valuation Model for {company}"]
     if _is_filled(earnings.get("amount")) and not str(earnings.get("amount")).startswith("Information"):
@@ -1112,11 +1476,40 @@ def _heuristic_valuation_modeling_spec(
         bits.append(f"comps median {comps_summary['median_multiple']:g}x")
     if prec_summary.get("median_multiple") is not None:
         bits.append(f"precedents median {prec_summary['median_multiple']:g}x")
-    if dcf.get("enterprise_value_usd_b") is not None:
+    if dcf.get("supported") and dcf.get("enterprise_value_usd_b") is not None:
         bits.append(f"DCF EV {dcf['enterprise_value_usd_b']:g}B")
+    elif dcf.get("enterprise_value_usd_b") is not None:
+        bits.append("DCF withheld pending Cash Flow bridge")
+    snapshot = _soften_invest(". ".join(bits))
 
-    return {
-        "insight_snapshot": _soften_invest(". ".join(bits)),
+    consumes_tc = bool(trading_comps)
+    consumes_pt = bool(precedent_transactions)
+    vm_qa = _valuation_modeling_evidence_qa(
+        earnings=earnings,
+        comps=comps,
+        comps_summary=comps_summary,
+        precedents=precedents,
+        prec_summary=prec_summary,
+        dcf=dcf,
+        recon=recon,
+        consumes_trading_comps=consumes_tc,
+        consumes_precedent_transactions=consumes_pt,
+        corpus=corpus,
+        insight_snapshot=snapshot,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in vm_qa)
+    quality, reliance, rationale = _quality_reliance(
+        earnings=earnings,
+        comps=comps,
+        comps_summary=comps_summary,
+        precedents=precedents,
+        dcf=dcf,
+        recon=recon,
+        qa_fail=qa_fail,
+    )
+
+    out = {
+        "insight_snapshot": snapshot,
         "earnings_basis": earnings,
         "comparable_companies": comps,
         "comps_summary": comps_summary,
@@ -1128,9 +1521,11 @@ def _heuristic_valuation_modeling_spec(
         "dcf": dcf_out,
         "football_field": football,
         "valuation_flags": flags,
-        "consumes_trading_comps": bool(trading_comps),
-        "consumes_precedent_transactions": bool(precedent_transactions),
+        "consumes_trading_comps": consumes_tc,
+        "consumes_precedent_transactions": consumes_pt,
         "consumes_historical_performance": bool(historical_performance),
+        "consumes_cash_flow": bool(cash_flow_spec),
+        "valuation_modeling_evidence_qa": vm_qa,
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": rationale,
@@ -1140,7 +1535,12 @@ def _heuristic_valuation_modeling_spec(
         "fv_code": legacy.get("fv_code") or _DD_CODE,
         "dd_code": legacy.get("fv_code") or _DD_CODE,
         "empty": not football and not comps and not precedents,
+        "notes": f"{_METHOD_INPUT_RULE} {_NEST_RULE}",
     }
+    if slots:
+        out["deal_slots"] = slots
+    out["questions"] = _questions_from_vm_gaps(out)
+    return out
 
 
 def _llm_valuation_modeling_spec(
@@ -1151,6 +1551,11 @@ def _llm_valuation_modeling_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -1163,6 +1568,11 @@ def _llm_valuation_modeling_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -1170,12 +1580,13 @@ def _llm_valuation_modeling_spec(
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
         f"Target company / deal name: {company}\n"
-        f"Geography focus: {geography or 'as evidenced in the data room'}\n\n"
+        f"Geography focus: {geography or 'as evidenced in the data room'}\n"
+        f"As-of date: {as_of_date or 'as evidenced'}\n\n"
         f"Sources:\n{src_list}\n\n"
         f"Evidence:\n{corpus[:38_000]}\n\n"
         "Return JSON with keys:\n"
         "insight_snapshot: string,\n"
-        "earnings_basis: {metric, period, amount, unit, adjustments, source, notes},\n"
+        "earnings_basis: {metric, period, amount, unit, adjustments, source, as_of_date, notes},\n"
         "comparable_companies: [{name, why_comparable, metric, multiple, date, source, "
         "is_subject, notes}],\n"
         "comps_summary: {metric, median_multiple, range_multiple_low, range_multiple_high, "
@@ -1184,9 +1595,10 @@ def _llm_valuation_modeling_spec(
         "terms_public, source, notes}],\n"
         "precedents_summary: {median_multiple, implied_ev_usd_b_low, implied_ev_usd_b_high, "
         "transaction_count, arithmetic, notes},\n"
-        "dcf_view: {supported, cash_flows, discount_rate_pct, discount_rate_buildup, "
-        "terminal_assumption, enterprise_value_usd_b, equity_value_usd_b, "
-        "implied_share_price_inr, implied_exit_multiple, scenarios, arithmetic, source, notes},\n"
+        "dcf_view: {supported, cf_bridge_ready, cash_flows, discount_rate_pct, "
+        "discount_rate_buildup, terminal_assumption, enterprise_value_usd_b, "
+        "equity_value_usd_b, implied_share_price_inr, implied_exit_multiple, scenarios, "
+        "arithmetic, source, notes, blocked_reason},\n"
         "method_reconciliation: [{method, ev_low_usd_b, ev_high_usd_b, "
         "multiple_on_declared_earnings, uses_declared_earnings, source, notes}],\n"
         "dcf: object,\n"
@@ -1196,7 +1608,8 @@ def _llm_valuation_modeling_spec(
         "reliance_verdict: READY|LIMITED|BLOCKED,\n"
         "quality_reliance_rationale: string.\n"
         "One earnings figure only. Reconcile every multiple to it arithmetically. "
-        "Do not average disagreeing methods. No invest or pass. "
+        "Do not average disagreeing methods. Do not support DCF without Cash Flow "
+        "bridge. Trading comps / precedents are method inputs. No invest or pass. "
         "Do not hardcode company names — use the target name provided."
     )
     try:
@@ -1258,8 +1671,17 @@ def _normalise_llm_spec(
 
     dcf = llm.get("dcf_view") if isinstance(llm.get("dcf_view"), dict) else {}
     if not dcf:
-        dcf = heur.get("dcf_view") or {}
-    dcf["notes"] = _DCF_RULE
+        dcf = dict(heur.get("dcf_view") or {})
+    heur_dcf = heur.get("dcf_view") if isinstance(heur.get("dcf_view"), dict) else {}
+    dcf["cf_bridge_ready"] = bool(heur_dcf.get("cf_bridge_ready"))
+    dcf["cf_bridge_detail"] = heur_dcf.get("cf_bridge_detail") or dcf.get("cf_bridge_detail")
+    if not dcf.get("cf_bridge_ready"):
+        dcf["supported"] = False
+        dcf["blocked_reason"] = (
+            heur_dcf.get("blocked_reason")
+            or _info_request("Cash Flow EBITDA→cash bridge before publishing DCF")
+        )
+    dcf["notes"] = f"{_DCF_RULE} {_CF_GATE_RULE}"
     llm["dcf_view"] = dcf
 
     recon = (
@@ -1295,6 +1717,35 @@ def _normalise_llm_spec(
     notes = [_soften_invest(_clean(n, 200)) for n in notes if isinstance(n, str) and n.strip()]
     llm["valuation_flags"] = (notes or flags)[:8]
 
+    snapshot = _soften_invest(
+        llm.get("insight_snapshot") or heur.get("insight_snapshot") or ""
+    )
+    llm["insight_snapshot"] = snapshot
+    llm["consumes_trading_comps"] = bool(heur.get("consumes_trading_comps"))
+    llm["consumes_precedent_transactions"] = bool(
+        heur.get("consumes_precedent_transactions")
+    )
+    llm["consumes_historical_performance"] = bool(
+        heur.get("consumes_historical_performance")
+    )
+    llm["consumes_cash_flow"] = bool(heur.get("consumes_cash_flow"))
+
+    vm_qa = _valuation_modeling_evidence_qa(
+        earnings=earnings,
+        comps=comps,
+        comps_summary=comps_summary,
+        precedents=precedents,
+        prec_summary=prec_summary,
+        dcf=dcf,
+        recon=recon,
+        consumes_trading_comps=bool(llm.get("consumes_trading_comps")),
+        consumes_precedent_transactions=bool(
+            llm.get("consumes_precedent_transactions")
+        ),
+        corpus=snapshot,
+        insight_snapshot=snapshot,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in vm_qa)
     quality, reliance, rationale = _quality_reliance(
         earnings=earnings,
         comps=comps,
@@ -1302,31 +1753,30 @@ def _normalise_llm_spec(
         precedents=precedents,
         dcf=dcf,
         recon=recon,
+        qa_fail=qa_fail,
     )
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else quality
     llm["reliance_verdict"] = rv if rv in {"READY", "LIMITED", "BLOCKED"} else reliance
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
     llm["quality_reliance_rationale"] = (
         _soften_invest(_clean(llm.get("quality_reliance_rationale"), 460))
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    llm["valuation_modeling_evidence_qa"] = vm_qa
+    llm["questions"] = _questions_from_vm_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
 
-    llm["insight_snapshot"] = _soften_invest(
-        llm.get("insight_snapshot") or heur.get("insight_snapshot") or ""
-    )
     llm["primary_sources"] = list(sources or [])[:16]
     llm["composer"] = "llm_v1"
     llm["document"] = legacy.get("document") or _DOCUMENT_TITLE
     llm["fv_code"] = legacy.get("fv_code") or _DD_CODE
     llm["dd_code"] = llm["fv_code"]
-    llm["consumes_trading_comps"] = heur.get("consumes_trading_comps")
-    llm["consumes_precedent_transactions"] = heur.get("consumes_precedent_transactions")
-    llm["consumes_historical_performance"] = heur.get("consumes_historical_performance")
     llm["empty"] = not football and not comps
     return llm
 
@@ -1342,6 +1792,8 @@ def build_valuation_modeling_spec(
     trading_comps: dict[str, Any] | None = None,
     precedent_transactions: dict[str, Any] | None = None,
     historical_performance: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure: dict[str, Any] | None = None,
     prefer_heuristic: bool = False,
 ) -> dict[str, Any]:
     from agetic_cdd_api.prompt_book import prompt_vars_from_deal
@@ -1351,6 +1803,7 @@ def build_valuation_modeling_spec(
     idx = index if isinstance(index, dict) else load_library_index(deal)
     target = (company or deal.company or deal.name or "Target").strip()
     vars_ = prompt_vars_from_deal(deal)
+    slots = {k: v for k, v in vars_.items() if v}
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
 
     # Soft-load upstream verdict / deep-dive specs when not passed
@@ -1372,6 +1825,10 @@ def build_valuation_modeling_spec(
         historical_performance
         if isinstance(historical_performance, dict)
         else _load("historical_performance")
+    )
+    cf_spec = cash_flow_spec if isinstance(cash_flow_spec, dict) else _load("cash_flow")
+    cap_spec = (
+        capital_structure if isinstance(capital_structure, dict) else _load("capital_structure")
     )
 
     gathered_sources: list[str] = []
@@ -1415,6 +1872,8 @@ def build_valuation_modeling_spec(
         trading_comps=comps_spec,
         precedent_transactions=prec_spec,
         historical_performance=hist_spec,
+        cash_flow_spec=cf_spec,
+        deal_slots=slots,
     )
     if prefer_heuristic:
         out = heur
@@ -1426,6 +1885,11 @@ def build_valuation_modeling_spec(
             sector=vars_.get("sector"),
             geography=vars_.get("geography"),
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         out = (
             heur
@@ -1434,6 +1898,7 @@ def build_valuation_modeling_spec(
                 llm_raw, heur=heur, sources=srcs, legacy=legacy, company=target
             )
         )
+    out["deal_slots"] = slots
 
     # Sensitivity Analysis — nested under valuation_modeling for report resolution
     try:
@@ -1449,6 +1914,8 @@ def build_valuation_modeling_spec(
             sources=srcs,
             valuation_spec=out,
             historical_performance=hist_spec,
+            cash_flow_spec=cf_spec,
+            capital_structure_spec=cap_spec,
             prefer_heuristic=True,
         )
         out["sensitivity_analysis"] = sens
@@ -1468,6 +1935,7 @@ def build_valuation_modeling_spec(
             corpus=full_corpus,
             sources=srcs,
             valuation_spec=out,
+            capital_structure=cap_spec,
             historical_performance=hist_spec,
             sensitivity_analysis=out.get("sensitivity_analysis")
             if isinstance(out.get("sensitivity_analysis"), dict)
@@ -1668,12 +2136,21 @@ def render_valuation_modeling_markdown(
     # 4
     parts.append("## 4. Discounted Cash Flow\n\n")
     parts.append(f"{_DCF_RULE}\n\n")
+    parts.append(f"{_CF_GATE_RULE}\n\n")
     if dcf:
         parts.append(_table(
             ["Field", "Value"],
             [
-                ["Supported by forecast?", "Yes" if dcf.get("supported") else "Not yet"],
+                ["Supported by Cash Flow bridge?", "Yes" if dcf.get("supported") else "Not yet"],
+                [
+                    "CF bridge ready?",
+                    "Yes" if dcf.get("cf_bridge_ready") else "No",
+                ],
                 ["Cash flows", _clean(dcf.get("cash_flows"), 120)],
+                [
+                    "Blocked reason",
+                    _clean(dcf.get("blocked_reason"), 120) if dcf.get("blocked_reason") else "—",
+                ],
                 [
                     "Discount rate",
                     (
@@ -1801,21 +2278,86 @@ def render_valuation_modeling_markdown(
     parts.append(
         "*This section does not recommend invest or pass. Disagreeing methods are "
         "explained, not averaged. Every multiple is checked against the declared "
-        "earnings figure.*\n\n"
+        "earnings figure. Trading comps and precedents are method inputs; "
+        f"{_NEST_RULE}*\n\n"
     )
     parts.append("---\n\n")
 
-    # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    # 6 QA
+    vm_qa = (
+        spec.get("valuation_modeling_evidence_qa")
+        if isinstance(spec.get("valuation_modeling_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. Valuation Modeling Evidence QA\n\n")
+    parts.append(
+        "QA enforces one earnings basis, arithmetic on published multiples, "
+        "comps/precedents as method inputs, DCF gated on the Cash Flow bridge, "
+        "reconcile-explains-not-averages, and no invest/pass endorsement.\n\n"
+    )
+    if vm_qa:
+        parts.append(_table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 48),
+                    _clean(r.get("status"), 12),
+                    _soften_invest(_clean(r.get("finding"), 160)),
+                    _clean(r.get("action"), 120),
+                ]
+                for r in vm_qa if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append(f"**{_info_request('Valuation Modeling evidence QA rows')}**\n\n")
+    parts.append("---\n\n")
+
+    # 7 Questions
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material Valuation Modeling gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    # 8 Quality
+    parts.append("## 8. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
     rationale = spec.get("quality_reliance_rationale") or _NA
-    parts.append(f"**Quality:** {qv}  \n")
-    parts.append(f"**Reliance:** {rv}  \n\n")
-    parts.append(f"{_soften_invest(_clean(rationale, 600))}\n\n")
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _soften_invest(_clean(rationale, 460))],
+        ],
+    ))
+    parts.append(f"**Quality:** {_clean(qv, 20)} — is the work accurate and honest about limits?\n\n")
+    parts.append(
+        f"**Reliance:** {_clean(rv, 20)} — can a decision rest on this Valuation Model?\n\n"
+    )
     parts.append(
         "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
-        "This agent does not issue an invest or pass recommendation.*\n\n"
+        "Open Valuation Modeling QA FAILs cap READY → LIMITED. "
+        f"{_NO_BID_RULE}*\n\n"
     )
     parts.append("---\n\n")
 

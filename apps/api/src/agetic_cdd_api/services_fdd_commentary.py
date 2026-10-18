@@ -136,6 +136,7 @@ COSTS_EXHIBIT_ID = "ex_m3_costs"
 CASH_CONV_EXHIBIT_ID = "ex_m7_cash"
 BS_EXHIBIT_ID = "ex_m8_bs"
 NWC_EXHIBIT_ID = "ex_m5_nwc"
+NET_DEBT_EXHIBIT_ID = "ex_m6_net_debt"
 _STUB_EXHIBIT_IDS = frozenset({"ex_hist_pl", "ex_hist_bs"})
 
 
@@ -320,6 +321,12 @@ _HEADLINE_METRIC_PREF = (
     "operating_profit",
     "revenue",
     "gross_profit",
+    "net_debt",
+)
+# SEC-H net debt bridge — never lead with component cash alone.
+_NET_DEBT_METRIC_PREF = (
+    "net_debt",
+    "gross_debt",
 )
 # SEC-B historical trading leads with revenue trajectory, then earnings.
 _TRADING_METRIC_PREF = (
@@ -582,13 +589,33 @@ def _headline_metric_name(cell: ExhibitCell | None) -> str:
         return "revenue"
     if "ebitda" in mk or "operating_profit" in mk:
         return "EBITDA"
+    if mk == "net_debt" or mk.startswith("net_debt_"):
+        # Negative net debt = net cash — say so in the headline.
+        try:
+            if cell.value is not None and float(cell.value) < 0:
+                return "net cash"
+        except (TypeError, ValueError):
+            pass
+        return "net debt"
     if mk in {"total_assets", "net_assets", "nav", "total_equity", "cash"}:
         label = (cell.label or mk).strip()
-        # Strip trailing "FY2025" so period is not doubled in the phrase.
-        label = re.sub(r"\s*FY20\d{2}\s*$", "", label, flags=re.I).strip()
+        # Strip trailing / parenthetical FY so period is not doubled in the phrase.
+        label = re.sub(
+            r"\s*(?:·\s*)?(?:\(\s*)?FY20\d{2}E?(?:\s*\(plan\))?(?:\s*\))?\s*$",
+            "",
+            label,
+            flags=re.I,
+        ).strip()
+        label = re.sub(r"\(\s*\)", "", label).strip()
         return label or mk
     label = (cell.label or cell.metric_key or "figure").strip()
-    label = re.sub(r"\s*FY20\d{2}\s*$", "", label, flags=re.I).strip()
+    label = re.sub(
+        r"\s*(?:·\s*)?(?:\(\s*)?FY20\d{2}E?(?:\s*\(plan\))?(?:\s*\))?\s*$",
+        "",
+        label,
+        flags=re.I,
+    ).strip()
+    label = re.sub(r"\(\s*\)", "", label).strip()
     return label or "figure"
 
 
@@ -821,26 +848,57 @@ def _collect_source_gaps(
             )
         )
 
+    def _looks_like_retention_as_revenue(f: Any) -> bool:
+        """True when a revenue fact is really an NRR/GRR ratio (wrong series)."""
+        if getattr(f, "metric_key", None) != "revenue":
+            return False
+        blob = " ".join(
+            [
+                str(getattr(f.labels, "line", None) or "") if f.labels else "",
+                str(getattr(f.labels, "source", None) or "") if f.labels else "",
+                " ".join(str(s) for s in (f.sources or [])[:4]),
+            ]
+        ).lower()
+        if re.search(r"\b(?:nrr|grr|retention)\b", blob):
+            return True
+        try:
+            v = abs(float(f.value))
+        except (TypeError, ValueError):
+            return False
+        # Retention ratios sit near 0.5–2.5; P&L revenue in $M is rarely that small
+        # for a closed year when the caption is blank / KPI-like.
+        if 0.5 <= v <= 2.5 and re.search(
+            r"(?i)\b(?:kpi|cohort|retention|summary)\b", blob
+        ):
+            return True
+        return False
+
     if facts:
+        # Also reconstruct gaps when peer facts share metric×year but lack
+        # alternatives (e.g. workbook + monthly pack released as separate rows).
+        peers_by_key: dict[tuple[str, int], list[Any]] = {}
         for f in facts.facts:
             if f.metric_key not in {"revenue", "ebitda", "gross_profit"}:
                 continue
-            if f.value is None or not (f.alternatives or []):
+            if f.value is None:
                 continue
             if int(f.fiscal_year) > closed_cutoff:
                 continue
-            # Skip YTD / stub periods stamped on the fact.
+            if _looks_like_retention_as_revenue(f):
+                continue
             plen = (f.period_length or "").upper() if hasattr(f, "period_length") else ""
             if not plen and f.labels is not None:
                 plen = str(getattr(f.labels, "period_length", "") or "").upper()
             if plen == "YTD":
                 continue
+            peers_by_key.setdefault((f.metric_key, int(f.fiscal_year)), []).append(f)
+
             primary_kind = classify_source(
                 f.sources, f.labels.source if f.labels else None
             )
             primary_src = display_source_name(primary_kind, f.sources)
             best: tuple[float, float, str] | None = None
-            for alt in f.alternatives:
+            for alt in f.alternatives or []:
                 if not isinstance(alt, dict):
                     continue
                 try:
@@ -875,6 +933,39 @@ def _collect_source_gaps(
                 right_src=alt_src,
             )
 
+        for (metric_key, fiscal_year), peers in peers_by_key.items():
+            if f"gap:{metric_key}:{fiscal_year}" in seen:
+                continue
+            by_kind: dict[str, tuple[float, str]] = {}
+            for f in peers:
+                kind = classify_source(
+                    f.sources, f.labels.source if f.labels else None
+                )
+                if kind not in {"workbook", "ledger", "management"}:
+                    continue
+                src = display_source_name(kind, f.sources)
+                # Prefer the first of each kind; workbook vs pack is the headline.
+                if kind not in by_kind:
+                    by_kind[kind] = (float(f.value), src)
+            if "workbook" not in by_kind:
+                continue
+            wb_v, wb_src = by_kind["workbook"]
+            for kind in ("management", "ledger"):
+                if kind not in by_kind:
+                    continue
+                other_v, other_src = by_kind[kind]
+                if abs(wb_v - other_v) < 0.001:
+                    continue
+                _emit_pair(
+                    metric_key=metric_key,
+                    fiscal_year=fiscal_year,
+                    left_v=wb_v,
+                    left_src=wb_src,
+                    right_v=other_v,
+                    right_src=other_src,
+                )
+                break
+
     claims = load_claims_ledger(deal_slug, run_id)
     if claims:
         from agetic_cdd_api.services_fdd_claims import _claim_source_label
@@ -892,6 +983,35 @@ def _collect_source_gaps(
                 continue
             if int(claim.fiscal_year) > closed_cutoff:
                 continue
+            # Drop NRR/GRR ratios mis-claimed as revenue (e.g. 1.960 ≈ commercial NRR).
+            if claim.metric_key == "revenue":
+                claim_blob = " ".join(
+                    [
+                        str(getattr(claim, "claim_text", None) or ""),
+                        str(getattr(claim, "title", None) or ""),
+                        " ".join(
+                            str(s)
+                            for s in (getattr(claim, "databook_sources", None) or [])[:4]
+                        ),
+                        " ".join(
+                            str(s) for s in (getattr(claim, "sources", None) or [])[:4]
+                        ),
+                    ]
+                ).lower()
+                if re.search(r"\b(?:nrr|grr|retention)\b", claim_blob):
+                    continue
+                # Both sides in retention-ratio band with no pack/workbook name →
+                # almost certainly a KPI row, not P&L revenue.
+                try:
+                    cv = abs(float(claim.claimed_value))
+                    dv = abs(float(claim.databook_value))
+                except (TypeError, ValueError):
+                    cv = dv = 0.0
+                if 0.5 <= cv <= 2.5 and 0.5 <= dv <= 2.5 and not re.search(
+                    r"(?i)\b(?:workbook|monthly|pack|ledger|p&l|income)\b",
+                    claim_blob,
+                ):
+                    continue
             db_src = display_source_name(
                 classify_source(getattr(claim, "databook_sources", None)),
                 getattr(claim, "databook_sources", None),
@@ -908,7 +1028,21 @@ def _collect_source_gaps(
                 right_src=_claim_source_label(claim),
             )
 
-    out.sort(key=lambda lim: lim.item_id)
+    # Prefer recent closed years, then headline metrics — keeps FY2023 EBITDA
+    # on the page when many revenue gaps would otherwise crowd it out.
+    _GAP_METRIC_RANK = {"revenue": 0, "gross_profit": 1, "ebitda": 2}
+
+    def _gap_sort_key(lim: CommentaryLimitation) -> tuple:
+        # item_id = "gap:{metric}:{year}"
+        parts = (lim.item_id or "").split(":")
+        metric = parts[1] if len(parts) >= 2 else ""
+        try:
+            year = int(parts[2]) if len(parts) >= 3 else 0
+        except ValueError:
+            year = 0
+        return (-year, _GAP_METRIC_RANK.get(metric, 9), lim.item_id or "")
+
+    out.sort(key=_gap_sort_key)
     return out
 
 
@@ -930,7 +1064,7 @@ def _source_gap_limitations(
         CommentaryLimitation(
             item_id=_GAP_POINTER_ID,
             text=(
-                f"Investor workbook vs QBO ledger: {len(gaps)} figure gap(s) — "
+                f"Investor workbook vs monthly pack: {len(gaps)} figure gap(s) — "
                 f"full reconciliation under Key findings (SEC-K)."
             ),
             above_materiality=True,
@@ -1009,7 +1143,7 @@ def _material_limitations(
                 CommentaryLimitation(
                     item_id=_GAP_POINTER_ID,
                     text=(
-                        f"Investor workbook vs QBO ledger: {len(all_gaps)} figure "
+                        f"Investor workbook vs monthly pack: {len(all_gaps)} figure "
                         f"gap(s) — full reconciliation under Key findings (SEC-K)."
                     ),
                     above_materiality=True,
@@ -1078,6 +1212,125 @@ def _limitation_sentence_text(lim: CommentaryLimitation) -> str:
     if label and label.lower() not in {lim.item_id.lower(), "open item"}:
         return f"Open diligence item remains: {label}."
     return "An open diligence item remains pending coverage."
+
+
+def _cell_basis_source_label(cell: ExhibitCell | None) -> str:
+    """Investor workbook vs monthly pack for Key findings source tags."""
+    if cell is None:
+        return "investor workbook"
+    # M1 / M2 / M6 / M8 model cells are workbook-preferred after bridge.
+    mid = (cell.model_id or "").upper()
+    if mid in {"M1", "M2", "M6", "M8"}:
+        return "investor workbook"
+    srcs = getattr(cell, "sources", None) or []
+    blob = " ".join(
+        str(x or "")
+        for x in (
+            cell.basis_label,
+            cell.model_id,
+            cell.label,
+            " ".join(str(s) for s in list(srcs)[:3]),
+        )
+    ).lower()
+    # Prefer specific pack / ledger tokens — bare "monthly" is too broad.
+    if any(h in blob for h in ("monthly pack", "qbo", "ledger")) and "workbook" not in blob:
+        return "monthly pack"
+    if "workbook" in blob or "m1" in blob or "m2" in blob:
+        return "investor workbook"
+    return "investor workbook"
+
+
+def _substantive_key_findings(
+    store: ExhibitStoreDoc | None,
+    *,
+    deal_slug: str,
+    run_id: str,
+) -> list[str]:
+    """Closed-year readings for SEC-K — tokenised, not gaps / raw figures."""
+    from datetime import date
+
+    _ = deal_slug, run_id
+    if store is None:
+        return []
+    closed = date.today().year - 1
+    out: list[str] = []
+
+    def _tok(metric: str, year: int) -> tuple[str | None, ExhibitCell | None]:
+        # Prefer M1/M2 workbook model cells over pack-backed ex_db_* peers.
+        candidates: list[tuple[int, str, ExhibitCell]] = []
+        for ex in store.exhibits or []:
+            for cell in ex.cells or []:
+                if (
+                    (cell.metric_key or "").lower() != metric
+                    or cell.fiscal_year != year
+                    or cell.value is None
+                ):
+                    continue
+                mid = (cell.model_id or "").upper()
+                eid = (ex.exhibit_id or "").lower()
+                if mid in {"M1", "M2"} or eid.startswith("ex_m1") or eid.startswith("ex_m2"):
+                    rank = 0
+                elif "workbook" in (cell.basis_label or "").lower():
+                    rank = 1
+                else:
+                    rank = 2
+                candidates.append(
+                    (rank, make_token(ex.exhibit_id, cell.cell_id), cell)
+                )
+        if not candidates:
+            return None, None
+        candidates.sort(key=lambda t: (t[0], t[1]))
+        return candidates[0][1], candidates[0][2]
+
+    rev_tok, rev_cell = _tok("revenue", closed)
+    prev_rev_tok, prev_rev_cell = _tok("revenue", closed - 1)
+    src = _cell_basis_source_label(rev_cell)
+    if (
+        rev_tok
+        and prev_rev_tok
+        and rev_cell
+        and prev_rev_cell
+        and prev_rev_cell.value not in (None, 0)
+    ):
+        growth = (float(rev_cell.value) - float(prev_rev_cell.value)) / abs(
+            float(prev_rev_cell.value)
+        )
+        direction = "grew" if growth >= 0 else "fell"
+        # Direction only in prose — magnitudes live in tokens (typed-figure ban).
+        out.append(
+            f"Revenue {direction} year on year into FY{closed} "
+            f"({prev_rev_tok} → {rev_tok}, {src})."
+        )
+    elif rev_tok:
+        out.append(f"FY{closed} revenue is {rev_tok} ({src}).")
+
+    ebitda_tok, ebitda_cell = _tok("ebitda", closed)
+    prev_eb_tok, prev_eb_cell = _tok("ebitda", closed - 1)
+    src = _cell_basis_source_label(ebitda_cell)
+    if (
+        ebitda_tok
+        and prev_eb_tok
+        and ebitda_cell
+        and prev_eb_cell
+        and prev_eb_cell.value not in (None, 0)
+    ):
+        change = (float(ebitda_cell.value) - float(prev_eb_cell.value)) / abs(
+            float(prev_eb_cell.value)
+        )
+        direction = "rose" if change >= 0 else "fell"
+        out.append(
+            f"EBITDA {direction} year on year into FY{closed} "
+            f"({prev_eb_tok} → {ebitda_tok}, {src})."
+        )
+    elif ebitda_tok:
+        out.append(f"FY{closed} EBITDA is {ebitda_tok} ({src}).")
+
+    margin_tok, margin_cell = _tok("ebitda_margin", closed)
+    if margin_tok:
+        src = _cell_basis_source_label(margin_cell)
+        out.append(f"FY{closed} EBITDA margin is {margin_tok} ({src}).")
+
+    return out[:4]
 
 
 def draft_section(
@@ -1164,6 +1417,11 @@ def draft_section(
             exhibit_ids = [NWC_EXHIBIT_ID] + [
                 e for e in exhibit_ids if e != NWC_EXHIBIT_ID
             ]
+    if section_id == "SEC-H":
+        if NET_DEBT_EXHIBIT_ID in have_ids:
+            exhibit_ids = [NET_DEBT_EXHIBIT_ID] + [
+                e for e in exhibit_ids if e != NET_DEBT_EXHIBIT_ID
+            ]
     if section_id == "SEC-D":
         if COSTS_EXHIBIT_ID in have_ids:
             exhibit_ids = [COSTS_EXHIBIT_ID] + [
@@ -1179,7 +1437,7 @@ def draft_section(
         "SEC-D": COSTS_EXHIBIT_ID,
         "SEC-F": BS_EXHIBIT_ID,
         "SEC-G": NWC_EXHIBIT_ID,
-        "SEC-H": "ex_m6_net_debt",
+        "SEC-H": NET_DEBT_EXHIBIT_ID,
         "SEC-I": CASH_CONV_EXHIBIT_ID,
     }
     g3_pref = _MODEL_SEC_PREF.get(section_id)
@@ -1263,12 +1521,21 @@ def draft_section(
         )
     elif section_id == "SEC-I":
         prefer_ref = _prefer_cash_anchor(store, exhibit_ids)
+    elif section_id == "SEC-H":
+        # Lead with net debt / net cash — not freely available cash alone.
+        prefer_ref = None
+        for pref in _NET_DEBT_METRIC_PREF:
+            prefer_ref = _prefer_metric_ref(
+                store, exhibit_ids, pref, historical_only=True
+            )
+            if prefer_ref:
+                break
     elif section_id == "SEC-F":
         prefer_ref = _prefer_bs_anchor(store, exhibit_ids)
     elif section_id == "SEC-G":
         prefer_ref = _prefer_metric_ref(store, exhibit_ids, "nwc", historical_only=True)
 
-    # Historical trading / ES / cash: prefer closed actuals over outer-year plan.
+    # Historical trading / ES / cash / net debt: prefer closed actuals over plan.
     historical_only = section_id in {
         "SEC-B",
         "SEC-ES",
@@ -1277,6 +1544,7 @@ def draft_section(
         "SEC-I",
         "SEC-F",
         "SEC-G",
+        "SEC-H",
     }
     token, ref, anchor_cell = _first_cell_token(
         store,
@@ -1895,8 +2163,8 @@ def draft_section(
             action = f"NWC: {phrase}"
     elif section_id == "SEC-H":
         cite = (
-            "ex_m6_net_debt"
-            if "ex_m6_net_debt" in exhibit_ids
+            NET_DEBT_EXHIBIT_ID
+            if NET_DEBT_EXHIBIT_ID in exhibit_ids
             else (exhibit_ids[0] if exhibit_ids else section_id)
         )
         if token is None:
@@ -1916,10 +2184,22 @@ def draft_section(
             phrase = _headline_figure_phrase(
                 token, anchor_cell, qoe_pending=False
             )
+            # Prefer "net cash" wording when the M6 net is negative.
+            lead = "Net debt"
+            try:
+                if (
+                    anchor_cell is not None
+                    and (anchor_cell.metric_key or "").lower() == "net_debt"
+                    and anchor_cell.value is not None
+                    and float(anchor_cell.value) < 0
+                ):
+                    lead = "Net cash"
+            except (TypeError, ValueError):
+                pass
             sentences = [
                 _sentence(
                     "F",
-                    f"Net debt on the closed-year basis is {phrase}.",
+                    f"{lead} on the closed-year basis is {phrase}.",
                     citation=cite,
                 ),
                 _sentence(
@@ -1928,24 +2208,33 @@ def draft_section(
                     citation=section_id,
                 ),
             ]
-            action = f"Net debt: {phrase}"
+            action = f"{lead}: {phrase}"
     elif section_id == "SEC-K":
-        # Key findings hosts the workbook↔ledger reconciliation even without a
-        # dedicated exhibit — never hard-hold solely for missing cells.
+        # Key findings lead with substantiated exhibit reads; gaps are secondary.
         # Held-section digest is injected later in build_commentary (needs peers).
         sentences = [
             _sentence(
                 "A",
-                f"Key findings for {name} — open figure gaps, held sections, and completion items.",
+                f"Key findings for {name} from the investor workbook, monthly pack, and reconciled exhibits.",
                 citation="SEC-K",
             ),
         ]
-        if token is not None:
+        for finding in _substantive_key_findings(store, deal_slug=deal_slug, run_id=run_id):
+            sentences.append(
+                _sentence(
+                    "F",
+                    finding,
+                    citation=exhibit_ids[0] if exhibit_ids else section_id,
+                )
+            )
+        if token is not None and not any(
+            (s.tag == "F") for s in sentences[1:]
+        ):
             phrase = _headline_figure_phrase(
                 token, anchor_cell, qoe_pending=False
             )
             sentences.insert(
-                0,
+                1,
                 _sentence(
                     "F",
                     f"Primary closed-year figure is {phrase}.",
@@ -1960,11 +2249,11 @@ def draft_section(
             for lim in limitations
             if not (lim.item_id or "").startswith("gap:")
         ]
-        for lim in other_lims[:4]:
+        for lim in other_lims[:2]:
             sentences.append(
                 _sentence(
                     "Q",
-                    lim.text,
+                    _limitation_sentence_text(lim),
                     citation=lim.item_id or "SEC-K",
                 )
             )
@@ -1973,11 +2262,11 @@ def draft_section(
             for lim in limitations
             if (lim.item_id or "").startswith("gap:")
         ]
-        if not gap_only and not other_lims:
+        if not gap_only and not other_lims and len(sentences) <= 1:
             sentences.append(
                 _sentence(
                     "A",
-                    "No material workbook-versus-ledger gaps are open on this run.",
+                    "No material workbook-versus-monthly-pack gaps are open on this run.",
                     citation="SEC-K",
                 )
             )
@@ -2036,6 +2325,7 @@ def draft_section(
             action = f"{title}: {phrase}"
 
     # Append source-gap / contradiction limitations (size + sources) first, then others.
+    # Key findings (SEC-K) caps gaps so the page is not a gaps-only register.
     def _is_gap_lim(lim: CommentaryLimitation) -> bool:
         t = lim.text or ""
         return (
@@ -2049,11 +2339,13 @@ def draft_section(
     cited = {s.citation for s in sentences if s.citation}
     gap_n = 0
     other_n = 0
+    # SEC-K needs room for closed-year revenue + GP + EBITDA (and prior years).
+    gap_cap = 8 if section_id == "SEC-K" else 12
     for lim in [*gap_lims, *other_lims]:
         if lim.item_id in cited:
             continue
         is_gap = _is_gap_lim(lim)
-        if is_gap and gap_n >= 12:
+        if is_gap and gap_n >= gap_cap:
             continue
         if not is_gap and other_n >= 2:
             continue

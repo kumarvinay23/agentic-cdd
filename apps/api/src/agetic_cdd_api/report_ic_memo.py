@@ -32,7 +32,14 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _data_room_inventory, _evt, sanitize_report_prose
+from agetic_cdd_api.report_builder_base import (
+    BuildContext,
+    ReportBuilder,
+    _data_room_inventory,
+    _evt,
+    ctx_cite_source_names,
+    sanitize_report_prose,
+)
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.report_storyline import StorylineSection
 from agetic_cdd_api.routers_reports import register_builder
@@ -103,9 +110,31 @@ def _agent_sources(agent: dict[str, Any], limit: int = 2) -> str:
     return ", ".join(files[:limit]) + ("…" if len(files) > limit else "")
 
 
-def _clean(text: str, max_chars: int = 400) -> str:
+def _clean(
+    text: str,
+    max_chars: int = 400,
+    *,
+    sources: list[Any] | None = None,
+    ctx: BuildContext | None = None,
+    agent_keys: tuple[str, ...] = (),
+) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip()).replace("\x7f", " ")
-    t = sanitize_report_prose(t)
+    cite_sources = sources
+    if not cite_sources and ctx is not None:
+        cite_sources = ctx_cite_source_names(
+            ctx, *(agent_keys or ("company_background", "historical_performance"))
+        )
+    t = sanitize_report_prose(t, sources=cite_sources)
+    if re.search(r"(?i)(?:shares?|options?|cap table|ownership|10,?000,?010)", t):
+        from agetic_cdd_api.agent_document_company_background import (
+            _canonicalize_cap_table_text,
+        )
+
+        t = _canonicalize_cap_table_text(t) or t
+        t = sanitize_report_prose(t, sources=cite_sources)
+        # Full four-holder ledger line needs room past the default bullet budget.
+        if re.search(r"(?i)Total evidenced common equity", t):
+            max_chars = max(max_chars, 700)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
@@ -144,14 +173,17 @@ def _esc(text: str) -> str:
 
 
 def _findings(agent: dict[str, Any], limit: int = 8) -> list[str]:
+    from agetic_cdd_api.report_builder_base import agent_cite_source_names
+
+    srcs = agent_cite_source_names(agent, limit=6)
     out: list[str] = []
     for item in agent.get("findings") or []:
         if isinstance(item, str) and item.strip():
-            out.append(_clean(item, 360))
+            out.append(_clean(item, 360, sources=srcs))
         elif isinstance(item, dict):
             text = item.get("finding") or item.get("note") or item.get("name") or item.get("risk")
             if text:
-                out.append(_clean(str(text), 360))
+                out.append(_clean(str(text), 360, sources=srcs))
         if len(out) >= limit:
             break
     return out
@@ -882,10 +914,33 @@ def _compose_internal_risk(styles: dict, ctx: BuildContext, section: StorylineSe
         else:
             name = str(raw or "").strip()
         key = name.lower()
-        if not name or key in seen_kp:
+        if (
+            not name
+            or key in seen_kp
+            or key.startswith("information request")
+            or key.startswith("named in hr")
+            or key in {"key person", "n/a", "na"}
+            or re.search(r"(?i)^(?:no|yes)\s+employee\b", key)
+            or "no employee" in key
+        ):
             continue
         seen_kp.add(key)
         kp_names.append(name)
+    # Fall back to MQ executives named as CEO / founder when key_persons empty.
+    if not kp_names:
+        for raw in _spec(mq).get("executives") or []:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or "").strip()
+            role = str(raw.get("role") or "").strip()
+            if not name or re.search(r"(?i)^(?:no|yes)\s+employee\b", name):
+                continue
+            if not re.search(r"(?i)\b(?:ceo|founder|chairman)\b", role):
+                continue
+            label = f"{name} ({role})" if role else name
+            if label.lower() not in seen_kp:
+                seen_kp.add(label.lower())
+                kp_names.append(label)
     kp_count = len(kp_names) or er.get("key_person_count")
     if er.get("overall_human_capital_risk_1_10") is not None or _findings(exec_risk) or kp_count:
         out.append(Paragraph("1.2.3 Key-person / retention", styles["h3"]))
@@ -1556,14 +1611,61 @@ def _compose_recommendation(styles: dict, ctx: BuildContext, section: StorylineS
 
 def _compose_appendices(styles: dict, ctx: BuildContext, section: StorylineSection) -> list:
     scope = _resolve(ctx, "scope_and_methodology")
+    appendices = _resolve(ctx, "appendices")
+    ap_spec = _spec(appendices) if appendices else {}
     section_agents = _agents_for_section(ctx, section) or [scope]
+    snapshot = (
+        str(ap_spec.get("insight_snapshot") or "")
+        if ap_spec
+        else "Appendix sourcing from this deal's workflow outputs."
+    )
     out: list = [
         Paragraph(section.title, styles["h2"]),
-        Paragraph("Agent → primary source document map.", styles["muted"]),
+        Paragraph(
+            "Claim / evidence / calculation registers and citation check "
+            "(or agent → source index when Appendices agent is absent).",
+            styles["muted"],
+        ),
         _snapshot_heading(styles),
-        _insight(styles, "Appendix sourcing from this deal's workflow outputs."),
+        _insight(styles, snapshot[:400] or "Appendix sourcing from this deal's workflow outputs."),
         Spacer(1, 6),
     ]
+
+    # Prefer Appendices agent registers when present
+    claims = ap_spec.get("claim_register") if isinstance(ap_spec.get("claim_register"), list) else []
+    if claims:
+        out.append(Paragraph("3.3.0 Claim register (Appendices agent)", styles["h3"]))
+        claim_rows = []
+        for c in claims[:20]:
+            if not isinstance(c, dict):
+                continue
+            claim_rows.append([
+                str(c.get("claim_id") or "")[:24],
+                str(c.get("text") or "")[:80],
+                str(c.get("source_category") or "")[:18],
+                str(c.get("locator") or "")[:40],
+            ])
+        if claim_rows:
+            out.append(_data_table(
+                styles,
+                ["Claim ID", "Text", "Category", "Locator"],
+                claim_rows,
+                [1.0 * inch, 2.6 * inch, 1.1 * inch, 1.8 * inch],
+            ))
+    cite = ap_spec.get("citation_check") if isinstance(ap_spec.get("citation_check"), dict) else {}
+    cite_summary = cite.get("summary") if isinstance(cite.get("summary"), dict) else {}
+    if cite_summary:
+        out.append(Paragraph("3.3.0b Citation check summary", styles["h3"]))
+        out.extend(_bullets(styles, [
+            f"Claims checked: {cite_summary.get('claims_checked', 0)}",
+            f"Supports: {cite_summary.get('supports', 0)}; "
+            f"Unverified: {cite_summary.get('unverified', 0)}; "
+            f"Does not support: {cite_summary.get('does_not_support', 0)}",
+            f"Sources linked: {cite_summary.get('sources_linked', 0)}; "
+            f"Unlinked: {cite_summary.get('sources_unlinked', 0)}",
+            "Availability is not verification — present in room ≠ reopened.",
+        ]))
+
     rows: list[list[str]] = []
     for key, agent in sorted(ctx.agent_outputs.items()):
         if not isinstance(agent, dict):

@@ -95,6 +95,17 @@ def _humanize_sec_codes(text: str, *, fallback_title: str) -> str:
     return out
 
 
+def _is_gap_bullet(text: str) -> bool:
+    t = (text or "").lower()
+    return (
+        "(contradicted)" in t
+        or "(unverifiable)" in t
+        or " gap " in t
+        or " — gap " in t
+        or " vs " in t
+    )
+
+
 def _deck_body_from_draft(draft: SectionDraft) -> str:
     """Condense tagged prose into ≤6 bullets for IC slides (no [F/A/M/Q] tags)."""
     lines: list[str] = []
@@ -117,7 +128,34 @@ def _deck_body_from_draft(draft: SectionDraft) -> str:
 
     # Reserve a slot for the held-back notice so we never exceed ≤6 bullets
     max_bullets = _MAX_DECK_BULLETS - (1 if draft.held_back else 0)
-    lines = lines[:max_bullets]
+
+    # Key findings: prefer gap lines and surface an overflow note so the deck
+    # does not hide seven of eight pack contradictions behind a single bullet.
+    if draft.section_id == "SEC-K":
+        gap_lines = [ln for ln in lines if _is_gap_bullet(ln)]
+        other_lines = [ln for ln in lines if not _is_gap_bullet(ln)]
+        # Keep action title (first other line when it matches action_title) then gaps.
+        lead: list[str] = []
+        if other_lines and draft.action_title and other_lines[0] == _humanize_sec_codes(
+            draft.action_title, fallback_title=human
+        ):
+            lead = [other_lines[0]]
+            other_lines = other_lines[1:]
+        reserved_overflow = 1 if len(gap_lines) > 1 else 0
+        room = max(0, max_bullets - len(lead) - reserved_overflow)
+        shown_gaps = gap_lines[:room]
+        omitted = len(gap_lines) - len(shown_gaps)
+        lines = lead + shown_gaps
+        if omitted > 0:
+            lines.append(f"…and {omitted} more gap line(s) in the report")
+        # Fill remaining slots with non-gap prose if any room left.
+        remaining = max_bullets - len(lines)
+        if remaining > 0 and other_lines:
+            lines.extend(other_lines[:remaining])
+        lines = lines[:max_bullets]
+    else:
+        lines = lines[:max_bullets]
+
     if draft.held_back:
         reason = _humanize_sec_codes(
             draft.held_back_reason or "pending coverage",

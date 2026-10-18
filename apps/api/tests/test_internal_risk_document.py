@@ -103,6 +103,17 @@ def _capital() -> dict:
     }
 
 
+def _cash_flow() -> dict:
+    return {
+        "insight_snapshot": "Cash Flow bridge opened — liquidity headroom thin.",
+        "bridge": [
+            {"line": "Operating cash", "amount": 12.0},
+            {"line": "Working capital outflow", "amount": -8.0},
+        ],
+        "working_capital": [{"item": "Trade creditors stretch", "note": "Elevated DPO"}],
+    }
+
+
 def _legacy() -> dict:
     return {
         "dd_code": "DD-21",
@@ -137,6 +148,9 @@ def test_internal_risk_prompt_book_listed() -> None:
     assert "untested" in body.lower()
     assert "first hundred" in body.lower() or "hundred days" in body.lower()
     assert "management agent" in body.lower()
+    assert "root cause" in body.lower()
+    assert "manageable" in body.lower()
+    assert "deal perimeter" in system.lower() or "as-of" in system.lower()
 
 
 def test_internal_risk_not_company_hardcoded() -> None:
@@ -157,6 +171,7 @@ def test_key_person_from_management_agent() -> None:
         legacy_spec=_legacy(),
         management_spec=_management(),
         capital_spec=_capital(),
+        cash_flow_spec=_cash_flow(),
     )
     kps = [
         r for r in (heur.get("key_person_exposure") or [])
@@ -171,6 +186,37 @@ def test_key_person_from_management_agent() -> None:
         assert k.get("effect_if_left")
 
 
+def test_key_person_fallback_from_executives_roster() -> None:
+    """Empty key_persons still yields CEO exposure from the MQ executive roster."""
+    heur = _heuristic_internal_risk_spec(
+        company="Compost Crew",
+        corpus=_ir_corpus(),
+        sources=["10_HR_Organizational_Due_Diligence.pdf"],
+        legacy_spec=_legacy(),
+        management_spec={
+            "insight_snapshot": "thin",
+            "key_persons": [],
+            "executives": [
+                {
+                    "name": "Ben Parry",
+                    "role": "CEO",
+                    "criticality": "5",
+                    "replaceability": "1",
+                }
+            ],
+            "succession": [],
+        },
+        capital_spec=_capital(),
+        cash_flow_spec=_cash_flow(),
+    )
+    kps = [
+        r for r in (heur.get("key_person_exposure") or [])
+        if isinstance(r, dict) and not str(r.get("person") or "").startswith("Information")
+    ]
+    assert len(kps) >= 1
+    assert "Parry" in str(kps[0].get("person") or "")
+
+
 def test_financial_strain_indicators() -> None:
     heur = _heuristic_internal_risk_spec(
         company="Test3",
@@ -179,6 +225,7 @@ def test_financial_strain_indicators() -> None:
         legacy_spec=_legacy(),
         management_spec=_management(),
         capital_spec=_capital(),
+        cash_flow_spec=_cash_flow(),
     )
     strain = heur.get("financial_strain") or []
     indicators = {
@@ -243,6 +290,75 @@ def test_remediation_and_rank() -> None:
     )
 
 
+def test_risk_register_schema_and_qa() -> None:
+    heur = _heuristic_internal_risk_spec(
+        company="Test3",
+        corpus=_ir_corpus(),
+        sources=["05_Financial_Due_Diligence.pdf", "10_HR_Organizational_Due_Diligence.pdf"],
+        legacy_spec=_legacy(),
+        management_spec=_management(),
+        capital_spec=_capital(),
+        cash_flow_spec=_cash_flow(),
+        operational_spec={"insight_snapshot": "Ops risk opened"},
+        regulatory_spec={"permit_register": [{"identifier": "Factory licence"}]},
+        tech_spec={"insight_snapshot": "IP/tech opened"},
+    )
+    register = [
+        r for r in (heur.get("risk_register") or [])
+        if isinstance(r, dict) and not str(r.get("risk") or "").startswith("Information")
+    ]
+    assert register
+    for r in register[:3]:
+        assert r.get("root_cause")
+        assert r.get("event")
+        assert r.get("exposure")
+        assert r.get("controls")
+        assert r.get("residual")
+        assert r.get("owner")
+        assert r.get("action")
+        assert r.get("evidence_class") in {"known_weakness", "uncertainty"}
+    upstream = heur.get("upstream_registers") or {}
+    assert upstream.get("present", {}).get("management_quality") is True
+    assert upstream.get("present", {}).get("capital_structure") is True
+    assert upstream.get("present", {}).get("cash_flow") is True
+    qa = heur.get("ir_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "upstream_registers",
+        "risk_row_schema",
+        "known_vs_uncertainty",
+        "quantified_where_possible",
+        "conflict_reconcile",
+        "pre_vs_post_close",
+        "no_manageable_blocker_silence",
+    ):
+        assert need in checks
+    mgmt_qa = next(r for r in qa if r.get("check") == "upstream_registers")
+    assert mgmt_qa.get("status") == "PASS"
+    silence_qa = next(r for r in qa if r.get("check") == "no_manageable_blocker_silence")
+    assert silence_qa.get("status") == "PASS"
+    assert isinstance(heur.get("questions"), list)
+    if any(isinstance(r, dict) and r.get("status") == "FAIL" for r in qa):
+        assert heur.get("reliance_verdict") != "READY" or heur.get("questions")
+
+
+def test_manageable_blocker_silence_fails_qa() -> None:
+    heur = _heuristic_internal_risk_spec(
+        company="Test3",
+        corpus=_ir_corpus() + " Covenant breach is a manageable risk that can be managed away.",
+        sources=["05_Financial_Due_Diligence.pdf"],
+        legacy_spec=_legacy(),
+        management_spec=_management(),
+        capital_spec=_capital(),
+        cash_flow_spec=_cash_flow(),
+    )
+    qa = heur.get("ir_evidence_qa") or []
+    silence = next(r for r in qa if r.get("check") == "no_manageable_blocker_silence")
+    # Covenant / liquidity typically ranks Structure — silence should FAIL
+    assert silence.get("status") == "FAIL"
+    assert heur.get("reliance_verdict") != "READY"
+
+
 def test_legacy_dual_write() -> None:
     heur = _heuristic_internal_risk_spec(
         company="Test3",
@@ -267,6 +383,7 @@ def test_render_no_invest() -> None:
         legacy_spec=_legacy(),
         management_spec=_management(),
         capital_spec=_capital(),
+        cash_flow_spec=_cash_flow(),
     )
     md = render_internal_risk_markdown("Internal Risk", heur)
     assert "## 1. Key-Person" in md
@@ -274,10 +391,14 @@ def test_render_no_invest() -> None:
     assert "## 3. Control & Governance" in md
     assert "## 4. Remediation" in md
     assert "## 5. Ranked by Price" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Risk Register" in md
+    assert "## 7. Internal Risk Evidence QA" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "Untested is not failed" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
+    assert "Root cause" in md
 
 
 def test_render_agent_document_dispatch() -> None:
@@ -294,10 +415,11 @@ def test_render_agent_document_dispatch() -> None:
             legacy_spec=_legacy(),
             management_spec=_management(),
             capital_spec=_capital(),
+            cash_flow_spec=_cash_flow(),
         ),
     }
     md = render_agent_document("internal_risk", output)
-    assert "## 6. Quality & Reliance" in md
+    assert "## 9. Quality & Reliance" in md or "## 6. Risk Register" in md
     assert "Key-Person" in md
 
 
@@ -311,6 +433,12 @@ def test_build_prefers_heuristic_when_flagged() -> None:
         sources=["10_HR_Organizational_Due_Diligence.pdf"],
         prefer_heuristic=True,
         legacy_spec=_legacy(),
+        management_spec=_management(),
+        capital_spec=_capital(),
+        cash_flow_spec=_cash_flow(),
     )
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-21"
+    assert isinstance(spec.get("deal_slots"), dict)
+    assert spec.get("ir_evidence_qa")
+    assert spec.get("risk_register")

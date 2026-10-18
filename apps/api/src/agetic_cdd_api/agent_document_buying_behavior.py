@@ -736,6 +736,331 @@ def _quality_reliance(
     )
 
 
+def _buying_evidence_qa(
+    *,
+    maps: list[dict[str, Any]],
+    cycles: list[dict[str, Any]],
+    switching: dict[str, Any],
+    seasonality: dict[str, Any],
+    corpus: str = "",
+) -> list[dict[str, str]]:
+    """Explicit PASS/FAIL QA for buying-behavior discipline."""
+    rows: list[dict[str, str]] = []
+    map_filled = sum(
+        1
+        for m in maps
+        if isinstance(m, dict)
+        and any(
+            _is_filled(m.get(k))
+            for k in (
+                "decision_maker",
+                "budget_holder",
+                "approval_steps",
+                "procurement_route",
+                "purchase_trigger",
+            )
+        )
+    )
+    rows.append({
+        "check": "segmented_purchase_maps",
+        "status": "PASS" if map_filled >= 1 else "FAIL",
+        "finding": (
+            f"{map_filled} segment purchase map(s) with decision/budget/trigger fields"
+            if map_filled >= 1
+            else _info_request("per-segment decision-maker, budget holder, approvals and trigger")
+        ),
+        "action": (
+            "Maps held separately by segment"
+            if map_filled >= 1
+            else "Do not rest growth-plan sales assumptions on an empty map"
+        ),
+    })
+
+    evidenced = [c for c in cycles if isinstance(c, dict) and c.get("crm_evidenced")]
+    medians = {
+        str(c.get("median"))
+        for c in evidenced
+        if _is_filled(c.get("median"))
+    }
+    universal = len(evidenced) > 1 and len(medians) == 1
+    rows.append({
+        "check": "no_universal_sales_cycle",
+        "status": "FAIL" if universal else "PASS",
+        "finding": (
+            "Identical median cycle assigned across segments — blocked"
+            if universal
+            else _CYCLE_RULE
+        ),
+        "action": (
+            "Recompute median and range by segment from CRM timestamps"
+            if universal
+            else "Segment-level cycles retained"
+        ),
+    })
+
+    rows.append({
+        "check": "crm_cycle_provenance",
+        "status": "PASS" if evidenced else "FAIL",
+        "finding": (
+            f"{len(evidenced)} segment cycle(s) CRM-evidenced"
+            if evidenced
+            else _info_request("CRM timestamp medians and ranges by segment")
+        ),
+        "action": (
+            "Cycle distributions grounded in CRM timestamps"
+            if evidenced
+            else "Do not assign one pack figure to all customers"
+        ),
+    })
+
+    say = switching.get("customers_say") if isinstance(switching.get("customers_say"), list) else []
+    did = switching.get("customers_did") if isinstance(switching.get("customers_did"), list) else []
+    say_did_ok = (not switching.get("evidenced")) or (bool(say) or bool(did) or bool(switching.get("say_vs_did_note")))
+    if switching.get("evidenced") and not (say or did):
+        say_did_ok = False
+    rows.append({
+        "check": "say_vs_did_split",
+        "status": "PASS" if say_did_ok else "FAIL",
+        "finding": (
+            _SAY_VS_DID
+            if say_did_ok
+            else _info_request("stated purchase criteria vs observed win/loss behaviour")
+        ),
+        "action": (
+            "Stated vs behavioural criteria distinguished"
+            if say_did_ok
+            else "Split customers-say from customers-did before relying on switching notes"
+        ),
+    })
+
+    measured = bool(seasonality.get("measured"))
+    controls = bool(seasonality.get("controls_for_growth_acq"))
+    if measured and not controls:
+        rows.append({
+            "check": "seasonality_controls",
+            "status": "FAIL",
+            "finding": _info_request("seasonality controls for organic growth and acquisitions"),
+            "action": "Do not assert seasonal ramps without growth/acquisition controls",
+        })
+    else:
+        rows.append({
+            "check": "seasonality_controls",
+            "status": "PASS",
+            "finding": (
+                "Seasonality measured with growth/acquisition controls"
+                if measured and controls
+                else _SEASONALITY_RULE
+            ),
+            "action": (
+                "Seasonal pattern publishable"
+                if measured and controls
+                else "Seasonality not asserted without monthly data"
+            ),
+        })
+
+    interview_hit = bool(_INTERVIEW_CUE.search(corpus or ""))
+    has_sample = bool(_SAMPLE_RE.search(corpus or ""))
+    has_date = bool(_DATE_RE.search(corpus or ""))
+    has_method = bool(re.search(
+        r"(?i)\b(structured\s+interview|semi[- ]structured|survey|CRM|win[- ]loss\s+note)\b",
+        corpus or "",
+    ))
+    anec = int(switching.get("anecdotal_count") or 0)
+    if interview_hit and not (has_sample and has_date and has_method) and anec == 0:
+        interview_ok = False
+        interview_finding = _info_request(
+            "interview sample size, dates and method (or label claims anecdotal)"
+        )
+    else:
+        interview_ok = True
+        interview_finding = (
+            _ANECDOTAL_RULE
+            if anec or not interview_hit
+            else "Interview claims carry sample, dates and method"
+        )
+    rows.append({
+        "check": "interview_metadata_complete",
+        "status": "PASS" if interview_ok else "FAIL",
+        "finding": interview_finding,
+        "action": (
+            "Interview evidence diligence-grade or labelled anecdotal"
+            if interview_ok
+            else "Label anecdotal or supply sample/dates/method before IC"
+        ),
+    })
+    return rows
+
+
+def _questions_from_buy_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    maps = spec.get("purchase_maps") if isinstance(spec.get("purchase_maps"), list) else []
+    cycles = spec.get("sales_cycles") if isinstance(spec.get("sales_cycles"), list) else []
+    switching = spec.get("switching") if isinstance(spec.get("switching"), dict) else {}
+    seasonality = spec.get("seasonality") if isinstance(spec.get("seasonality"), dict) else {}
+    qa = (
+        spec.get("buying_evidence_qa")
+        if isinstance(spec.get("buying_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("segmented_purchase_maps"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide per-segment purchase maps "
+                        "(decision-maker, budget holder, approvals, procurement, trigger)"
+                    ),
+                    "required_records": "Win/loss notes, CRM account owners, procurement policies",
+                    "decision_effect": "Growth-plan sales assumptions cannot be tested by segment",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 segment map with decision/budget/trigger filled",
+                    "interim_treatment": "BLOCKED / LIMITED — do not use a universal buyer profile",
+                }
+            )
+        )
+
+    if _qa_fail("crm_cycle_provenance") or _qa_fail("no_universal_sales_cycle"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Extract CRM timestamp sales-cycle median and range by segment "
+                        "(no single cycle for all customers)"
+                    ),
+                    "required_records": "CRM opportunity created→closed timestamps by segment",
+                    "decision_effect": "Conversion timing and capacity plans may be mis-set",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial / sales ops diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "crm_cycle_provenance PASS; no_universal_sales_cycle PASS",
+                    "interim_treatment": "Do not assign one pack figure to every segment",
+                }
+            )
+        )
+
+    if _qa_fail("say_vs_did_split") or not switching.get("evidenced"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Open win/loss notes that split stated purchase criteria "
+                        "from observed switching behaviour"
+                    ),
+                    "required_records": "Bid outcomes / win-loss register with say vs did fields",
+                    "decision_effect": "Stated criteria may not match what buyers actually did",
+                    "priority": "signing_condition",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "switching.evidenced + say_vs_did_split PASS",
+                    "interim_treatment": "Treat interview sayings as anecdotal until split",
+                }
+            )
+        )
+
+    if _qa_fail("seasonality_controls") or (
+        not seasonality.get("measured") and not seasonality.get("asserted_without_data")
+    ):
+        # Only ask for seasonality series when thin — always useful if not measured
+        if not seasonality.get("measured") or _qa_fail("seasonality_controls"):
+            out.append(
+                normalize_question(
+                    {
+                        "question": (
+                            "Provide monthly signups/cancellations/volume with controls "
+                            "for growth and acquisitions"
+                        ),
+                        "required_records": "Monthly CRM or billing series + acquisition calendar",
+                        "decision_effect": "Seasonal ramps in the growth plan may be invented",
+                        "priority": "signing_condition",
+                        "owner": "commercial diligence lead",
+                        "timing": "per deal timetable",
+                        "closure_test": "seasonality.measured with controls_for_growth_acq",
+                        "interim_treatment": "Do not assert seasonality — leave unmeasured",
+                    }
+                )
+            )
+
+    if _qa_fail("interview_metadata_complete"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Supply interview sample size, dates and method (or label anecdotal)",
+                    "required_records": "Interview log with n, fieldwork window and method",
+                    "decision_effect": "Buyer claims remain anecdotal and cannot ground IC",
+                    "priority": "signing_condition",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "interview_metadata_complete QA PASS",
+                    "interim_treatment": "Label all interview claims anecdotal",
+                }
+            )
+        )
+
+    implications = (
+        spec.get("implications") if isinstance(spec.get("implications"), dict) else {}
+    )
+    if not any(
+        _is_filled(implications.get(k))
+        for k in ("sales_capacity", "conversion_assumptions", "pricing_strategy")
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "State implications for sales capacity, conversion assumptions "
+                        "and pricing from the maps and cycles"
+                    ),
+                    "required_records": "Capacity model + conversion funnel tied to segment cycles",
+                    "decision_effect": "Growth-plan sales maths remain unlinked to buying reality",
+                    "priority": "residual_uncertainty",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "implications.sales_capacity / conversion / pricing filled",
+                    "interim_treatment": "LIMITED reliance on growth-plan sales assumptions",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material buying-behavior inputs are missing "
+                        "for the stated perimeter"
+                    ),
+                    "required_records": "N/A — maps, cycles and switching publishable",
+                    "decision_effect": "None — buying behaviour publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "commercial diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if CRM segment taxonomy or interview set changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
+
+
 # ---------------------------------------------------------------------------
 # heuristic / LLM / normalise / build / render
 # ---------------------------------------------------------------------------
@@ -787,6 +1112,15 @@ def _heuristic_buying_behavior_spec(
             if labelled and labelled not in notes:
                 notes.append(labelled)
 
+    buying_qa = _buying_evidence_qa(
+        maps=maps,
+        cycles=cycles,
+        switching=switching,
+        seasonality=seasonality,
+        corpus=corpus_full,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in buying_qa)
+
     quality, reliance, rationale = _quality_reliance(
         maps=maps,
         cycles=cycles,
@@ -794,6 +1128,9 @@ def _heuristic_buying_behavior_spec(
         seasonality=seasonality,
         anecdotal_count=int(switching.get("anecdotal_count") or 0),
     )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "Buying evidence QA has open FAILs — reliance limited. " + rationale
 
     bits = [f"Buying Behavior for {company}:"]
     segs = [m.get("segment") for m in maps if m.get("segment")]
@@ -806,13 +1143,14 @@ def _heuristic_buying_behavior_spec(
     if metrics.get("time_to_purchase_days") is not None:
         bits.append(f"TTP {metrics['time_to_purchase_days']:g}d (not applied to all segments)")
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest("; ".join(bits)),
         "purchase_maps": maps,
         "sales_cycles": cycles,
         "switching": switching,
         "seasonality": seasonality,
         "implications": implications,
+        "buying_evidence_qa": buying_qa,
         # Legacy dual-write
         "concentration_flags": flags,
         "channel_mix": channel,
@@ -833,6 +1171,8 @@ def _heuristic_buying_behavior_spec(
             and not metrics
         ),
     }
+    out["questions"] = _questions_from_buy_gaps(out)
+    return out
 
 
 def _llm_buying_behavior_spec(
@@ -843,6 +1183,11 @@ def _llm_buying_behavior_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -855,6 +1200,12 @@ def _llm_buying_behavior_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -875,6 +1226,11 @@ def _llm_buying_behavior_spec(
         "source, information_request},\n"
         "seasonality: {measured, pattern, controls_for_growth_acq, asserted_without_data, source, notes},\n"
         "implications: {sales_capacity, conversion_assumptions, pricing_strategy},\n"
+        "buying_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "segmented_purchase_maps, no_universal_sales_cycle, crm_cycle_provenance, "
+        "say_vs_did_split, seasonality_controls, interview_metadata_complete,\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "concentration_flags: [string], channel_mix: [string],\n"
         "buying_metrics: {online_sales_pct?, emi_purchase_pct?, cac_inr?, time_to_purchase_days?, "
         "fleet_revenue_pct?},\n"
@@ -885,6 +1241,7 @@ def _llm_buying_behavior_spec(
         "Do NOT assert seasonality without monthly data. "
         "Interview claims need sample/dates/method or label anecdotal. "
         "Distinguish what customers say from what they did. "
+        "Include Questions for every material gap. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -1053,6 +1410,16 @@ def _normalise_llm_spec(
             cleaned_notes.append(rule)
     llm["behavior_notes"] = cleaned_notes[:8]
 
+    buying_qa = _buying_evidence_qa(
+        maps=cleaned_maps,
+        cycles=cleaned_cycles,
+        switching=switching,
+        seasonality=seasonality,
+        corpus=corpus,
+    )
+    llm["buying_evidence_qa"] = buying_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in buying_qa)
+
     quality, reliance, rationale = _quality_reliance(
         maps=cleaned_maps,
         cycles=cleaned_cycles,
@@ -1069,6 +1436,24 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "Buying evidence QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_buy_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_buy_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
@@ -1134,22 +1519,31 @@ def build_buying_behavior_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_buying_behavior_spec(
+    heur = _heuristic_buying_behavior_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_buying_behavior_markdown(
@@ -1324,7 +1718,58 @@ def render_buying_behavior_markdown(
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    buying_qa = (
+        spec.get("buying_evidence_qa")
+        if isinstance(spec.get("buying_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. Buying Evidence QA\n\n")
+    parts.append(
+        "QA enforces segmented maps (no universal cycle), CRM cycle provenance, "
+        "say-vs-did split, seasonality controls, and interview sample/date/method.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in buying_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('buying evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material buying-behavior gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

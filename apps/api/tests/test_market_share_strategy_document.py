@@ -9,7 +9,12 @@ from agetic_cdd_api.agent_document_market_share_strategy import (
     render_market_share_strategy_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -40,10 +45,13 @@ def test_market_share_strategy_prompt_book_listed() -> None:
     system = compose_system("market_share_strategy", sector="EV", geography="India")
     assert "market_share_strategy" in listed_agents()
     assert "share" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("market_share_strategy")
     assert "Ola" not in body and "SoftBank" not in body
     assert "numerator" in body.lower() and "denominator" in body.lower()
     assert "unassessed" in body.lower() or "not calculable" in body.lower()
+    assert "capacity" in body.lower()
 
 
 def test_market_share_strategy_not_company_hardcoded() -> None:
@@ -104,7 +112,10 @@ def test_market_share_strategy_markdown_follows_prompt_book() -> None:
     assert "## 3." in md  # Physical Requirements
     assert "## 4." in md  # Funnel
     assert "## 5." in md  # Attainable
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Capacity Constraints" in md
+    assert "## 7. Numerator" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "unassessed" in md.lower() or "not calculable" in md.lower() or heur.get(
         "matched_share", {}
@@ -115,6 +126,10 @@ def test_market_share_strategy_markdown_follows_prompt_book() -> None:
     assert isinstance(heur.get("wins"), list)
     assert isinstance(heur.get("losses"), list)
     assert isinstance(heur.get("strategy_notes"), list)
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert heur.get("capacity_constraints")
+    assert heur.get("numerator_denominator_reconcile")
 
 
 def test_normalise_strips_recommendation() -> None:
@@ -157,6 +172,8 @@ def test_normalise_strips_recommendation() -> None:
     assert "invest" not in snap
     # Leadership softened when share not calculable
     assert "leader" not in snap or "unassessed" in snap
+    assert llm.get("questions")
+    assert questions_complete(llm["questions"])
 
 
 def test_render_agent_document_market_share_strategy() -> None:
@@ -168,7 +185,7 @@ def test_render_agent_document_market_share_strategy() -> None:
             "# Market Share Strategy\n\n"
             "## 1. Matched Share (Numerator / Denominator)\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 9. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -197,7 +214,27 @@ def test_build_market_share_strategy_from_corpus() -> None:
     )
     md = render_market_share_strategy_markdown("Market Share Strategy", spec)
     assert "## 2. Share Movement" in md
-    assert "## 5." in md
+    assert "## 6. Capacity Constraints" in md
+    assert "## 8. Questions" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-05"
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+    assert spec.get("deal_slots")
+
+
+def test_thin_corpus_emits_share_questions() -> None:
+    heur = _heuristic_market_share_strategy_spec(
+        company="Test3",
+        corpus="General commentary with no share figures.",
+        sources=["empty.pdf"],
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert any(
+        "share" in q.get("question", "").lower()
+        or "matched" in q.get("question", "").lower()
+        for q in heur["questions"]
+    )
+    assert heur.get("reliance_verdict") == "BLOCKED"

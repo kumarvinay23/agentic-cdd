@@ -33,19 +33,33 @@ def _scr_corpus() -> str:
         "Backup dual-source for modules was tested in a 2024 drill. "
         "Spare warehouse capacity at Chennai remains untested. "
         "Contractual priority with CATL never tested under force majeure. "
+        "Alternate plant capacity at Pune requires licence approval; transition time 4 months. "
+        "ERP / WMS order management is the digital backbone. "
         "Localization FY2024 import content 48% target. Gigafactory phase 1 localization. "
         "If CATL fails, production halt ~60 days and INR 80 Cr cost."
     )
 
 
 def test_supply_chain_resilience_prompt_book_listed() -> None:
-    system = compose_system("supply_chain_resilience", sector="EV", geography="India")
+    system = compose_system(
+        "supply_chain_resilience",
+        sector="EV",
+        geography="India",
+        deal_perimeter="standalone ops",
+        transaction_type="majority buyout",
+        as_of_date="2024-12-31",
+        decision_stage="IC",
+    )
     assert "supply_chain_resilience" in listed_agents()
     assert "single" in system.lower() or "resilience" in system.lower()
     body = agent_prompt("supply_chain_resilience")
     assert "Ola" not in body and "SoftBank" not in body
     assert "continuity" in body.lower()
     assert "supplier" in body.lower()
+    assert "digital" in body.lower()
+    assert "questions" in body.lower()
+    assert "unknown" in body.lower()
+    assert "standalone ops" in system.lower() or "deal perimeter" in system.lower()
 
 
 def test_supply_chain_resilience_not_company_hardcoded() -> None:
@@ -81,6 +95,8 @@ def test_spof_marks_single_supplier_on_input() -> None:
     ]
     assert inputish
     assert any(str(n.get("spof") or "").lower() == "yes" for n in inputish)
+    assert any(isinstance(n, dict) and n.get("layer") == "digital" for n in chain)
+    assert any(isinstance(n, dict) and n.get("layer") == "physical" for n in chain)
 
 
 def test_supply_chain_resilience_markdown_follows_prompt_book() -> None:
@@ -101,7 +117,9 @@ def test_supply_chain_resilience_markdown_follows_prompt_book() -> None:
     assert "## 3. Disruption History" in md
     assert "## 4. Continuity" in md
     assert "## 5. Plausible Downside" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. SCR Evidence QA" in md
+    assert "## 7. Questions and Inputs Required" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert heur.get("logistics_metrics", {}).get("dio_days") == 68.0
     hist = heur.get("disruption_history") or []
@@ -125,6 +143,91 @@ def test_supply_chain_resilience_markdown_follows_prompt_book() -> None:
     assert downs
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
+    assert heur.get("disruption_scenarios")
+    assert heur.get("alt_capacity")
+    assert heur.get("scr_evidence_qa")
+    assert heur.get("questions")
+
+
+def test_scr_evidence_qa_and_questions() -> None:
+    heur = _heuristic_supply_chain_resilience_spec(
+        company="Test3",
+        corpus=_scr_corpus(),
+        sources=["12_Manufacturing_Supply_Chain_Review.pdf"],
+        supplier_spec={
+            "vendors": [
+                {
+                    "name": "CATL",
+                    "component": "Li-ion Cells",
+                    "alternate_available": "No",
+                    "risk_level": "High",
+                }
+            ],
+            "operational_criticality": [
+                {"supplier": "CATL", "criticality": "Critical", "what_stops": "cell supply"},
+            ],
+        },
+    )
+    qa = heur.get("scr_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "physical_digital_chain_map",
+        "verified_supplier_deps",
+        "disruption_scenarios",
+        "contingency_plan_vs_tested",
+        "alt_capacity_permissions_time",
+        "cost_impact_non_overlap",
+        "unknown_not_low_resilience",
+        "supplier_reconcile",
+    ):
+        assert need in checks
+    assert all(r.get("status") in {"PASS", "FAIL"} for r in qa if isinstance(r, dict))
+    deps = heur.get("verified_dependencies") or []
+    assert any(
+        isinstance(d, dict) and d.get("evidence_status") == "evidenced" for d in deps
+    )
+    questions = heur.get("questions") or []
+    for q in questions:
+        assert isinstance(q, dict)
+        assert q.get("question")
+        assert q.get("required_records")
+        assert q.get("closure_test")
+
+
+def test_qa_fail_caps_ready_to_limited() -> None:
+    heur = _heuristic_supply_chain_resilience_spec(
+        company="Test3",
+        corpus=_scr_corpus(),
+        sources=["a.pdf"],
+        # no supplier_spec → verified deps FAIL + supplier reconcile FAIL
+    )
+    assert heur.get("reliance_verdict") in {"LIMITED", "BLOCKED"}
+    assert heur.get("reliance_verdict") != "READY"
+    qa = heur.get("scr_evidence_qa") or []
+    assert any(isinstance(r, dict) and r.get("status") == "FAIL" for r in qa)
+
+
+def test_unknown_not_low_resilience() -> None:
+    heur = _heuristic_supply_chain_resilience_spec(
+        company="Test3",
+        corpus="No chain detail provided yet.",
+        sources=["thin.pdf"],
+    )
+    chain = heur.get("critical_path") or []
+    unknown = [
+        n for n in chain
+        if isinstance(n, dict) and str(n.get("spof") or "").lower() == "unknown"
+    ]
+    assert unknown
+    qa = heur.get("scr_evidence_qa") or []
+    unk = next(
+        (r for r in qa if isinstance(r, dict) and r.get("check") == "unknown_not_low_resilience"),
+        None,
+    )
+    assert unk is not None
+    assert unk.get("status") == "PASS"
+    rationale = str(heur.get("quality_reliance_rationale") or "").lower()
+    assert "unknown" in rationale and "not low" in rationale
 
 
 def test_supplier_reconcile_flags_alternate_conflict() -> None:
@@ -202,6 +305,30 @@ def test_normalise_strips_recommendation_and_forces_reconcile() -> None:
     assert cont and cont[0].get("tested_or_used")
     assert llm.get("quality_verdict") == "REWORK"
     assert (llm.get("supplier_reconcile") or {}).get("conflicts")
+    assert llm.get("scr_evidence_qa")
+    assert llm.get("questions")
+    assert llm.get("reliance_verdict") != "READY"
+
+
+def test_deal_slots_on_build() -> None:
+    deal = _FakeDeal()
+    deal.metadata = {  # type: ignore[attr-defined]
+        "deal_perimeter": "standalone ops",
+        "transaction_type": "majority buyout",
+        "as_of_date": "2024-12-31",
+        "decision_stage": "IC",
+    }
+    spec = build_supply_chain_resilience_spec(
+        deal,  # type: ignore[arg-type]
+        index={"documents": []},
+        company="Test3",
+        corpus=_scr_corpus(),
+        sources=["12_Manufacturing_Supply_Chain_Review.pdf"],
+        prefer_heuristic=True,
+    )
+    slots = spec.get("deal_slots") or {}
+    assert slots.get("deal_perimeter") == "standalone ops"
+    assert slots.get("decision_stage") == "IC"
 
 
 def test_render_agent_document_supply_chain_resilience() -> None:
@@ -213,7 +340,7 @@ def test_render_agent_document_supply_chain_resilience() -> None:
             "# Supply Chain Resilience\n\n"
             "## 1. Critical Path & Single Points of Failure\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 8. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -242,6 +369,9 @@ def test_build_supply_chain_resilience_from_corpus() -> None:
     )
     md = render_supply_chain_resilience_markdown("Supply Chain Resilience", spec)
     assert "## 2. Capacity & Headroom" in md
+    assert "## 6. SCR Evidence QA" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-14"
+    assert spec.get("scr_evidence_qa")
+    assert spec.get("questions")

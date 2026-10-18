@@ -159,17 +159,30 @@ def _period_label(period: str) -> str:
     p = re.sub(r"\s+", "", (period or "").upper())
     if p in {"LTM", "TTM"}:
         return "last twelve months"
+    if p.startswith("YTD") or "YTD" in p:
+        return "year to date"
     if p.endswith("P") or "PLAN" in p:
         return "forecast"
-    if p.endswith("E") or "FORECAST" in p:
+    if p.endswith("E") or "FORECAST" in p or "BUDGET" in p:
         return "forecast"
     # Bare calendar years 2026+ are plan unless explicitly historical
     m = re.search(r"(20\d{2})", p)
-    if m and int(m.group(1)) >= 2026:
+    if m and int(m.group(1)) >= 2026 and "ACTUAL" not in p:
         return "forecast"
-    if p.startswith("YTD"):
-        return "year to date"
     return "actual"
+
+
+def _period_type_of(fact: dict[str, Any]) -> str:
+    explicit = str(fact.get("period_type") or "").strip().lower()
+    if explicit in {
+        "actual",
+        "forecast",
+        "last twelve months",
+        "year to date",
+        "budget",
+    }:
+        return "forecast" if explicit == "budget" else explicit
+    return _period_label(str(fact.get("period") or ""))
 
 
 def _detect_period_headers(text: str) -> list[str]:
@@ -347,8 +360,14 @@ def _pivot_pl_lines(period_facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(by_item.values())[:12]
 
 
-def _series_for(period_facts: list[dict], line: str) -> list[tuple[str, float]]:
-    out: list[tuple[str, float]] = []
+def _series_for(
+    period_facts: list[dict],
+    line: str,
+    *,
+    period_type: str | None = None,
+) -> list[tuple[str, float, str]]:
+    """Return (period, value, period_type). Optionally filter to one period_type."""
+    out: list[tuple[str, float, str]] = []
     for f in period_facts:
         if not isinstance(f, dict):
             continue
@@ -358,15 +377,16 @@ def _series_for(period_facts: list[dict], line: str) -> list[tuple[str, float]]:
             continue
         if str(f.get("unit") or "") == "%":
             continue
-        out.append((str(f.get("period") or ""), float(f["value"])))
+        ptype = _period_type_of(f)
+        if period_type and ptype != period_type:
+            continue
+        out.append((str(f.get("period") or ""), float(f["value"]), ptype))
     return out
 
 
 def _extract_growth_margins(
     period_facts: list[dict[str, Any]],
 ) -> tuple[str, list[dict[str, str]]]:
-    rev = _series_for(period_facts, "Revenue")
-    ebitda = _series_for(period_facts, "EBITDA")
     gm_rows = [
         f for f in period_facts
         if isinstance(f, dict)
@@ -381,39 +401,84 @@ def _extract_growth_margins(
     ]
 
     growth_rows: list[dict[str, str]] = []
-    for i in range(1, len(rev)):
-        prev_p, prev_v = rev[i - 1]
-        cur_p, cur_v = rev[i]
-        if prev_v == 0:
-            continue
-        rate = ((cur_v - prev_v) / abs(prev_v)) * 100
-        growth_rows.append({
-            "metric": "Revenue YoY growth",
-            "period": cur_p,
-            "value": f"{rate:+.0f}%",
-            "prior_period": prev_p,
-            "source": _COMPUTED,
-            "notes": _TREND_RULE,
-        })
+    # YoY only within the same period_type — never mix actual / YTD / forecast.
+    for ptype in ("actual", "year to date", "last twelve months", "forecast"):
+        rev = _series_for(period_facts, "Revenue", period_type=ptype)
+        for i in range(1, len(rev)):
+            prev_p, prev_v, _ = rev[i - 1]
+            cur_p, cur_v, _ = rev[i]
+            if prev_v == 0:
+                continue
+            rate = ((cur_v - prev_v) / abs(prev_v)) * 100
+            formula = f"({cur_v:g}-{prev_v:g})/abs({prev_v:g})*100"
+            growth_rows.append({
+                "metric": "Revenue YoY growth",
+                "period": cur_p,
+                "period_type": ptype,
+                "value": f"{rate:+.0f}%",
+                "prior_period": prev_p,
+                "formula": formula,
+                "source": _COMPUTED,
+                "notes": _TREND_RULE,
+            })
 
+    from agetic_cdd_api.report_builder_base import coerce_percent_points
+
+    def _margin_pp(raw: float) -> float:
+        return coerce_percent_points(
+            float(raw), family="ebitda_margin", unit="%"
+        )
+
+    em_pps: list[float] = []
     for f in gm_rows:
+        ptype = _period_type_of(f)
+        val = _margin_pp(float(f["value"]))
         growth_rows.append({
             "metric": "Gross margin",
             "period": str(f.get("period") or ""),
-            "value": f"{float(f['value']):g}%",
+            "period_type": ptype,
+            "value": f"{val:.2f}".rstrip("0").rstrip(".") + "%",
             "prior_period": "",
+            "formula": "gross_profit/revenue*100 (as stated)" if "margin" in str(f.get("line_item") or "").lower() else "as stated",
             "source": _DOC_CITE,
             "notes": _TREND_RULE,
         })
     for f in em_rows:
+        ptype = _period_type_of(f)
+        val = _margin_pp(float(f["value"]))
+        em_pps.append(val)
         growth_rows.append({
             "metric": "EBITDA margin",
             "period": str(f.get("period") or ""),
-            "value": f"{float(f['value']):g}%",
+            "period_type": ptype,
+            "value": f"{val:.2f}".rstrip("0").rstrip(".") + "%",
             "prior_period": "",
+            "formula": "EBITDA/revenue*100 (as stated)",
             "source": _DOC_CITE,
             "notes": _TREND_RULE,
         })
+    # Range finding for reports (e.g. "4.25% to 15.06% EBITDA margin").
+    if len(em_pps) >= 2:
+        lo, hi = min(em_pps), max(em_pps)
+        if abs(hi - lo) >= 0.05:
+            growth_rows.insert(
+                0,
+                {
+                    "metric": "EBITDA margin range",
+                    "period": "review periods",
+                    "period_type": "actual",
+                    "value": (
+                        f"{lo:.2f}".rstrip("0").rstrip(".")
+                        + "% to "
+                        + f"{hi:.2f}".rstrip("0").rstrip(".")
+                        + "%"
+                    ),
+                    "prior_period": "",
+                    "formula": "min/max EBITDA margin across evidenced periods",
+                    "source": _COMPUTED,
+                    "notes": _TREND_RULE,
+                },
+            )
 
     headline = _info_request("earnings trend from accounting records")
     unit_label = "USD M"
@@ -425,10 +490,17 @@ def _extract_growth_margins(
     def _fmt_amt(v: float) -> str:
         return f"{unit_label} {v:g}"
 
+    # Direction from actuals only; fall back to near-term forecasts if no actuals.
+    ebitda_actual = _series_for(period_facts, "EBITDA", period_type="actual")
+    ebitda_all = _series_for(period_facts, "EBITDA")
+    ebitda = ebitda_actual or [
+        (p, v, t) for p, v, t in ebitda_all if t != "year to date"
+    ]
+
     if ebitda:
-        # Exclude pure outer-year forecasts (e.g. FY2025E / FY2030P) from the direction call;
-        # keep recent actuals and near-term deal years.
-        def _is_outer_forecast(period: str) -> bool:
+        def _is_outer_forecast(period: str, ptype: str) -> bool:
+            if ptype == "actual":
+                return False
             p = str(period).upper().replace(" ", "")
             if p.endswith("P"):
                 return True
@@ -436,7 +508,9 @@ def _extract_growth_margins(
                 y in p for y in ("2025", "2024", "2023", "2022", "2021")
             )
 
-        use = [(p, v) for p, v in ebitda if not _is_outer_forecast(p)] or ebitda
+        use = [
+            (p, v) for p, v, t in ebitda if not _is_outer_forecast(p, t)
+        ] or [(p, v) for p, v, _ in ebitda]
         peak_p, peak_v = max(use, key=lambda x: x[1])
         trough_p, trough_v = min(use, key=lambda x: x[1])
         last_p, last_v = use[-1]
@@ -460,14 +534,22 @@ def _extract_growth_margins(
                 f"Latest EBITDA {last_p}: {_fmt_amt(last_v)} "
                 f"(series range {trough_v:g} to {peak_v:g})."
             )
-        # Pair revenue growth with the same last period when possible
-        rev_use = [(p, v) for p, v in rev if not _is_outer_forecast(p)] or rev
-        if rev_use and len(rev_use) >= 2:
-            _, prev_v = rev_use[-2]
-            cur_p, cur_v = rev_use[-1]
+        # Pair revenue growth on the same period_type basis as the earnings series.
+        rev_basis = "actual" if ebitda_actual else None
+        rev_use = (
+            _series_for(period_facts, "Revenue", period_type=rev_basis)
+            if rev_basis
+            else _series_for(period_facts, "Revenue", period_type="forecast")
+        )
+        rev_pairs = [(p, v) for p, v, t in rev_use if not _is_outer_forecast(p, t)] or [
+            (p, v) for p, v, _ in rev_use
+        ]
+        if rev_pairs and len(rev_pairs) >= 2:
+            _, prev_v = rev_pairs[-2]
+            cur_p, cur_v = rev_pairs[-1]
             if prev_v:
                 g = ((cur_v - prev_v) / abs(prev_v)) * 100
-                headline += f" Revenue {cur_p} {g:+.0f}% YoY."
+                headline += f" Revenue {cur_p} {g:+.0f}% YoY (same-basis)."
         headline = _clean(headline, 320) + f" {_COMPUTED}"
 
     return headline, growth_rows[:16]
@@ -747,6 +829,179 @@ def _bridge_notes(
     return notes[:8]
 
 
+def _build_shared_fact_register(
+    period_facts: list[dict[str, Any]],
+    *,
+    growth_rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    """Compact register Cash Flow / Valuation must reuse without restating."""
+    register: list[dict[str, str]] = []
+    for f in period_facts:
+        if not isinstance(f, dict) or f.get("value") is None:
+            continue
+        line = str(f.get("line_item") or "").strip()
+        if not line:
+            continue
+        # Prefer headline P&L lines for the shared register.
+        if not re.search(
+            r"(?i)^(revenue|cost of (?:goods sold|sales)|gross profit|gross margin|"
+            r"ebitda|ebitda margin|operating (?:expenses|costs)|ebit)$",
+            line,
+        ):
+            continue
+        val = f["value"]
+        val_s = f"{float(val):g}" if isinstance(val, (int, float)) else _clean(val, 24)
+        register.append({
+            "metric": line,
+            "value": val_s,
+            "unit": _clean(f.get("unit"), 16),
+            "period": _clean(f.get("period"), 20),
+            "period_type": _period_type_of(f),
+            "basis": _clean(f.get("basis") or "accounting_records", 24),
+            "location": _clean(f.get("location") or f.get("source") or _DOC_CITE, 80),
+            "source_agent": "historical_performance",
+        })
+    # Attach one latest same-basis revenue growth figure when present.
+    for g in growth_rows or []:
+        if not isinstance(g, dict):
+            continue
+        if str(g.get("metric") or "") != "Revenue YoY growth":
+            continue
+        if str(g.get("period_type") or "") != "actual":
+            continue
+        register.append({
+            "metric": "Revenue YoY growth",
+            "value": _clean(g.get("value"), 16),
+            "unit": "percent",
+            "period": _clean(g.get("period"), 20),
+            "period_type": "actual",
+            "basis": "computed",
+            "location": _clean(g.get("formula") or _COMPUTED, 80),
+            "source_agent": "historical_performance",
+        })
+        break
+    return register[:40]
+
+
+def _questions_from_hp_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    facts = spec.get("period_facts") if isinstance(spec.get("period_facts"), list) else []
+    has_rev = any(
+        isinstance(f, dict)
+        and str(f.get("line_item") or "").lower() == "revenue"
+        and f.get("value") is not None
+        for f in facts
+    )
+    has_ebitda = any(
+        isinstance(f, dict)
+        and str(f.get("line_item") or "").lower() == "ebitda"
+        and f.get("value") is not None
+        for f in facts
+    )
+    if not has_rev or not has_ebitda:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide period-labelled P&L (revenue through EBITDA) from accounting records",
+                    "required_records": "Audited / management accounts P&L by FY and YTD with units",
+                    "decision_effect": "Shared basis for Cash Flow, Valuation and all margin work",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financials lead",
+                    "timing": "before IC",
+                    "closure_test": "Revenue and EBITDA present for ≥2 actual periods with locators",
+                    "interim_treatment": "Reliance BLOCKED on historical financial facts",
+                }
+            )
+        )
+
+    cim = spec.get("accounts_vs_cim") if isinstance(spec.get("accounts_vs_cim"), list) else []
+    unresolved = [
+        r for r in cim
+        if isinstance(r, dict)
+        and str(r.get("difference") or "") not in {"", "Aligned"}
+        and not str(r.get("difference") or "").startswith("Information")
+        and str(r.get("chosen_basis") or "") in {"", "pending"}
+    ]
+    if unresolved:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Reconcile CIM / management summary vs accounting revenue (and EBITDA if stated)",
+                    "required_records": "CIM pages + accounts P&L for matching periods/perimeter",
+                    "decision_effect": "Wrong basis would flow into every downstream agent",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financials lead",
+                    "timing": "before IC",
+                    "closure_test": "Each material difference has reason and chosen_basis=accounting_records",
+                    "interim_treatment": "Use accounts only; flag CIM figures as non-basis",
+                }
+            )
+        )
+
+    season = spec.get("seasonality") if isinstance(spec.get("seasonality"), list) else []
+    season_gap = any(
+        isinstance(s, dict)
+        and (
+            str(s.get("shape") or "").startswith("Information request")
+            or str(s.get("ytd_vs_prior") or "").startswith("Information request")
+        )
+        for s in season
+    ) or not season
+    if season_gap:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide monthly or quarterly P&L and current YTD vs same period last year",
+                    "required_records": "Monthly/quarterly management accounts + YTD bridge",
+                    "decision_effect": "Seasonality can change run-rate and working-capital conclusions",
+                    "priority": "signing_condition",
+                    "owner": "financials lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "YTD vs SPLY on same perimeter with period labels",
+                    "interim_treatment": "Do not annualise uneven YTD without seasonality evidence",
+                }
+            )
+        )
+
+    distort = (
+        spec.get("comparability_distortions")
+        if isinstance(spec.get("comparability_distortions"), list)
+        else []
+    )
+    distort_gap = any(
+        isinstance(d, dict)
+        and str(d.get("distortion") or "").startswith("Information request")
+        for d in distort
+    ) or not distort
+    if distort_gap:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Confirm acquisitions, disposals, accounting changes and one-offs affecting comparability",
+                    "required_records": "Notes to accounts / QoE bridge / perimeter change memo",
+                    "decision_effect": "Distorts growth/margin trends used by Valuation",
+                    "priority": "signing_condition",
+                    "owner": "financials lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "Each material distortion dated with impact on named periods",
+                    "interim_treatment": "Trend labelled provisional pending distortion review",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    return unique[:12]
+
+
 def _quality_reliance(
     *,
     period_facts: list[dict],
@@ -903,6 +1158,11 @@ def _heuristic_historical_performance_spec(
             if isinstance(v, (int, float))
         }
 
+    # Ensure every period_fact carries a normalised period_type.
+    for f in period_facts:
+        if isinstance(f, dict):
+            f["period_type"] = _period_type_of(f)
+
     bridge = _bridge_notes(trend_headline, cim_rows, distortions, legacy)
     quality, reliance, rationale = _quality_reliance(
         period_facts=period_facts,
@@ -910,6 +1170,9 @@ def _heuristic_historical_performance_spec(
         cim_rows=cim_rows,
         seasonality=seasonality,
         distortions=distortions,
+    )
+    fact_register = _build_shared_fact_register(
+        period_facts, growth_rows=growth_rows
     )
 
     n_periods = len({
@@ -929,7 +1192,7 @@ def _heuristic_historical_performance_spec(
     if accounts:
         bits.insert(1, "QBO/workbook accounts extract")
 
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": _soften_invest(". ".join(b for b in bits if b)),
         "trend_headline": trend_headline,
         "period_facts": period_facts,
@@ -937,6 +1200,7 @@ def _heuristic_historical_performance_spec(
         "accounts_vs_cim": cim_rows,
         "seasonality": seasonality,
         "comparability_distortions": distortions,
+        "shared_fact_register": fact_register,
         "pl_lines": pl_lines,
         "performance_metrics": metrics,
         "bridge_notes": bridge,
@@ -955,6 +1219,8 @@ def _heuristic_historical_performance_spec(
             or unit_default
         ),
     }
+    out["questions"] = _questions_from_hp_gaps(out)
+    return out
 
 
 def _llm_historical_performance_spec(
@@ -965,6 +1231,11 @@ def _llm_historical_performance_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -977,6 +1248,12 @@ def _llm_historical_performance_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -992,12 +1269,17 @@ def _llm_historical_performance_spec(
         "trend_headline: string,\n"
         "period_facts: [{line_item, period, period_type, value, unit, basis, "
         "source, location, notes}],\n"
-        "growth_and_margins: [{metric, period, value, prior_period, source, notes}],\n"
+        "growth_and_margins: [{metric, period, period_type, value, prior_period, "
+        "formula, source, notes}],\n"
         "accounts_vs_cim: [{metric, period, accounts_value, cim_value, difference, "
         "reason, chosen_basis, why, source, notes}],\n"
         "seasonality: [{shape, period_grain, ytd_vs_prior, source, notes}],\n"
         "comparability_distortions: [{distortion, kind, impact_on_comparability, "
         "source, notes}],\n"
+        "shared_fact_register: [{metric, value, unit, period, period_type, basis, "
+        "location}],\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "pl_lines: [{line_item, fy2024_value, fy2023_value, unit}],\n"
         "performance_metrics: {string: number},\n"
         "bridge_notes: [string],\n"
@@ -1005,6 +1287,7 @@ def _llm_historical_performance_spec(
         "reliance_verdict: READY|LIMITED|BLOCKED,\n"
         "quality_reliance_rationale: string.\n"
         "period_type must be actual | last twelve months | forecast | year to date.\n"
+        "Never mix actual/YTD/forecast in one growth series. Show formulas.\n"
         "Prefer accounting_records over CIM. No invest or pass."
     )
     try:
@@ -1105,6 +1388,27 @@ def _normalise_llm_spec(
     llm["document"] = legacy.get("document") or _DOCUMENT_TITLE
     llm["dd_code"] = legacy.get("dd_code") or _DD_CODE
     llm["empty"] = not llm["period_facts"] and not llm["performance_metrics"]
+    for f in llm["period_facts"]:
+        if isinstance(f, dict):
+            f["period_type"] = _period_type_of(f)
+    if not llm.get("shared_fact_register"):
+        llm["shared_fact_register"] = _build_shared_fact_register(
+            llm["period_facts"], growth_rows=llm["growth_and_margins"]
+        )
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_hp_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            if not isinstance(raw, dict):
+                continue
+            q = normalize_question(raw)
+            if not q.get("closure_test"):
+                q["closure_test"] = "Evidence filed with locator and period label"
+            filled.append(q)
+        llm["questions"] = filled or _questions_from_hp_gaps(llm)
     return llm
 
 
@@ -1153,6 +1457,11 @@ def build_historical_performance_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
             spec = _normalise_llm_spec(
@@ -1161,6 +1470,7 @@ def build_historical_performance_spec(
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            spec["deal_slots"] = {k: v for k, v in vars_.items() if v}
             return _apply_databook_release(deal, spec)
 
     spec = _heuristic_historical_performance_spec(
@@ -1171,6 +1481,7 @@ def build_historical_performance_spec(
         legacy_spec=legacy_spec,
         deal=deal,
     )
+    spec["deal_slots"] = {k: v for k, v in vars_.items() if v}
     return _apply_databook_release(deal, spec)
 
 
@@ -1179,9 +1490,23 @@ def _apply_databook_release(deal: Deal, spec: dict[str, Any]) -> dict[str, Any]:
     try:
         from agetic_cdd_api.services_databook_consume import merge_promoted_into_historical_spec
 
-        return merge_promoted_into_historical_spec(deal, spec)
+        out = merge_promoted_into_historical_spec(deal, spec)
     except Exception:
-        return spec
+        out = spec
+    # Keep shared register / Questions aligned after any overlay.
+    facts = out.get("period_facts") if isinstance(out.get("period_facts"), list) else []
+    growth = (
+        out.get("growth_and_margins")
+        if isinstance(out.get("growth_and_margins"), list)
+        else []
+    )
+    if facts:
+        out["shared_fact_register"] = _build_shared_fact_register(
+            facts, growth_rows=growth
+        )
+    if not out.get("questions"):
+        out["questions"] = _questions_from_hp_gaps(out)
+    return out
 
 
 def _table(headers: list[str], rows: list[list[str]]) -> str:
@@ -1287,17 +1612,21 @@ def render_historical_performance_markdown(
     parts.append("---\n\n")
 
     parts.append("## 2. Growth & Margin Trends\n\n")
-    parts.append(f"{_TREND_RULE}\n\n")
+    parts.append(
+        f"{_TREND_RULE} Never mix actual, YTD and forecast in one series.\n\n"
+    )
     if growth:
         parts.append(_table(
-            ["Metric", "Period", "Value", "Prior period", "Source"],
+            ["Metric", "Period", "Type", "Value", "Prior", "Formula", "Source"],
             [
                 [
-                    _clean(r.get("metric"), 40),
-                    _clean(r.get("period"), 16),
-                    _clean(r.get("value"), 24),
-                    _clean(r.get("prior_period"), 16),
-                    _clean(r.get("source") or _NA, 40),
+                    _clean(r.get("metric"), 36),
+                    _clean(r.get("period"), 14),
+                    _clean(r.get("period_type"), 18),
+                    _clean(r.get("value"), 16),
+                    _clean(r.get("prior_period"), 14),
+                    _clean(r.get("formula"), 48),
+                    _clean(r.get("source") or _NA, 28),
                 ]
                 for r in growth if isinstance(r, dict)
             ],
@@ -1375,7 +1704,62 @@ def render_historical_performance_markdown(
         parts.append("\n")
     parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    fact_reg = (
+        spec.get("shared_fact_register")
+        if isinstance(spec.get("shared_fact_register"), list)
+        else []
+    )
+    parts.append("## 6. Shared Fact Register (for Cash Flow / Valuation)\n\n")
+    parts.append(f"{_SHARED_RULE}\n\n")
+    if fact_reg:
+        parts.append(_table(
+            ["Metric", "Value", "Unit", "Period", "Type", "Basis", "Location"],
+            [
+                [
+                    _clean(r.get("metric"), 36),
+                    _clean(r.get("value"), 16),
+                    _clean(r.get("unit"), 12),
+                    _clean(r.get("period"), 14),
+                    _clean(r.get("period_type"), 18),
+                    _clean(r.get("basis"), 20),
+                    _clean(r.get("location"), 60),
+                ]
+                for r in fact_reg if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append(f"**{_info_request('shared fact register from accounting P&L')}**\n\n")
+    parts.append("---\n\n")
+
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    if questions:
+        parts.append("## 7. Questions and Inputs Required\n\n")
+        parts.append(_table(
+            [
+                "Priority",
+                "Question",
+                "Decision Effect",
+                "Required Records",
+                "Owner",
+                "Closure Test",
+                "Interim",
+            ],
+            [
+                [
+                    _clean(r.get("priority"), 36),
+                    _clean(r.get("question"), 100),
+                    _clean(r.get("decision_effect"), 70),
+                    _clean(r.get("required_records"), 70),
+                    _clean(r.get("owner"), 36),
+                    _clean(r.get("closure_test"), 70),
+                    _clean(r.get("interim_treatment"), 70),
+                ]
+                for r in questions[:12] if isinstance(r, dict)
+            ],
+        ))
+        parts.append("---\n\n")
+
+    parts.append("## 8. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
     parts.append(f"**Quality:** {qv} — is the work accurate and honest about limits?\n\n")

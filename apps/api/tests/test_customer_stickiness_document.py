@@ -4,12 +4,18 @@ from __future__ import annotations
 
 from agetic_cdd_api.agent_document_customer_stickiness import (
     _heuristic_customer_stickiness_spec,
+    _normalise_llm_spec,
     _retention_moved,
     build_customer_stickiness_spec,
     render_customer_stickiness_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -40,15 +46,25 @@ def _stick_corpus() -> str:
     )
 
 
+def _thin_corpus() -> str:
+    return (
+        "Management asserts strong stickiness. No retention workbook opened. "
+        "No bridge, cohorts or contracts provided."
+    )
+
+
 def test_customer_stickiness_prompt_book_listed() -> None:
     system = compose_system("customer_stickiness", sector="EV", geography="India")
     assert "customer_stickiness" in listed_agents()
     assert "retention" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("customer_stickiness")
     assert "Ola" not in body and "SoftBank" not in body
     assert "gross revenue retention" in body.lower() or "grr" in body.lower()
     assert "finding" in body.lower()
     assert "contract" in body.lower()
+    assert "new" in body.lower() and "exclud" in body.lower()
 
 
 def test_customer_stickiness_not_company_hardcoded() -> None:
@@ -99,7 +115,9 @@ def test_customer_stickiness_markdown_follows_prompt_book() -> None:
     assert "## 3." in md
     assert "## 4. Contract" in md
     assert "## 5. Behaviour" in md or "## 5. Behavior" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. New-Logo Exclusion QA" in md
+    assert "## 7. Questions and Inputs Required" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     metrics = heur.get("retention_metrics") or {}
     assert metrics.get("grr_pct") == 74.0 or metrics.get("grr_pct") == 74
@@ -110,17 +128,45 @@ def test_customer_stickiness_markdown_follows_prompt_book() -> None:
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
     assert isinstance(heur.get("stickiness_notes"), list)
+    qa = heur.get("new_logo_exclusion_qa") or []
+    assert any(isinstance(r, dict) and r.get("check") == "new_logo_exclusion" for r in qa)
+    assert any(
+        isinstance(r, dict)
+        and r.get("check") == "new_logo_exclusion"
+        and r.get("status") == "PASS"
+        for r in qa
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+
+
+def test_new_logo_exclusion_qa_fails_without_confirmation() -> None:
+    heur = _heuristic_customer_stickiness_spec(
+        company="Test3",
+        corpus=_thin_corpus(),
+        sources=["mgmt.pdf"],
+    )
+    qa = heur.get("new_logo_exclusion_qa") or []
+    assert any(
+        isinstance(r, dict)
+        and r.get("check") == "new_logo_exclusion"
+        and r.get("status") == "FAIL"
+        for r in qa
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert any(
+        "new logo" in str(q.get("question") or "").lower()
+        or "exclud" in str(q.get("question") or "").lower()
+        for q in heur["questions"]
+        if isinstance(q, dict)
+    )
+    md = render_customer_stickiness_markdown("Customer Stickiness", heur)
+    assert "## 6. New-Logo Exclusion QA" in md
+    assert "FAIL" in md
 
 
 def test_normalise_strips_recommendation() -> None:
-    from agetic_cdd_api.agent_document_customer_stickiness import _normalise_llm_spec
-    import inspect
-
-    sig = inspect.signature(_normalise_llm_spec)
-    kwargs: dict = {"sources": ["a.pdf"], "legacy_spec": None}
-    if "corpus" in sig.parameters:
-        kwargs["corpus"] = "GRR fell from 82% to 74%."
-
     llm = _normalise_llm_spec(
         {
             "insight_snapshot": "Retention looks fine — invest",
@@ -142,18 +188,22 @@ def test_normalise_strips_recommendation() -> None:
             "quality_verdict": "PASS",
             "reliance_verdict": "LIMITED",
         },
-        **kwargs,
+        sources=["a.pdf"],
+        legacy_spec=None,
+        corpus="GRR fell from 82% to 74%.",
     )
     assert "recommendation" not in llm
     assert "confidence" not in llm
     assert "invest" not in str(llm.get("insight_snapshot") or "").lower()
     deltas = llm.get("retention_delta") or []
     if deltas:
-        # Downward movement forced to finding even if LLM said flat
         assert any(
             isinstance(d, dict) and (d.get("is_finding") or d.get("direction") == "down")
             for d in deltas
         )
+    assert llm.get("new_logo_exclusion_qa")
+    assert llm.get("questions")
+    assert questions_complete(llm["questions"])
 
 
 def test_render_agent_document_customer_stickiness() -> None:
@@ -165,7 +215,7 @@ def test_render_agent_document_customer_stickiness() -> None:
             "# Customer Stickiness\n\n"
             "## 1. Population & Cohorts\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 8. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -194,6 +244,13 @@ def test_build_customer_stickiness_from_corpus() -> None:
     )
     md = render_customer_stickiness_markdown("Customer Stickiness", spec)
     assert "## 2. Retention Bridge" in md
+    assert "## 6. New-Logo Exclusion QA" in md
+    assert "## 7. Questions" in md
+    assert "## 8. Quality & Reliance" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-11"
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+    assert spec.get("deal_slots")
+    assert spec.get("new_logo_exclusion_qa")

@@ -298,10 +298,248 @@ def test_ebitda_claim_gap_named_sources(deal_root: Path) -> None:
     lims = _source_gap_limitations(slug, manifest.run_id, section_id="SEC-K")
     assert any("gap:ebitda:2025" == lim.item_id for lim in lims)
     text = next(lim.text for lim in lims if lim.item_id == "gap:ebitda:2025")
-    assert "QBO ledger" in text
+    assert "monthly pack" in text
     assert "investor workbook" in text
     assert "0.007" in text
-    assert text.lower().index("workbook") < text.lower().index("ledger")
+    assert text.lower().index("workbook") < text.lower().index("monthly pack")
+
+
+def test_sec_h_leads_with_net_cash_not_freely_available(deal_root: Path) -> None:
+    """SEC-H headline must be net debt / net cash — never component cash alone."""
+    from agetic_cdd_api.services_fdd_commentary import _substantive_key_findings
+
+    slug = "nd-cash"
+    (deal_root / slug).mkdir(parents=True)
+    closed = date.today().year - 1
+    manifest, store, _ = ensure_phase0_run(
+        slug, company="NdCash", prefer_current_release=True
+    )
+    save_fact_table(
+        FactTableDoc(
+            run_id=manifest.run_id,
+            deal_slug=slug,
+            updated_at="t",
+            facts=[
+                FddFact(
+                    fact_id="cash",
+                    metric_key="cash",
+                    fiscal_year=closed,
+                    value=2.67,
+                    status=CellStatus.PROVEN,
+                    release_status=CellStatus.PROVEN,
+                    labels=EightLabels(statement="BS", line="Cash"),
+                    currency="USD",
+                    scale="M",
+                    sources=["investor workbook"],
+                ),
+                FddFact(
+                    fact_id="debt",
+                    metric_key="long_term_liabilities",
+                    fiscal_year=closed,
+                    value=2.02,
+                    status=CellStatus.PROVEN,
+                    release_status=CellStatus.PROVEN,
+                    labels=EightLabels(statement="BS", line="Long-term liabilities"),
+                    currency="USD",
+                    scale="M",
+                    sources=["investor workbook"],
+                ),
+                FddFact(
+                    fact_id="r",
+                    metric_key="revenue",
+                    fiscal_year=closed,
+                    value=13.28,
+                    status=CellStatus.PROVEN,
+                    release_status=CellStatus.PROVEN,
+                    labels=EightLabels(statement="IS", line="Revenue"),
+                    currency="USD",
+                    scale="M",
+                    sources=["investor workbook"],
+                    alternatives=[{"value": 13.41, "sources": ["monthly pack"]}],
+                ),
+                FddFact(
+                    fact_id="r_prior",
+                    metric_key="revenue",
+                    fiscal_year=closed - 1,
+                    value=11.74,
+                    status=CellStatus.PROVEN,
+                    release_status=CellStatus.PROVEN,
+                    labels=EightLabels(statement="IS", line="Revenue"),
+                    currency="USD",
+                    scale="M",
+                    sources=["investor workbook"],
+                ),
+            ],
+        )
+    )
+    store2, _ = ensure_phase5b_models(
+        slug, manifest.run_id, store=store, company="NdCash", build_qoe=True
+    )
+    draft = draft_section(
+        "SEC-H",
+        deal_slug=slug,
+        run_id=manifest.run_id,
+        store=store2,
+        company="NdCash",
+    )
+    assert draft.held_back is False, draft.held_back_reason
+    body = (draft.body or "").lower()
+    assert "freely available cash" not in body
+    assert "net cash" in body or "net debt" in body
+    # Key findings must tag workbook-backed M1 revenue as investor workbook.
+    findings = _substantive_key_findings(
+        store2, deal_slug=slug, run_id=manifest.run_id
+    )
+    assert findings
+    assert any("investor workbook" in f for f in findings)
+    assert not any("monthly pack" in f for f in findings)
+    gaps = _source_gap_limitations(slug, manifest.run_id, section_id="SEC-K")
+    assert any(g.item_id == f"gap:revenue:{closed}" for g in gaps)
+
+
+def test_nrr_relabeled_commercial_when_value_matches_peer_percent_or_ratio() -> None:
+    """Residential-stamped NRR at 106.56 must become Commercial when peer is 1.0656."""
+    from types import SimpleNamespace
+
+    from agetic_cdd_api.services_databook_models import ReleasedCell, ReleaseCellStatus
+    from agetic_cdd_api.services_databook_release import _prefer_commercial_retention_cells
+    from agetic_cdd_api.services_fdd_bridge import facts_to_exhibit_cells
+
+    cells = {
+        ("nrr", 2025): ReleasedCell(
+            metric_key="nrr",
+            fiscal_year=2025,
+            status=ReleaseCellStatus.PROVEN,
+            value=106.56,
+            captions=["Residential NRR"],
+            sources=["Residential Summary"],
+            reason="test",
+            auto=True,
+            alternatives=[
+                {
+                    "value": 1.0656,
+                    "captions": ["Commercial NRR"],
+                    "sources": ["Commercial Summary"],
+                    "note": "commercial_peer",
+                }
+            ],
+        )
+    }
+    rows = [
+        SimpleNamespace(
+            metric_key="nrr",
+            fiscal_year=2025,
+            value=1.0656,
+            caption="Commercial NRR",
+            source_name="Commercial Summary",
+            table_name="Commercial Summary",
+            row_id="c1",
+        ),
+        SimpleNamespace(
+            metric_key="nrr",
+            fiscal_year=2025,
+            value=0.8474,
+            caption="Residential NRR",
+            source_name="Residential Summary",
+            table_name="Residential Summary",
+            row_id="r1",
+        ),
+    ]
+    _prefer_commercial_retention_cells(cells, rows)
+    assert any("Commercial" in str(c) for c in (cells[("nrr", 2025)].captions or []))
+
+    exhibit = facts_to_exhibit_cells(
+        [
+            FddFact(
+                fact_id="nrr",
+                metric_key="nrr",
+                fiscal_year=2025,
+                value=1.0656,
+                status=CellStatus.PROVEN,
+                release_status=CellStatus.PROVEN,
+                labels=EightLabels(line="Residential NRR", statement="kpi"),
+                sources=["Residential Summary"],
+                alternatives=[
+                    {
+                        "value": 1.0656,
+                        "captions": ["Commercial NRR"],
+                        "sources": ["Commercial Summary"],
+                    }
+                ],
+            )
+        ]
+    )
+    assert any("Commercial NRR" in (c.label or "") for c in exhibit)
+
+
+def test_net_revenue_retention_does_not_map_as_pnl_revenue() -> None:
+    """'Net Revenue Retention' must map to nrr — never P&L revenue (FY2022 1.960 bug)."""
+    from agetic_cdd_api.services_databook_map import map_caption
+
+    hit = map_caption("Net Revenue Retention (NRR)")
+    assert hit is not None
+    assert hit.metric_key == "nrr"
+    assert map_caption("Commercial Net Revenue Retention").metric_key == "nrr"
+    # Lookahead: net revenue alone still maps to revenue.
+    assert map_caption("Net revenue").metric_key == "revenue"
+
+
+def test_commercial_nrr_grr_labels() -> None:
+    from agetic_cdd_api.services_databook_map import map_caption
+    from agetic_cdd_api.services_databook_models import DealDatabookParams
+    from agetic_cdd_api.services_fdd_bridge import facts_to_exhibit_cells
+
+    assert map_caption("Commercial GRR") is not None
+    assert map_caption("Commercial GRR").metric_key == "grr"
+    assert map_caption("Commercial Gross dollar retention").metric_key == "grr"
+    # Unlabeled Gross dollar retention is ambiguous (commercial + residential).
+    assert map_caption("Gross dollar retention") is None
+    # Residential retention must stay unmapped so it cannot overwrite commercial.
+    assert map_caption("Residential Gross revenue retention (GRR)") is None
+    assert map_caption("Residential GRR") is None
+    # Organics / generic packs must not block commercial retention KPIs.
+    cfg = DealDatabookParams(sector_pack="generic")
+    assert cfg.blocks_saas_metric("grr") is False
+    assert cfg.blocks_saas_metric("nrr") is False
+    # Stale deal meta that still lists nrr/grr under saas_only must not gate them.
+    stale = DealDatabookParams(
+        sector_pack="generic",
+        saas_only_metrics=["grr", "nrr", "arr", "logo_churn", "revenue_churn"],
+    )
+    assert stale.blocks_saas_metric("grr") is False
+    assert stale.blocks_saas_metric("nrr") is False
+    assert stale.blocks_saas_metric("arr") is True
+    cells = facts_to_exhibit_cells(
+        [
+            FddFact(
+                fact_id="nrr",
+                metric_key="nrr",
+                fiscal_year=2025,
+                value=1.0656,
+                status=CellStatus.PROVEN,
+                release_status=CellStatus.PROVEN,
+                labels=EightLabels(line="NRR", statement="kpi"),
+                sources=["Commercial Summary"],
+            ),
+            FddFact(
+                fact_id="grr",
+                metric_key="grr",
+                fiscal_year=2025,
+                value=0.8727,
+                status=CellStatus.PROVEN,
+                release_status=CellStatus.PROVEN,
+                labels=EightLabels(line="GRR", statement="kpi"),
+                sources=["Commercial Summary"],
+            ),
+        ]
+    )
+    labels = {c.label for c in cells}
+    assert "Commercial NRR" in labels
+    assert "Commercial GRR" in labels
+    grr = next(c for c in cells if "GRR" in (c.label or ""))
+    assert grr.value is not None
+    # Ratio (0.8727) or %-points (87.27) depending on bridge normalisation.
+    assert abs(float(grr.value) - 0.8727) < 1e-6 or abs(float(grr.value) - 87.27) < 0.1
 
 
 def test_open_year_request_titles_skipped_from_key_findings(deal_root: Path) -> None:

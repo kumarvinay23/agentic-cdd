@@ -1,7 +1,9 @@
 """Compose DiligenceIQ Market Pricing — realised price & pricing power (prompt book).
 
-List vs realised; named competitors; PVM bridge; observed response (not
-elasticity unless measured); escalators. Distinguish % vs percentage-point.
+List vs realised vs mix; normalise scope/discounts/taxes; named competitors;
+PVM + cost → GP/EBITDA; observed response (not invented elasticity);
+escalators; cross-check Growth / Revenue Quality / Sensitivity.
+Distinguish % vs percentage-point. No invest/pass.
 """
 
 from __future__ import annotations
@@ -35,6 +37,17 @@ _LIST_PRICE_LABEL = re.compile(
 _DISCOUNT = re.compile(
     r"(?:discount|rebate|credit|surcharge)[^\d%]{0,30}?(?:~)?"
     r"(\d{1,2}(?:[.,]\d+)?)\s*%",
+    re.IGNORECASE,
+)
+_TAX = re.compile(
+    r"(?:excl(?:uding)?\.?\s+(?:VAT|GST|sales\s+tax)|"
+    r"incl(?:uding)?\.?\s+(?:VAT|GST|sales\s+tax)|"
+    r"(?:VAT|GST|sales\s+tax)\s*(?:excl|incl|of))",
+    re.IGNORECASE,
+)
+_SCOPE = re.compile(
+    r"(?:ex-works|delivered|FOB|CIF|installation\s+included|"
+    r"software\s+attach|warranty\s+included|net\s+of\s+rebate)",
     re.IGNORECASE,
 )
 # Name + pricing cue only — numeric capture is deferred to _first_money (skips years).
@@ -326,6 +339,38 @@ def _realised_prices(corpus: str, legacy: dict[str, Any] | None) -> list[dict[st
     return rows[:6]
 
 
+def _price_normalisation(corpus: str) -> dict[str, str]:
+    """Scope / discounts / taxes normalisation for like-for-like comps."""
+    disc_m = _DISCOUNT.search(corpus)
+    tax_m = _TAX.search(corpus)
+    scope_m = _SCOPE.search(corpus)
+    return {
+        "scope": (
+            f"{_clean(scope_m.group(0), 80)} {_DOC_CITE}"
+            if scope_m
+            else _info_request("price scope (ex-works / delivered / attach / warranty)")
+        ),
+        "discounts_credits": (
+            f"{disc_m.group(1)}% of list {_DOC_CITE}"
+            if disc_m
+            else _info_request("discounts, credits and surcharges netted into realised")
+        ),
+        "taxes": (
+            f"{_clean(tax_m.group(0), 80)} {_DOC_CITE}"
+            if tax_m
+            else _info_request("tax treatment (VAT/GST incl vs excl)")
+        ),
+        "list_vs_realised_vs_mix": (
+            "List, realised net and mix effects kept as separate columns — "
+            "do not collapse into one ASP without a bridge."
+        ),
+        "notes": (
+            "Normalise scope, discounts and taxes before competitor or period comps; "
+            "mismatched tax/scope makes named comps invalid."
+        ),
+    }
+
+
 def _is_named_competitor(name: str) -> bool:
     parts = [p for p in re.split(r"\s+", (name or "").strip()) if p]
     if not parts:
@@ -433,30 +478,79 @@ def _pvm_bridge(corpus: str) -> list[dict[str, str]]:
     sents = _sentences(corpus)
     hits = _pick_sentences(
         sents,
-        keywords=("price", "volume", "mix", "gross profit", "revenue bridge", "asp"),
-        limit=4,
+        keywords=(
+            "price", "volume", "mix", "gross profit", "revenue bridge", "asp",
+            "ebitda", "cost of goods", "cogs", "gross margin",
+        ),
+        limit=5,
     )
     rows: list[dict[str, str]] = []
-    for driver in ("price", "volume", "mix"):
-        hit = next((h for h in hits if driver in h.lower()), None)
+    for driver in ("price", "volume", "mix", "cost"):
+        needles = {
+            "price": ("price", "asp"),
+            "volume": ("volume", "units"),
+            "mix": ("mix",),
+            "cost": ("cost", "cogs", "gross margin", "ebitda"),
+        }[driver]
+        hit = next((h for h in hits if any(n in h.lower() for n in needles)), None)
         rows.append({
             "leg": driver,
             "from_to": _info_request(f"{driver} contribution period-to-period"),
             "revenue_impact": (
-                _clean(hit, 160) + f" {_DOC_CITE}" if hit else _info_request(f"{driver} revenue impact")
+                _clean(hit, 160) + f" {_DOC_CITE}"
+                if hit
+                else _info_request(f"{driver} revenue impact")
             ),
             "gross_profit_impact": _info_request(f"{driver} gross-profit impact"),
-            "notes": "Reconcile legs to reported revenue and gross profit",
+            "ebitda_impact": _info_request(f"{driver} EBITDA impact"),
+            "notes": (
+                "Price–volume–cost → GP/EBITDA; reconcile legs to reported P&L"
+                if driver == "cost"
+                else "Reconcile legs to reported revenue and gross profit"
+            ),
         })
-    if not any("gross profit" in (h or "").lower() for h in hits):
+    if not any("gross profit" in (h or "").lower() or "ebitda" in (h or "").lower() for h in hits):
         rows.append({
             "leg": "reconciliation",
-            "from_to": _info_request("opening → closing gross profit"),
+            "from_to": _info_request("opening → closing GP / EBITDA"),
             "revenue_impact": _info_request("revenue bridge total"),
             "gross_profit_impact": _info_request("gross profit bridge total"),
-            "notes": "Bridge must reconcile to reported P&L",
+            "ebitda_impact": _info_request("EBITDA bridge total"),
+            "notes": "Bridge must reconcile to reported revenue, GP and EBITDA where evidenced",
         })
-    return rows[:5]
+    return rows[:6]
+
+
+def _cross_checks(corpus: str) -> list[dict[str, str]]:
+    """Flag pricing claims that need Growth / Revenue Quality / Sensitivity reconcile."""
+    sents = _sentences(corpus)
+    hits = _pick_sentences(
+        sents,
+        keywords=("pricing power", "price increase", "asp premium", "pricing-led", "raise price"),
+        limit=3,
+    )
+    rows: list[dict[str, str]] = []
+    for agent in ("growth_opportunities", "revenue_quality", "sensitivity_analysis"):
+        evidence = (
+            _clean(hits[0], 140) + f" {_DOC_CITE}"
+            if hits
+            else _info_request(f"pricing claim to cross-check with {agent}")
+        )
+        rows.append({
+            "against_agent": agent,
+            "claim": evidence,
+            "status": (
+                "pending_reconcile"
+                if hits
+                else "no_claim_yet"
+            ),
+            "note": (
+                f"Unresolved until {agent} confirms the same period, segment and net price basis"
+                if hits
+                else f"No pricing-led claim evidenced yet for {agent} cross-check"
+            ),
+        })
+    return rows
 
 
 def _observed_response(corpus: str) -> list[dict[str, str]]:
@@ -556,6 +650,156 @@ def _pct_discipline_note() -> str:
     )
 
 
+def _questions_from_mp_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    realised = spec.get("realised_prices") if isinstance(spec.get("realised_prices"), list) else []
+    realised_ok = any(
+        isinstance(r, dict)
+        and r.get("realised_net_price")
+        and not str(r["realised_net_price"]).startswith("Information")
+        and r["realised_net_price"] != _NA
+        for r in realised
+    )
+    if not realised_ok:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide realised net price by service/segment/period from invoices",
+                    "required_records": "Billing ledger / invoice extract after discounts & credits",
+                    "decision_effect": "Pricing-led growth plan cannot be evidenced",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "List and realised shown separately with period and segment",
+                    "interim_treatment": "Do not use list price as realised ASP",
+                }
+            )
+        )
+
+    norm = spec.get("price_normalisation") if isinstance(spec.get("price_normalisation"), dict) else {}
+    for key, label in (
+        ("scope", "price scope"),
+        ("taxes", "tax treatment (VAT/GST)"),
+        ("discounts_credits", "discounts/credits/surcharges"),
+    ):
+        val = str(norm.get(key) or "")
+        if val.startswith("Information") or val == _NA:
+            out.append(
+                normalize_question(
+                    {
+                        "question": f"Normalise {label} for like-for-like price comps",
+                        "required_records": f"Invoice policy note covering {label}",
+                        "decision_effect": "Competitor and period comps otherwise invalid",
+                        "priority": "signing_condition",
+                        "owner": "commercial diligence lead",
+                        "timing": "per deal timetable",
+                        "closure_test": f"{label} stated consistently across comps",
+                        "interim_treatment": "Flag comps as non-comparable",
+                    }
+                )
+            )
+
+    comps = spec.get("competitor_comparisons") if isinstance(spec.get("competitor_comparisons"), list) else []
+    named = sum(
+        1
+        for r in comps
+        if isinstance(r, dict)
+        and r.get("competitor")
+        and not str(r["competitor"]).startswith("Information")
+        and "unnamed" not in str(r.get("notes", "")).lower()
+    )
+    if named < 1:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide named competitor prices on equivalent service specs",
+                    "required_records": "Dated quotes / published price lists with named peers",
+                    "decision_effect": "Unnamed industry ASP is not an acceptable comparator",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 named competitor with equivalent service and dated price",
+                    "interim_treatment": "Reject unnamed industry ASP as competitive evidence",
+                }
+            )
+        )
+
+    response = spec.get("observed_response") if isinstance(spec.get("observed_response"), list) else []
+    has_response = any(
+        isinstance(r, dict)
+        and r.get("event")
+        and not str(r["event"]).startswith("Information")
+        for r in response
+    )
+    if not has_response:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Document observed response after past price increases",
+                    "required_records": "Churn / downgrade / volume in following periods + customers affected",
+                    "decision_effect": "Cannot invent elasticity for a pricing-led plan",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "Observed outcomes labelled; % vs pp discipline applied",
+                    "interim_treatment": "Do not call response 'elasticity' without a measured relationship",
+                }
+            )
+        )
+
+    pvm = spec.get("pvm_bridge") if isinstance(spec.get("pvm_bridge"), list) else []
+    if not pvm or all(
+        isinstance(r, dict)
+        and (
+            str(r.get("revenue_impact") or "").startswith("Information")
+            or str(r.get("gross_profit_impact") or "").startswith("Information")
+        )
+        for r in pvm
+        if isinstance(r, dict) and r.get("leg") in {"price", "volume", "mix"}
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide price–volume–mix–cost bridge reconciling to GP/EBITDA",
+                    "required_records": "P&L bridge / management accounts price-volume-cost schedule",
+                    "decision_effect": "Cannot link pricing moves to margin without reconciliation",
+                    "priority": "signing_condition",
+                    "owner": "financials lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "Legs sum to revenue and GP/EBITDA within materiality",
+                    "interim_treatment": "Treat margin impact of pricing as unknown",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": "No material market-pricing inputs are missing for the evidenced periods",
+                    "required_records": "N/A — current pack sufficient for realised price and comps",
+                    "decision_effect": "None — pricing evidence publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "commercial diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if invoice basis or competitor set changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
+
+
 def _quality_reliance(
     *,
     realised_ok: bool,
@@ -582,6 +826,11 @@ def _llm_market_pricing_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -589,12 +838,21 @@ def _llm_market_pricing_spec(
     if not gemini_configured() or not corpus.strip():
         return None
 
-    system = compose_system(
-        "market_pricing",
-        sector=sector,
-        geography=geography,
-        materiality=materiality,
-    )
+    try:
+        system = compose_system(
+            "market_pricing",
+            sector=sector,
+            geography=geography,
+            materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
+        )
+    except KeyError:
+        return None
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
         f"Target company / deal name: {company}\n\n"
@@ -603,12 +861,18 @@ def _llm_market_pricing_spec(
         "Return JSON with keys:\n"
         "insight_snapshot (string),\n"
         "realised_prices: [{service_or_segment, period, list_price, realised_net_price, notes}],\n"
+        "price_normalisation: {scope, discounts_credits, taxes, list_vs_realised_vs_mix, notes},\n"
         "competitor_comparisons: [{competitor, equivalent_service, their_price, date_or_source, notes}] "
         "— competitor must be named; reject unnamed industry/peer rows,\n"
-        "pvm_bridge: [{leg, from_to, revenue_impact, gross_profit_impact, notes}],\n"
+        "pvm_bridge: [{leg, from_to, revenue_impact, gross_profit_impact, ebitda_impact, notes}] "
+        "legs price|volume|mix|cost,\n"
         "observed_response: [{event, customers_affected, churn_or_downgrade, volume_following, label}] "
-        "— label as observed response not elasticity unless measured,\n"
+        "— label as observed response not elasticity unless measured; do not invent elasticity,\n"
         "escalators: {present, revenue_coverage, notes},\n"
+        "cross_checks: [{against_agent, claim, status, note}] "
+        "against growth_opportunities|revenue_quality|sensitivity_analysis,\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "pct_vs_pp_note (string),\n"
         "quality_verdict (PASS|REWORK),\n"
         "reliance_verdict (READY|LIMITED|BLOCKED),\n"
@@ -632,6 +896,8 @@ def _heuristic_market_pricing_spec(
     pvm = _pvm_bridge(corpus)
     response = _observed_response(corpus)
     escalators = _escalators(corpus)
+    normalisation = _price_normalisation(corpus)
+    cross = _cross_checks(corpus)
 
     realised_ok = any(
         r.get("realised_net_price")
@@ -659,17 +925,19 @@ def _heuristic_market_pricing_spec(
         f"Market Pricing for {company}: realised vs list kept separate; "
         f"{named} named competitor comparison(s); "
         f"past increases labelled as observed response (not elasticity unless measured). "
-        f"{_pct_discipline_note()}"
+        f"PVM extends to cost → GP/EBITDA. {_pct_discipline_note()}"
     )
 
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "realised_prices": realised,
+        "price_normalisation": normalisation,
         "competitor_comparisons": comps,
         "pvm_bridge": pvm,
         "observed_response": response,
         "escalators": escalators,
+        "cross_checks": cross,
         "pct_vs_pp_note": _pct_discipline_note(),
         "quality_verdict": quality,
         "reliance_verdict": reliance,
@@ -684,6 +952,8 @@ def _heuristic_market_pricing_spec(
         "consumes_ceiling": legacy.get("consumes_ceiling"),
         "ceiling_sam": legacy.get("ceiling_sam"),
     }
+    out["questions"] = _questions_from_mp_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -691,8 +961,15 @@ def _normalise_llm_spec(
     *,
     sources: list[str],
     legacy_spec: dict[str, Any] | None,
+    corpus: str = "",
 ) -> dict[str, Any]:
-    for key in ("realised_prices", "competitor_comparisons", "pvm_bridge", "observed_response"):
+    for key in (
+        "realised_prices",
+        "competitor_comparisons",
+        "pvm_bridge",
+        "observed_response",
+        "cross_checks",
+    ):
         if not isinstance(llm.get(key), list):
             llm[key] = []
     if not isinstance(llm.get("escalators"), dict):
@@ -701,6 +978,10 @@ def _normalise_llm_spec(
             "revenue_coverage": _info_request("revenue coverage"),
             "notes": _pct_discipline_note(),
         }
+    if not isinstance(llm.get("price_normalisation"), dict):
+        llm["price_normalisation"] = _price_normalisation(corpus)
+    if not llm.get("cross_checks"):
+        llm["cross_checks"] = _cross_checks(corpus)
 
     # Drop unnamed competitor rows
     cleaned: list[dict[str, Any]] = []
@@ -734,6 +1015,10 @@ def _normalise_llm_spec(
                 "(no measured price-volume relationship evidenced)"
             )
 
+    for row in llm.get("pvm_bridge") or []:
+        if isinstance(row, dict):
+            row.setdefault("ebitda_impact", _info_request("EBITDA impact"))
+
     if not llm.get("pct_vs_pp_note"):
         llm["pct_vs_pp_note"] = _pct_discipline_note()
 
@@ -741,6 +1026,18 @@ def _normalise_llm_spec(
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else "PASS"
     llm["reliance_verdict"] = rv if rv in {"READY", "LIMITED", "BLOCKED"} else "LIMITED"
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_mp_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            q = normalize_question(raw)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_mp_gaps(llm)
 
     for dead in ("recommendation", "confidence", "key_conditions"):
         llm.pop(dead, None)
@@ -789,8 +1086,8 @@ def build_market_pricing_spec(
                     sources.append(name)
         corpus = "\n".join(bits)
 
+    vars_ = prompt_vars_from_deal(deal)
     if not prefer_heuristic:
-        vars_ = prompt_vars_from_deal(deal)
         llm = _llm_market_pricing_spec(
             company=target,
             corpus=corpus,
@@ -798,16 +1095,27 @@ def build_market_pricing_spec(
             sector=vars_.get("sector"),
             geography=vars_.get("geography"),
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(llm, sources=sources, legacy_spec=legacy_spec)
+            out = _normalise_llm_spec(
+                llm, sources=sources, legacy_spec=legacy_spec, corpus=corpus
+            )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_market_pricing_spec(
+    heur = _heuristic_market_pricing_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_market_pricing_markdown(
@@ -821,6 +1129,13 @@ def render_market_pricing_markdown(
     pvm = spec.get("pvm_bridge") if isinstance(spec.get("pvm_bridge"), list) else []
     response = spec.get("observed_response") if isinstance(spec.get("observed_response"), list) else []
     escalators = spec.get("escalators") if isinstance(spec.get("escalators"), dict) else {}
+    normalisation = (
+        spec.get("price_normalisation")
+        if isinstance(spec.get("price_normalisation"), dict)
+        else {}
+    )
+    cross = spec.get("cross_checks") if isinstance(spec.get("cross_checks"), list) else []
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
@@ -828,7 +1143,8 @@ def render_market_pricing_markdown(
     parts.append("## 1. Realised Net Price\n\n")
     parts.append(
         "From invoices / billing ledger after discounts, credits and surcharges. "
-        "**List price and realised price stay separate.**\n\n"
+        "**List price, realised price and mix stay separate.** Normalise scope, "
+        "discounts and taxes for like-for-like comps.\n\n"
     )
     if realised:
         parts.append(_table(
@@ -842,6 +1158,18 @@ def render_market_pricing_markdown(
                     _clean(r.get("notes"), 160),
                 ]
                 for r in realised if isinstance(r, dict)
+            ],
+        ))
+    if normalisation:
+        parts.append("### Normalisation (scope / discounts / taxes)\n\n")
+        parts.append(_table(
+            ["Field", "Value"],
+            [
+                ["Scope", _clean(normalisation.get("scope"), 160)],
+                ["Discounts / credits", _clean(normalisation.get("discounts_credits"), 120)],
+                ["Taxes", _clean(normalisation.get("taxes"), 120)],
+                ["List vs realised vs mix", _clean(normalisation.get("list_vs_realised_vs_mix"), 200)],
+                ["Notes", _clean(normalisation.get("notes"), 200)],
             ],
         ))
     parts.append("---\n\n")
@@ -867,19 +1195,20 @@ def render_market_pricing_markdown(
         ))
     parts.append("---\n\n")
 
-    parts.append("## 3. Price–Volume–Mix Bridge\n\n")
+    parts.append("## 3. Price–Volume–Mix–Cost → GP/EBITDA\n\n")
     parts.append(
-        "Period-to-period bridge reconciling to reported revenue and gross profit.\n\n"
+        "Period-to-period bridge reconciling to reported revenue, gross profit and EBITDA.\n\n"
     )
     if pvm:
         parts.append(_table(
-            ["Leg", "From → To", "Revenue Impact", "Gross Profit Impact", "Notes"],
+            ["Leg", "From → To", "Revenue", "Gross Profit", "EBITDA", "Notes"],
             [
                 [
                     _clean(r.get("leg"), 30),
                     _clean(r.get("from_to"), 80),
-                    _clean(r.get("revenue_impact"), 120),
-                    _clean(r.get("gross_profit_impact"), 120),
+                    _clean(r.get("revenue_impact"), 100),
+                    _clean(r.get("gross_profit_impact"), 100),
+                    _clean(r.get("ebitda_impact"), 100),
                     _clean(r.get("notes"), 100),
                 ]
                 for r in pvm if isinstance(r, dict)
@@ -891,7 +1220,7 @@ def render_market_pricing_markdown(
     parts.append(
         "Churn, downgrades and volume in following periods, with customers affected. "
         "Describe as **observed response**, not elasticity, unless a measured relationship "
-        "is evidenced. Distinguish % vs percentage-point changes.\n\n"
+        "is evidenced. Do not invent elasticity. Distinguish % vs percentage-point changes.\n\n"
     )
     if response:
         parts.append(_table(
@@ -917,6 +1246,26 @@ def render_market_pricing_markdown(
     )
     if spec.get("pct_vs_pp_note"):
         parts.append(f"**% vs pp:** {_clean(spec.get('pct_vs_pp_note'), 400)}\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 6. Cross-Checks (Growth / Revenue Quality / Sensitivity)\n\n")
+    parts.append(
+        "Material pricing claims must reconcile to Growth Opportunities, Revenue Quality "
+        "and Sensitivity on the same period, segment and net-price basis.\n\n"
+    )
+    if cross:
+        parts.append(_table(
+            ["Against", "Claim", "Status", "Note"],
+            [
+                [
+                    _clean(r.get("against_agent"), 40),
+                    _clean(r.get("claim"), 140),
+                    _clean(r.get("status"), 40),
+                    _clean(r.get("note"), 160),
+                ]
+                for r in cross if isinstance(r, dict)
+            ],
+        ))
     parts.append(
         "*This section does not recommend invest or pass. "
         "A pricing-led growth plan is only credible if realised prices, named comps, "
@@ -924,7 +1273,27 @@ def render_market_pricing_markdown(
     )
     parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material pricing gaps')}\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

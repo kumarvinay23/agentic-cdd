@@ -84,37 +84,123 @@ def _sector_display(ctx: BuildContext) -> str:
     return sector_label("generic")
 
 
-def _clean(text: str, max_chars: int = 280, *, sources: list[Any] | None = None) -> str:
+def _agent_cite_sources(agent: dict[str, Any] | None, *, limit: int = 3) -> list[str]:
+    """Filenames for DOC: upgrades — prefer agent sources over opaque indexes."""
+    from pathlib import Path
+
+    if not isinstance(agent, dict):
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    spec = agent.get("spec") if isinstance(agent.get("spec"), dict) else {}
+    for s in list(agent.get("sources") or []) + list(spec.get("sources") or []):
+        raw = ""
+        if isinstance(s, str) and s.strip():
+            raw = s.strip()
+        elif isinstance(s, dict):
+            name = s.get("filename") or s.get("name") or s.get("title")
+            if isinstance(name, str) and name.strip():
+                raw = name.strip()
+        if not raw:
+            continue
+        short = Path(raw).name or raw
+        key = short.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(short)
+        if len(names) >= limit:
+            break
+    return names
+
+
+def _ctx_cite_sources(ctx: BuildContext, *agent_keys: str, limit: int = 3) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for key in agent_keys:
+        agent = _resolve(ctx, key) if key else {}
+        for n in _agent_cite_sources(agent, limit=limit):
+            if n.lower() in seen:
+                continue
+            seen.add(n.lower())
+            names.append(n)
+            if len(names) >= limit:
+                return names
+    if not names and getattr(ctx, "deal_slug", None):
+        try:
+            from agetic_cdd_api.report_builder_base import _data_room_inventory
+
+            inv = _data_room_inventory(str(ctx.deal_slug))
+            for doc in (inv.get("documents") or [])[:limit]:
+                if isinstance(doc, dict):
+                    n = str(doc.get("filename") or doc.get("name") or "").strip()
+                else:
+                    n = str(doc or "").strip()
+                if n and n.lower() not in seen:
+                    seen.add(n.lower())
+                    names.append(n)
+                if len(names) >= limit:
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+    return names
+
+
+def _clean(
+    text: str,
+    max_chars: int = 280,
+    *,
+    sources: list[Any] | None = None,
+    ctx: BuildContext | None = None,
+    agent_keys: tuple[str, ...] = (),
+) -> str:
     t = re.sub(r"\s+", " ", (text or "").strip()).replace("\x7f", " ")
-    t = sanitize_report_prose(t, sources=sources)
+    cite_sources = sources
+    if not cite_sources and ctx is not None:
+        cite_sources = _ctx_cite_sources(
+            ctx, *(agent_keys or ("market_definition", "company_background"))
+        )
+    t = sanitize_report_prose(t, sources=cite_sources)
     if len(t) > max_chars:
         t = t[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return t
 
 
-def _findings(agent: dict[str, Any], limit: int = 6) -> list[str]:
+def _findings(
+    agent: dict[str, Any],
+    limit: int = 6,
+    *,
+    ctx: BuildContext | None = None,
+) -> list[str]:
+    srcs = _agent_cite_sources(agent)
     out: list[str] = []
     for item in agent.get("findings") or []:
         if isinstance(item, str) and item.strip():
-            out.append(_clean(item, 320))
+            out.append(_clean(item, 320, sources=srcs, ctx=ctx))
         elif isinstance(item, dict):
             text = item.get("finding") or item.get("note") or item.get("name") or item.get("risk")
             if text:
-                out.append(_clean(str(text), 320))
+                out.append(_clean(str(text), 320, sources=srcs, ctx=ctx))
         if len(out) >= limit:
             break
     return out
 
 
-def _as_list(value: Any, limit: int = 8) -> list[str]:
+def _as_list(
+    value: Any,
+    limit: int = 8,
+    *,
+    sources: list[Any] | None = None,
+    ctx: BuildContext | None = None,
+) -> list[str]:
     if isinstance(value, str) and value.strip():
-        return [_clean(value, 320)]
+        return [_clean(value, 320, sources=sources, ctx=ctx)]
     if not isinstance(value, list):
         return []
     out: list[str] = []
     for item in value:
         if isinstance(item, str) and item.strip():
-            out.append(_clean(item, 320))
+            out.append(_clean(item, 320, sources=sources, ctx=ctx))
         elif isinstance(item, dict):
             text = (
                 item.get("name")
@@ -130,7 +216,7 @@ def _as_list(value: Any, limit: int = 8) -> list[str]:
                 line = str(text)
                 if extra is not None and len(line) < 100:
                     line = f"{line} ({extra})"
-                out.append(_clean(line, 320))
+                out.append(_clean(line, 320, sources=sources, ctx=ctx))
         if len(out) >= limit:
             break
     return out
@@ -459,45 +545,64 @@ def _key_finding_cards(ctx: BuildContext) -> list[tuple[str, str]]:
     diff = _resolve(ctx, "competitive_differentiation")
     comp = _resolve(ctx, "competitor_identification")
     share = _resolve(ctx, "market_share_strategy")
+    cite_srcs = _ctx_cite_sources(
+        ctx,
+        "market_definition",
+        "market_volume_and_growth",
+        "company_background",
+    )
 
     framing = _spec(mdef).get("market_framing") or _spec(mdef).get("document")
     if isinstance(framing, list):
         framing = "; ".join(str(x) for x in framing[:2] if x)
-    in_scope = _clean(str(framing or ""), 140) or (_findings(mdef, 1) or ["Primary addressable market from market_definition."])[0]
+    in_scope = _clean(str(framing or ""), 140, sources=cite_srcs, ctx=ctx) or (
+        _findings(mdef, 1, ctx=ctx) or ["Primary addressable market from market_definition."]
+    )[0]
 
-    geos = _as_list(_spec(mdef).get("geographies"), 1)
+    geos = _as_list(_spec(mdef).get("geographies"), 1, sources=cite_srcs, ctx=ctx)
     if not geos:
         perim = _spec(mdef).get("perimeter") if isinstance(_spec(mdef).get("perimeter"), dict) else {}
         geo = perim.get("geography") if isinstance(perim, dict) else None
         if isinstance(geo, str) and geo.strip() and "Information request" not in geo:
-            geos = [_clean(geo, 160)]
-    segs = _as_list(_spec(mdef).get("segments"), 1)
+            geos = [_clean(geo, 160, sources=cite_srcs, ctx=ctx)]
+    segs = _as_list(_spec(mdef).get("segments"), 1, sources=cite_srcs, ctx=ctx)
     out_scope = (
         f"Adjacent / non-core segments outside {_company(ctx)}'s primary {_sector_display(ctx)} focus are excluded."
         if not geos else
         f"Outside primary geography focus ({geos[0][:120]})."
     )
 
-    drivers = _as_list(_spec(strat).get("investment_drivers"), 1) or _findings(strat, 1)
+    drivers = _as_list(
+        _spec(strat).get("investment_drivers"), 1, sources=cite_srcs, ctx=ctx
+    ) or _findings(strat, 1, ctx=ctx)
     rationale = drivers[0] if drivers else f"Focus on high-growth {_sector_display(ctx)} with structural demand."
 
-    verdict = (_findings(vol, 1) or _as_list(_spec(vol).get("growth_notes"), 1) or
-               ["Market growth supported by volume and penetration trajectories."])[0]
+    verdict = (
+        _findings(vol, 1, ctx=ctx)
+        or _as_list(_spec(vol).get("growth_notes"), 1, sources=cite_srcs, ctx=ctx)
+        or ["Market growth supported by volume and penetration trajectories."]
+    )[0]
 
-    strength = (_as_list(_spec(diff).get("differentiators"), 1) or _findings(share, 1) or
-                _as_list(_spec(share).get("strategy_notes"), 1) or
-                ["Differentiated position from competitive / share agents."])[0]
+    strength = (
+        _as_list(_spec(diff).get("differentiators"), 1, sources=cite_srcs, ctx=ctx)
+        or _findings(share, 1, ctx=ctx)
+        or _as_list(_spec(share).get("strategy_notes"), 1, sources=cite_srcs, ctx=ctx)
+        or ["Differentiated position from competitive / share agents."]
+    )[0]
 
-    threat = (_as_list(_spec(diff).get("moat_signals"), 1) or _findings(comp, 1) or
-              ["Competition from established and emerging players."])[0]
+    threat = (
+        _as_list(_spec(diff).get("moat_signals"), 1, sources=cite_srcs, ctx=ctx)
+        or _findings(comp, 1, ctx=ctx)
+        or ["Competition from established and emerging players."]
+    )[0]
 
     return [
         ("IN-SCOPE DRIVERS", in_scope),
-        ("OUT-OF-SCOPE", _clean(out_scope, 140)),
-        ("ENGAGEMENT RATIONALE", _clean(str(rationale), 140)),
-        ("VERDICT", _clean(str(verdict), 140)),
-        ("RELATIVE STRENGTH", _clean(str(strength), 140)),
-        ("PRIMARY COMP. THREAT", _clean(str(threat), 140)),
+        ("OUT-OF-SCOPE", _clean(out_scope, 140, sources=cite_srcs, ctx=ctx)),
+        ("ENGAGEMENT RATIONALE", _clean(str(rationale), 140, sources=cite_srcs, ctx=ctx)),
+        ("VERDICT", _clean(str(verdict), 140, sources=cite_srcs, ctx=ctx)),
+        ("RELATIVE STRENGTH", _clean(str(strength), 140, sources=cite_srcs, ctx=ctx)),
+        ("PRIMARY COMP. THREAT", _clean(str(threat), 140, sources=cite_srcs, ctx=ctx)),
     ]
 
 
@@ -607,6 +712,7 @@ def _slide_perimeter(prs: Presentation, ctx: BuildContext, page: int, total: int
     if service.startswith("Information") or "Foundation ·" in service or "plan relies" in service.lower():
         service = ""
     # Prefer company-background sells when market_definition only has a generic DOC cite
+    cite_srcs = _ctx_cite_sources(ctx, "market_definition", "company_background")
     bg_offers = _spec(bg).get("offers") if isinstance(_spec(bg).get("offers"), dict) else {}
     bg_sells = str(bg_offers.get("sells") or "").strip()
     if bg_sells and (
@@ -614,34 +720,38 @@ def _slide_perimeter(prs: Presentation, ctx: BuildContext, page: int, total: int
         or re.search(r"(?i)DOC:\s*data room financials", service)
     ):
         cites = ""
-        bg_sources = bg.get("sources") if isinstance(bg.get("sources"), list) else []
-        if bg_sources:
-            n = min(3, len(bg_sources))
-            cites = " (" + ", ".join(f"DOC: [{i}]" for i in range(1, n + 1)) + ")"
+        names = _agent_cite_sources(bg) or cite_srcs
+        if names:
+            cites = " (" + ", ".join(f"DOC: {n}" for n in names[:3]) + ")"
         service = f"{bg_sells}{cites}"
     elif service:
-        service = _clean(service, 280, sources=mdef.get("sources") if isinstance(mdef.get("sources"), list) else None)
+        service = _clean(service, 280, sources=cite_srcs, ctx=ctx)
     insight = (
         service
         or framing_text.strip()
-        or (_findings(mdef, 1) or [f"Market perimeter for {company}."])[0]
+        or (_findings(mdef, 1, ctx=ctx) or [f"Market perimeter for {company}."])[0]
     )
+    insight = _clean(insight, 280, sources=cite_srcs, ctx=ctx)
     if "Foundation ·" in insight or "plan relies" in insight.lower():
         insight = f"Organics collection / composting footprint for {company}."
     _insight_banner(slide, insight, top=1.7)
 
-    segs = _as_list(spec.get("segments"), 2) or _as_list(_spec(seg).get("segments"), 2)
+    segs = _as_list(spec.get("segments"), 2, sources=cite_srcs, ctx=ctx) or _as_list(
+        _spec(seg).get("segments"), 2, sources=cite_srcs, ctx=ctx
+    )
     segs = [s for s in segs if s and "Foundation ·" not in str(s) and "plan relies" not in str(s).lower()]
-    geos = _as_list(spec.get("geographies"), 2)
+    geos = _as_list(spec.get("geographies"), 2, sources=cite_srcs, ctx=ctx)
     if not geos:
         geo = perim.get("geography")
         if isinstance(geo, str) and geo.strip() and "Information request" not in geo:
-            geos = [_clean(geo, 200)]
-    macros = _as_list(spec.get("macro_drivers"), 2) or _as_list(spec.get("policy_context"), 2)
+            geos = [_clean(geo, 200, sources=cite_srcs, ctx=ctx)]
+    macros = _as_list(spec.get("macro_drivers"), 2, sources=cite_srcs, ctx=ctx) or _as_list(
+        spec.get("policy_context"), 2, sources=cite_srcs, ctx=ctx
+    )
     primary = (
-        _clean(service, 140)
+        _clean(service, 140, sources=cite_srcs, ctx=ctx)
         if service
-        else (segs[0] if segs else _clean(insight, 120))
+        else (segs[0] if segs else _clean(insight, 120, sources=cite_srcs, ctx=ctx))
     )
     rows = [
         ["Primary Market", primary, "market_definition"],

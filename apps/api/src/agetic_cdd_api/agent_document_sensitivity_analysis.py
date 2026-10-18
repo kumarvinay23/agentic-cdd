@@ -1,9 +1,11 @@
 """Compose DiligenceIQ Sensitivity Analysis — what the valuation depends on.
 
-Ranks drivers by value movement, builds a two-driver grid with direction
-checks, defines downside/base/upside by assumptions, states operating
-break-evens, labels evidenced vs judgement, and verifies MoM / hold /
-IRR arithmetic consistency.
+Binds to reconciled valuation date/basis. Ranks drivers by computed value
+movement (no "highly sensitive" without a sized move). Builds a two-driver
+grid with direction checks, defines downside/base/upside by assumptions,
+states break-evens vs hurdles / covenants / cash, labels evidenced vs
+judgement, and verifies MoM / hold / IRR arithmetic. Code-enforced QA +
+Questions; READY→LIMITED on open QA FAILs.
 
 Stored under valuation_modeling.spec['sensitivity_analysis'] and appended
 to the Valuation Model document. No invest/pass. No company hardcoding.
@@ -59,6 +61,23 @@ _EVIDENCE_RULE = (
 _RETURN_RULE = (
     "Return metrics are mutually consistent: a multiple of money, a hold "
     "period and an IRR must agree arithmetically."
+)
+_BASIS_RULE = (
+    "Sensitivity outputs are bound to the valuation agent's as-of date, "
+    "earnings basis and WACC / terminal-growth base cell."
+)
+_SIZED_RULE = (
+    "Do not label an assumption 'highly sensitive' without a computed "
+    "absolute value movement."
+)
+_COVENANT_CASH_RULE = (
+    "Break-evens include covenant headroom and cash / liquidity runway when "
+    "Capital Structure or Cash Flow evidence is available."
+)
+_HIGHLY_SENS_RE = re.compile(
+    r"(?i)\b(?:highly|extremely|very)\s+sensitive\b|"
+    r"\bsensitivity\s+is\s+(?:high|extreme|critical)\b|"
+    r"\bmost\s+sensitive\b(?!\s+driver)"
 )
 
 _WACC_RE = re.compile(r"(?i)WACC[^\d%]{0,20}?([\d.]+)\s*%")
@@ -220,6 +239,11 @@ def _base_from_valuation(valuation: dict[str, Any] | None) -> dict[str, Any]:
     dcf = val.get("dcf") if isinstance(val.get("dcf"), dict) else {}
     dcf_view = val.get("dcf_view") if isinstance(val.get("dcf_view"), dict) else {}
     wacc = _num(dcf.get("wacc_pct")) or _num(dcf_view.get("discount_rate_pct"))
+    tg = (
+        _num(dcf.get("terminal_growth_pct"))
+        or _num(dcf_view.get("terminal_growth_pct"))
+        or _num(dcf.get("tg_pct"))
+    )
     ev = _num(dcf.get("enterprise_value_usd_b")) or _num(dcf_view.get("enterprise_value_usd_b"))
     share = _num(dcf.get("implied_share_price_inr")) or _num(dcf_view.get("implied_share_price_inr"))
     scenarios = dcf.get("scenarios") if isinstance(dcf.get("scenarios"), list) else []
@@ -230,13 +254,75 @@ def _base_from_valuation(valuation: dict[str, Any] | None) -> dict[str, Any]:
     if base_sc:
         share = share or _num(base_sc.get("equity_value_per_share_inr"))
         ev = ev or _num(base_sc.get("enterprise_value_usd_b"))
+    earnings = (
+        val.get("earnings_basis")
+        if isinstance(val.get("earnings_basis"), dict)
+        else {}
+    )
     return {
         "wacc_pct": wacc,
-        "terminal_growth_pct": None,
+        "terminal_growth_pct": tg,
         "enterprise_value_usd_b": ev,
         "share_price_inr": share,
         "scenarios": scenarios,
-        "earnings_basis": val.get("earnings_basis") if isinstance(val.get("earnings_basis"), dict) else {},
+        "earnings_basis": earnings,
+        "as_of_date": (
+            earnings.get("as_of_date")
+            or earnings.get("as_of")
+            or val.get("as_of_date")
+            or val.get("model_date")
+        ),
+        "earnings_metric": (
+            earnings.get("metric")
+            or earnings.get("earnings_metric")
+            or earnings.get("basis")
+        ),
+        "earnings_period": (
+            earnings.get("period")
+            or earnings.get("review_period")
+            or earnings.get("year")
+        ),
+    }
+
+
+def _valuation_basis_binding(
+    *,
+    valuation_base: dict[str, Any],
+    grid: dict[str, Any],
+    base_consistent: bool,
+    deal_slots: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    slots = deal_slots if isinstance(deal_slots, dict) else {}
+    as_of = (
+        valuation_base.get("as_of_date")
+        or slots.get("as_of_date")
+        or _info_request("valuation model as-of date")
+    )
+    metric = (
+        valuation_base.get("earnings_metric")
+        or _info_request("earnings basis metric (e.g. adj. EBITDA)")
+    )
+    period = (
+        valuation_base.get("earnings_period")
+        or slots.get("review_periods")
+        or _info_request("earnings / review period")
+    )
+    bound = bool(
+        _is_filled(as_of)
+        or _is_filled(metric)
+        or valuation_base.get("wacc_pct") is not None
+    )
+    return {
+        "bound": bound and base_consistent,
+        "as_of_date": as_of,
+        "earnings_metric": metric,
+        "earnings_period": period,
+        "valuation_wacc_pct": valuation_base.get("wacc_pct"),
+        "valuation_terminal_growth_pct": valuation_base.get("terminal_growth_pct"),
+        "grid_base_wacc_pct": grid.get("base_wacc_pct"),
+        "grid_base_terminal_growth_pct": grid.get("base_terminal_growth_pct"),
+        "wacc_tg_consistent_with_valuation": base_consistent,
+        "notes": _BASIS_RULE,
     }
 
 
@@ -757,6 +843,8 @@ def _build_breakevens(
     grid: dict[str, Any],
     valuation_base: dict[str, Any],
     cases: list[dict[str, Any]],
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure_spec: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     text = _prose(corpus)
     rows_out: list[dict[str, Any]] = []
@@ -872,6 +960,71 @@ def _build_breakevens(
             }
         )
 
+    # Covenant headroom from Capital Structure
+    cs = capital_structure_spec if isinstance(capital_structure_spec, dict) else {}
+    for cov in (cs.get("covenants") or cs.get("covenant_schedule") or [])[:2]:
+        if not isinstance(cov, dict):
+            continue
+        name = str(cov.get("covenant") or cov.get("name") or cov.get("metric") or "")
+        if not name or name.startswith("Information"):
+            continue
+        threshold = cov.get("threshold") or cov.get("limit") or cov.get("hurdle")
+        headroom = cov.get("headroom") or cov.get("cushion")
+        rows_out.append(
+            {
+                "metric": f"Covenant: {_clean(name, 60)}",
+                "condition": (
+                    f"Headroom exhausted"
+                    + (f" (threshold {threshold})" if threshold else "")
+                ),
+                "hurdle": str(threshold or "Covenant limit"),
+                "operating_terms": (
+                    f"Case breaks covenant '{_clean(name, 50)}'"
+                    + (f" when headroom {headroom} is consumed" if headroom else "")
+                    + " — leverage / DSCR path must stay inside facility terms"
+                ),
+                "source": _DOC_CITE,
+                "evidence_class": "evidenced",
+                "notes": _COVENANT_CASH_RULE,
+            }
+        )
+
+    # Cash / liquidity runway from Cash Flow
+    cf = cash_flow_spec if isinstance(cash_flow_spec, dict) else {}
+    liq = cf.get("liquidity") if isinstance(cf.get("liquidity"), dict) else {}
+    runway = liq.get("runway_months_computed") or liq.get("runway_months")
+    pressure = str(liq.get("pressure") or "")
+    if isinstance(runway, (int, float)):
+        rows_out.append(
+            {
+                "metric": "Cash / liquidity runway",
+                "condition": f"Runway falls below {runway:g} months under downside FCF",
+                "hurdle": f"{runway:g} months runway",
+                "operating_terms": (
+                    f"Liquidity case breaks if cash runway compresses below "
+                    f"{runway:g} months (pressure={pressure or 'stated'})"
+                ),
+                "source": _COMPUTED,
+                "evidence_class": "evidenced",
+                "notes": _COVENANT_CASH_RULE,
+            }
+        )
+    elif pressure == "verified_tight":
+        rows_out.append(
+            {
+                "metric": "Cash / liquidity runway",
+                "condition": "Verified tight liquidity under stress path",
+                "hurdle": "Minimum cash / runway covenant or operating floor",
+                "operating_terms": (
+                    "Cash Flow marks verified tight liquidity — downside "
+                    "sensitivity must not assume unconstrained cash"
+                ),
+                "source": _DOC_CITE,
+                "evidence_class": "evidenced",
+                "notes": _COVENANT_CASH_RULE,
+            }
+        )
+
     if not rows_out:
         rows_out.append(
             {
@@ -953,6 +1106,303 @@ def _evidence_register(
     return out[:16]
 
 
+def _sensitivity_evidence_qa(
+    *,
+    basis: dict[str, Any],
+    ranked: list[dict[str, Any]],
+    grid: dict[str, Any],
+    direction: dict[str, Any],
+    cases: list[dict[str, Any]],
+    breakevens: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+    returns_checks: list[dict[str, Any]],
+    corpus: str,
+    insight_snapshot: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    # 1 Basis binding
+    basis_ok = bool(basis.get("bound")) or (
+        basis.get("valuation_wacc_pct") is not None
+        and basis.get("wacc_tg_consistent_with_valuation") is not False
+    )
+    rows.append({
+        "check": "valuation_basis_binding",
+        "status": "PASS" if basis_ok else "FAIL",
+        "finding": (
+            f"Bound to as-of={_clean(basis.get('as_of_date'), 40)}; "
+            f"metric={_clean(basis.get('earnings_metric'), 40)}; "
+            f"WACC consistent={basis.get('wacc_tg_consistent_with_valuation')}"
+            if basis_ok
+            else "Sensitivity not bound to reconciled valuation date/basis / WACC cell"
+        ),
+        "action": _BASIS_RULE,
+    })
+
+    # 2 Ranked compute present
+    sized = [
+        r for r in ranked
+        if isinstance(r, dict) and isinstance(r.get("absolute_move"), (int, float))
+    ]
+    rank_ok = bool(sized)
+    rows.append({
+        "check": "one_at_a_time_ranks_computed",
+        "status": "PASS" if rank_ok else "FAIL",
+        "finding": (
+            f"{len(sized)} driver(s) with absolute value movement"
+            if rank_ok
+            else "No one-at-a-time ranks with computed absolute moves"
+        ),
+        "action": _RANK_RULE,
+    })
+
+    # 3 Grid direction
+    has_grid = bool(grid.get("rows"))
+    dir_ok = direction.get("status") == "pass" if has_grid else False
+    if not has_grid:
+        grid_status = "FAIL"
+        grid_finding = "Two-driver grid missing"
+    elif dir_ok:
+        grid_status = "PASS"
+        grid_finding = str(direction.get("detail") or "Grid direction OK")
+    else:
+        grid_status = "FAIL"
+        grid_finding = str(direction.get("detail") or "Grid direction failed")
+    rows.append({
+        "check": "two_driver_grid_direction",
+        "status": grid_status,
+        "finding": _clean(grid_finding, 220),
+        "action": _GRID_RULE,
+    })
+
+    # 4 Cases by assumptions
+    cases_ok = sum(
+        1 for c in cases
+        if isinstance(c, dict)
+        and _is_filled(c.get("growth_assumption"))
+        and _is_filled(c.get("capital_assumption"))
+    ) >= 2
+    rows.append({
+        "check": "scenario_cases_by_assumptions",
+        "status": "PASS" if cases_ok else "FAIL",
+        "finding": (
+            f"{len(cases)} case(s) defined by growth/margin/capital assumptions"
+            if cases_ok
+            else "Downside/base/upside lack assumption-defined stacks"
+        ),
+        "action": _CASE_RULE,
+    })
+
+    # 5 Break-evens
+    real_be = [
+        b for b in breakevens
+        if isinstance(b, dict)
+        and _is_filled(b.get("metric"))
+        and _is_filled(b.get("condition"))
+    ]
+    be_ok = bool(real_be)
+    rows.append({
+        "check": "breakevens_vs_hurdles",
+        "status": "PASS" if be_ok else "FAIL",
+        "finding": (
+            f"{len(real_be)} break-even(s) in operating / covenant / cash terms"
+            if be_ok
+            else "No operating break-evens vs hurdles / covenants / cash"
+        ),
+        "action": _BREAK_RULE,
+    })
+
+    # 6 Evidenced vs judgement
+    labelled = [
+        e for e in evidence
+        if isinstance(e, dict)
+        and str(e.get("classification") or "").lower()
+        in {"evidenced", "judgement", "mixed"}
+    ]
+    ev_ok = bool(labelled)
+    rows.append({
+        "check": "evidenced_vs_judgement_labels",
+        "status": "PASS" if ev_ok else "FAIL",
+        "finding": (
+            f"{len(labelled)} assumption(s) labelled evidenced/judgement"
+            if ev_ok
+            else "Evidence register missing evidenced vs judgement labels"
+        ),
+        "action": _EVIDENCE_RULE,
+    })
+
+    # 7 Returns arithmetic
+    ret_fail = [c for c in returns_checks if isinstance(c, dict) and c.get("status") == "fail"]
+    ret_pass = [c for c in returns_checks if isinstance(c, dict) and c.get("status") == "pass"]
+    ret_unchecked = [
+        c for c in returns_checks if isinstance(c, dict) and c.get("status") == "unchecked"
+    ]
+    if ret_fail:
+        ret_ok = False
+        ret_finding = f"{len(ret_fail)} MoM/hold/IRR mismatch(es)"
+    elif ret_pass:
+        ret_ok = True
+        ret_finding = f"{len(ret_pass)} return triple(s) arithmetically consistent"
+    elif not returns_checks or ret_unchecked:
+        # Soft: no triples to check is PASS only when cases lack IRR/MoIC
+        ret_ok = True
+        ret_finding = "No complete MoM/hold/IRR triples to check"
+    else:
+        ret_ok = True
+        ret_finding = "Returns arithmetic not required"
+    rows.append({
+        "check": "mom_hold_irr_arithmetic",
+        "status": "PASS" if ret_ok else "FAIL",
+        "finding": ret_finding,
+        "action": _RETURN_RULE,
+    })
+
+    # 8 No "highly sensitive" without compute
+    scrubbed = re.sub(
+        r"(?i)[^.!?\n]*(?:"
+        r"do\s+not\s+label|"
+        r"without\s+a\s+computed|"
+        r"no\s+[\"']?highly\s+sensitive"
+        r")[^.!?\n]*[.!?]?",
+        " ",
+        f"{corpus or ''} {insight_snapshot or ''}",
+    )
+    unsized_claim = bool(_HIGHLY_SENS_RE.search(scrubbed))
+    # Also FAIL if ranked rows claim high sensitivity without absolute_move
+    for r in ranked:
+        if not isinstance(r, dict):
+            continue
+        blob = f"{r.get('assumption')} {r.get('notes')} {r.get('range_basis')}"
+        if _HIGHLY_SENS_RE.search(blob) and not isinstance(r.get("absolute_move"), (int, float)):
+            unsized_claim = True
+            break
+    rows.append({
+        "check": "no_highly_sensitive_without_compute",
+        "status": "PASS" if not unsized_claim else "FAIL",
+        "finding": (
+            "No unsized 'highly sensitive' claims"
+            if not unsized_claim
+            else "Unsized 'highly sensitive' language without computed absolute move"
+        ),
+        "action": _SIZED_RULE,
+    })
+
+    return rows
+
+
+def _questions_from_sensitivity_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    qa = (
+        spec.get("sensitivity_evidence_qa")
+        if isinstance(spec.get("sensitivity_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    out: list[dict[str, str]] = []
+    if _qa_fail("valuation_basis_binding"):
+        out.append(normalize_question({
+            "question": (
+                "Bind Sensitivity to the valuation model as-of date, earnings "
+                "basis and WACC / terminal-growth base cell"
+            ),
+            "required_records": "Valuation earnings_basis + DCF base cell",
+            "decision_effect": "Unbound sensitivity cannot be reconciled to the valuation",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "valuation_basis_binding QA PASS",
+            "interim_treatment": "LIMITED until basis bound",
+        }))
+    if _qa_fail("one_at_a_time_ranks_computed"):
+        out.append(normalize_question({
+            "question": "Compute one-at-a-time driver ranks with absolute value movements",
+            "required_records": "Sensitivity matrix / driver shock table",
+            "decision_effect": "Unranked drivers cannot prioritise diligence",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "one_at_a_time_ranks_computed QA PASS",
+            "interim_treatment": "LIMITED until ranks computed",
+        }))
+    if _qa_fail("two_driver_grid_direction"):
+        out.append(normalize_question({
+            "question": "Publish a two-driver grid that passes direction checks",
+            "required_records": "WACC × growth (or top-two) sensitivity grid",
+            "decision_effect": "Wrong-direction grids misstate value risk",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "two_driver_grid_direction QA PASS",
+            "interim_treatment": "BLOCKED until direction fixed",
+        }))
+    if _qa_fail("scenario_cases_by_assumptions"):
+        out.append(normalize_question({
+            "question": "Define downside/base/upside by growth, margin and capital assumptions",
+            "required_records": "Assumption stacks per case (not adjectives)",
+            "decision_effect": "Adjective-only cases cannot be diligence-tested",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "scenario_cases_by_assumptions QA PASS",
+            "interim_treatment": "LIMITED until cases assumption-defined",
+        }))
+    if _qa_fail("breakevens_vs_hurdles"):
+        out.append(normalize_question({
+            "question": (
+                "State break-evens vs return hurdles, covenants and cash runway "
+                "in operating terms"
+            ),
+            "required_records": "Break-even register + covenant/cash priors",
+            "decision_effect": "Missing break-evens hide where the case fails",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation + financing leads",
+            "timing": "before IC",
+            "closure_test": "breakevens_vs_hurdles QA PASS",
+            "interim_treatment": "LIMITED until break-evens stated",
+        }))
+    if _qa_fail("evidenced_vs_judgement_labels"):
+        out.append(normalize_question({
+            "question": "Label each material assumption evidenced or judgement",
+            "required_records": "Evidence register",
+            "decision_effect": "Unlabelled ranges overstate support",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "evidenced_vs_judgement_labels QA PASS",
+            "interim_treatment": "LIMITED until labels complete",
+        }))
+    if _qa_fail("mom_hold_irr_arithmetic"):
+        out.append(normalize_question({
+            "question": "Reconcile MoM, hold period and IRR so they agree arithmetically",
+            "required_records": "Returns triples per case",
+            "decision_effect": "Inconsistent returns misstate downside/base/upside",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "mom_hold_irr_arithmetic QA PASS",
+            "interim_treatment": "REWORK until arithmetic consistent",
+        }))
+    if _qa_fail("no_highly_sensitive_without_compute"):
+        out.append(normalize_question({
+            "question": "Remove unsized 'highly sensitive' claims or attach absolute moves",
+            "required_records": "Computed absolute value movement per driver",
+            "decision_effect": "Unsized sensitivity language is not diligence-grade",
+            "priority": "mandatory_pre_decision",
+            "owner": "Valuation lead",
+            "timing": "before IC",
+            "closure_test": "no_highly_sensitive_without_compute QA PASS",
+            "interim_treatment": "LIMITED until claims sized or removed",
+        }))
+    return [q for q in out if q]
+
+
 def _quality_reliance(
     *,
     ranked: list[dict[str, Any]],
@@ -960,6 +1410,7 @@ def _quality_reliance(
     direction: dict[str, Any],
     cases: list[dict[str, Any]],
     returns_checks: list[dict[str, Any]],
+    qa_fail: bool = False,
 ) -> tuple[str, str, str]:
     has_rank = any(isinstance(r.get("absolute_move"), (int, float)) for r in ranked)
     has_grid = bool(grid.get("rows"))
@@ -978,12 +1429,17 @@ def _quality_reliance(
     else:
         quality = "REWORK"
 
-    if has_grid and dir_ok and (ret_pass >= 1 or cases_ok):
+    if has_grid and not dir_ok:
+        reliance = "BLOCKED"
+    elif has_grid and dir_ok and (ret_pass >= 1 or cases_ok):
         reliance = "READY"
     elif has_rank or has_grid:
         reliance = "LIMITED"
     else:
         reliance = "BLOCKED"
+
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
 
     bits = [
         f"Quality {quality}: drivers ranked={has_rank}, grid={has_grid}, "
@@ -994,7 +1450,10 @@ def _quality_reliance(
         bits.append("Fix grid direction before publishing.")
     if ret_fail:
         bits.append("MoM / hold / IRR arithmetic failed on at least one case.")
+    if qa_fail:
+        bits.append("Open Sensitivity QA FAILs cap READY → LIMITED.")
     bits.append(_RETURN_RULE)
+    bits.append(_SIZED_RULE)
     return quality, reliance, " ".join(bits)
 
 
@@ -1011,16 +1470,21 @@ def _heuristic_sensitivity_spec(
     valuation_spec: dict[str, Any] | None = None,
     recommendation_spec: dict[str, Any] | None = None,
     historical_performance: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure_spec: dict[str, Any] | None = None,
+    deal_slots: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     valuation_base = _base_from_valuation(valuation_spec)
     grid = _parse_grid(corpus)
     # Align base cell with valuation agent
     if valuation_base.get("wacc_pct") is not None:
         grid["base_wacc_pct"] = grid.get("base_wacc_pct") or valuation_base["wacc_pct"]
+    if valuation_base.get("terminal_growth_pct") is not None and grid.get("base_terminal_growth_pct") is None:
+        grid["base_terminal_growth_pct"] = valuation_base["terminal_growth_pct"]
     if grid.get("base_terminal_growth_pct") is None:
         tm = _TG_RE.search(_prose(corpus))
         grid["base_terminal_growth_pct"] = float(tm.group(1)) if tm else 3.0
-    # If valuation share differs, note consistency
+    # If valuation WACC differs, note consistency
     base_consistent = True
     if (
         valuation_base.get("wacc_pct") is not None
@@ -1047,6 +1511,8 @@ def _heuristic_sensitivity_spec(
         grid=grid,
         valuation_base=valuation_base,
         cases=cases,
+        cash_flow_spec=cash_flow_spec,
+        capital_structure_spec=capital_structure_spec,
     )
     evidence = _evidence_register(
         ranked=ranked, grid=grid, cases=cases, breakevens=breakevens
@@ -1056,12 +1522,11 @@ def _heuristic_sensitivity_spec(
         for c in cases
         if isinstance(c, dict) and isinstance(c.get("returns_arithmetic"), dict)
     ]
-    quality, reliance, rationale = _quality_reliance(
-        ranked=ranked,
+    basis = _valuation_basis_binding(
+        valuation_base=valuation_base,
         grid=grid,
-        direction=direction,
-        cases=cases,
-        returns_checks=returns_checks,
+        base_consistent=base_consistent,
+        deal_slots=deal_slots,
     )
 
     top = ranked[0]["assumption"] if ranked else "—"
@@ -1072,9 +1537,33 @@ def _heuristic_sensitivity_spec(
             f"TG {grid.get('base_terminal_growth_pct'):g}%"
         )
     bits.append(f"direction {direction.get('status')}")
+    snapshot = _soften_invest(". ".join(bits))
 
-    return {
-        "insight_snapshot": _soften_invest(". ".join(bits)),
+    sens_qa = _sensitivity_evidence_qa(
+        basis=basis,
+        ranked=ranked,
+        grid=grid,
+        direction=direction,
+        cases=cases,
+        breakevens=breakevens,
+        evidence=evidence,
+        returns_checks=returns_checks,
+        corpus=corpus,
+        insight_snapshot=snapshot,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in sens_qa)
+    quality, reliance, rationale = _quality_reliance(
+        ranked=ranked,
+        grid=grid,
+        direction=direction,
+        cases=cases,
+        returns_checks=returns_checks,
+        qa_fail=qa_fail,
+    )
+
+    out = {
+        "insight_snapshot": snapshot,
+        "valuation_basis_binding": basis,
         "ranked_drivers": ranked,
         "two_driver_grid": {
             **grid,
@@ -1094,6 +1583,7 @@ def _heuristic_sensitivity_spec(
         "breakevens": breakevens,
         "evidence_register": evidence,
         "returns_consistency": returns_checks,
+        "sensitivity_evidence_qa": sens_qa,
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": rationale,
@@ -1105,6 +1595,8 @@ def _heuristic_sensitivity_spec(
         "parent_agent": _PARENT_KEY,
         "empty": not grid.get("rows") and not ranked,
     }
+    out["questions"] = _questions_from_sensitivity_gaps(out)
+    return out
 
 
 def _llm_sensitivity_spec(
@@ -1115,6 +1607,11 @@ def _llm_sensitivity_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -1127,6 +1624,11 @@ def _llm_sensitivity_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
         src_lines = "\n".join(f"[{i}] {s}" for i, s in enumerate(sources[:16], start=1)) or "[1] VDR"
         user = (
@@ -1134,6 +1636,8 @@ def _llm_sensitivity_spec(
             f"Corpus:\n{corpus[:28000]}\n\n"
             "Return JSON with keys:\n"
             "insight_snapshot,\n"
+            "valuation_basis_binding: {bound, as_of_date, earnings_metric, "
+            "earnings_period, valuation_wacc_pct, grid_base_wacc_pct},\n"
             "ranked_drivers: [{assumption, range_low, range_high, range_basis, "
             "absolute_move, value_unit, evidence_class, source}],\n"
             "two_driver_grid: {driver_x, driver_y, growth_axis_pct, rows, "
@@ -1143,6 +1647,9 @@ def _llm_sensitivity_spec(
             "breakevens: [{metric, condition, hurdle, operating_terms, evidence_class}],\n"
             "evidence_register: [{assumption, classification, why, source}],\n"
             "quality_verdict, reliance_verdict, quality_reliance_rationale.\n"
+            "Bind to valuation as-of / earnings basis. "
+            "Do not say highly sensitive without a computed absolute move. "
+            "Include covenant/cash break-evens when evidenced. "
             "No invest or pass."
         )
         return generate_json(system=system, user=user)
@@ -1154,10 +1661,12 @@ def _normalise_llm_spec(
     llm: dict[str, Any],
     *,
     heur: dict[str, Any],
+    corpus: str = "",
 ) -> dict[str, Any]:
     out = dict(heur)
     for key in (
         "insight_snapshot",
+        "valuation_basis_binding",
         "ranked_drivers",
         "two_driver_grid",
         "scenario_cases",
@@ -1171,9 +1680,76 @@ def _normalise_llm_spec(
             out[key] = llm[key]
     # Re-check direction on whatever grid we keep
     grid = out.get("two_driver_grid") if isinstance(out.get("two_driver_grid"), dict) else {}
-    if grid.get("rows") and not isinstance(grid.get("direction_check"), dict):
-        grid["direction_check"] = _direction_check(grid)
+    if grid.get("rows"):
+        if not isinstance(grid.get("direction_check"), dict):
+            grid["direction_check"] = _direction_check(grid)
         out["two_driver_grid"] = grid
+    direction = (
+        grid.get("direction_check") if isinstance(grid.get("direction_check"), dict) else {}
+    )
+    ranked = list(out.get("ranked_drivers") or [])
+    cases = list(out.get("scenario_cases") or [])
+    breakevens = list(out.get("breakevens") or [])
+    evidence = list(out.get("evidence_register") or [])
+    returns_checks = [
+        c.get("returns_arithmetic")
+        for c in cases
+        if isinstance(c, dict) and isinstance(c.get("returns_arithmetic"), dict)
+    ]
+    if not returns_checks:
+        returns_checks = list(out.get("returns_consistency") or [])
+    basis = (
+        out.get("valuation_basis_binding")
+        if isinstance(out.get("valuation_basis_binding"), dict)
+        else heur.get("valuation_basis_binding") or {}
+    )
+    sens_qa = _sensitivity_evidence_qa(
+        basis=basis if isinstance(basis, dict) else {},
+        ranked=ranked,
+        grid=grid,
+        direction=direction,
+        cases=cases,
+        breakevens=breakevens,
+        evidence=evidence,
+        returns_checks=returns_checks,
+        corpus=corpus,
+        insight_snapshot=str(out.get("insight_snapshot") or ""),
+    )
+    out["sensitivity_evidence_qa"] = sens_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in sens_qa)
+    qv = out.get("quality_verdict")
+    rv = out.get("reliance_verdict")
+    if qv not in {"PASS", "REWORK"} or rv not in {"READY", "LIMITED", "BLOCKED"}:
+        qv, rv, rationale = _quality_reliance(
+            ranked=ranked,
+            grid=grid,
+            direction=direction,
+            cases=cases,
+            returns_checks=returns_checks,
+            qa_fail=qa_fail,
+        )
+        out["quality_verdict"] = qv
+        out["reliance_verdict"] = rv
+        out["quality_reliance_rationale"] = rationale
+    elif qa_fail and rv == "READY":
+        out["reliance_verdict"] = "LIMITED"
+        out["quality_reliance_rationale"] = (
+            str(out.get("quality_reliance_rationale") or "")
+            + " Open Sensitivity QA FAILs cap READY → LIMITED."
+        ).strip()
+
+    llm_questions = llm.get("questions") if isinstance(llm.get("questions"), list) else None
+    if llm_questions:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q = []
+        for raw_q in llm_questions:
+            q = normalize_question(raw_q)
+            if q:
+                filled_q.append(q)
+        out["questions"] = filled_q or _questions_from_sensitivity_gaps(out)
+    else:
+        out["questions"] = _questions_from_sensitivity_gaps(out)
     out["composer"] = "llm_v1"
     return out
 
@@ -1188,6 +1764,8 @@ def build_sensitivity_analysis_spec(
     valuation_spec: dict[str, Any] | None = None,
     recommendation_spec: dict[str, Any] | None = None,
     historical_performance: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure_spec: dict[str, Any] | None = None,
     prefer_heuristic: bool = False,
 ) -> dict[str, Any]:
     from agetic_cdd_api.agent_document_valuation_modeling import (
@@ -1220,11 +1798,18 @@ def build_sensitivity_analysis_spec(
         if isinstance(historical_performance, dict)
         else _load("historical_performance")
     )
+    cf = cash_flow_spec if isinstance(cash_flow_spec, dict) else _load("cash_flow")
+    cs = (
+        capital_structure_spec
+        if isinstance(capital_structure_spec, dict)
+        else _load("capital_structure")
+    )
 
     gathered_sources: list[str] = []
     if corpus is None:
         corpus, gathered_sources = gather_valuation_modeling_corpus(deal, idx or {})
     srcs = list(sources or []) or gathered_sources
+    slots = {k: v for k, v in vars_.items() if v}
 
     heur = _heuristic_sensitivity_spec(
         company=target,
@@ -1233,7 +1818,11 @@ def build_sensitivity_analysis_spec(
         valuation_spec=val,
         recommendation_spec=rec,
         historical_performance=hist,
+        cash_flow_spec=cf,
+        capital_structure_spec=cs,
+        deal_slots=slots,
     )
+    heur["deal_slots"] = slots
     if prefer_heuristic:
         return heur
 
@@ -1244,10 +1833,17 @@ def build_sensitivity_analysis_spec(
         sector=vars_.get("sector"),
         geography=vars_.get("geography"),
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if not llm_raw:
         return heur
-    return _normalise_llm_spec(llm_raw, heur=heur)
+    out = _normalise_llm_spec(llm_raw, heur=heur, corpus=corpus or "")
+    out["deal_slots"] = slots
+    return out
 
 
 def _cell(v: Any, n: int = 220) -> str:
@@ -1273,9 +1869,38 @@ def render_sensitivity_analysis_markdown(
         grid.get("direction_check") if isinstance(grid.get("direction_check"), dict) else {}
     )
     base_cell = grid.get("base_cell") if isinstance(grid.get("base_cell"), dict) else {}
+    basis = (
+        spec.get("valuation_basis_binding")
+        if isinstance(spec.get("valuation_basis_binding"), dict)
+        else {}
+    )
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
     parts.append(f"{_RETURN_RULE}\n\n")
+    parts.append(f"{_BASIS_RULE}\n\n")
+    parts.append(f"{_SIZED_RULE}\n\n")
+
+    # 0 / binding banner
+    if basis:
+        parts.append("## Valuation Basis Binding\n\n")
+        parts.append(_table(
+            ["Field", "Value"],
+            [
+                ["Bound", "Yes" if basis.get("bound") else "No / incomplete"],
+                ["As-of date", _cell(basis.get("as_of_date"), 60)],
+                ["Earnings metric", _cell(basis.get("earnings_metric"), 60)],
+                ["Earnings period", _cell(basis.get("earnings_period"), 60)],
+                [
+                    "WACC / TG consistent with valuation",
+                    (
+                        "Yes"
+                        if basis.get("wacc_tg_consistent_with_valuation")
+                        else "No — reconcile"
+                    ),
+                ],
+            ],
+        ))
+        parts.append("---\n\n")
 
     # 1
     parts.append("## 1. Ranked Drivers\n\n")
@@ -1442,16 +2067,82 @@ def render_sensitivity_analysis_markdown(
         ))
     parts.append("---\n\n")
 
-    # 6 Quality
-    parts.append("## 6. Quality & Reliance\n\n")
+    # 6 QA
+    sens_qa = (
+        spec.get("sensitivity_evidence_qa")
+        if isinstance(spec.get("sensitivity_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. Sensitivity Evidence QA\n\n")
+    parts.append(
+        "QA enforces valuation basis binding, one-at-a-time ranks with computed "
+        "moves, two-driver grid direction, assumption-defined cases, break-evens "
+        "vs hurdles/covenants/cash, evidenced vs judgement labels, MoM/hold/IRR "
+        "arithmetic, and no unsized 'highly sensitive' claims.\n\n"
+    )
+    if sens_qa:
+        parts.append(_table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _cell(r.get("check"), 48),
+                    _cell(r.get("status"), 12),
+                    _cell(r.get("finding"), 160),
+                    _cell(r.get("action"), 120),
+                ]
+                for r in sens_qa if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append(f"**{_info_request('Sensitivity evidence QA rows')}**\n\n")
+    parts.append("---\n\n")
+
+    # 7 Questions
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_cell(row.get('question'), 200)}** — "
+                f"records: {_cell(row.get('required_records'), 120)}; "
+                f"effect: {_cell(row.get('decision_effect'), 120)}; "
+                f"priority: {_cell(row.get('priority'), 40)}; "
+                f"owner: {_cell(row.get('owner'), 40)}; "
+                f"timing: {_cell(row.get('timing'), 40)}; "
+                f"closure: {_cell(row.get('closure_test'), 120)}; "
+                f"interim: {_cell(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material Sensitivity gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    # 8 Quality
+    parts.append("## 8. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
     rationale = spec.get("quality_reliance_rationale") or _NA
-    parts.append(f"**Quality:** {qv}  \n")
-    parts.append(f"**Reliance:** {rv}  \n\n")
-    parts.append(f"{_soften_invest(_clean(rationale, 600))}\n\n")
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _cell(qv, 30)],
+            ["Reliance Verdict", _cell(rv, 30)],
+            ["Rationale", _cell(rationale, 460)],
+        ],
+    ))
+    parts.append(f"**Quality:** {_cell(qv, 20)} — is the work accurate and honest about limits?\n\n")
+    parts.append(
+        f"**Reliance:** {_cell(rv, 20)} — can a decision rest on this Sensitivity assessment?\n\n"
+    )
     parts.append(
         "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open Sensitivity QA FAILs cap READY → LIMITED. Failed grid direction "
+        f"keeps reliance BLOCKED. {_SIZED_RULE} "
         "This agent does not issue an invest or pass recommendation.*\n\n"
     )
     if not include_sources:

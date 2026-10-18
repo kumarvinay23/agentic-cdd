@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from agetic_cdd_api.agent_document_historical_performance import (
     _heuristic_historical_performance_spec,
+    _period_label,
+    _questions_from_hp_gaps,
     build_historical_performance_spec,
     render_historical_performance_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -131,13 +138,62 @@ def test_markdown_follows_prompt_book() -> None:
     assert "## 3. Accounts vs CIM" in md
     assert "## 4. Seasonal" in md
     assert "## 5. Comparability Distortions" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Shared Fact Register" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert heur.get("pl_lines")
     assert heur.get("performance_metrics")
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
     assert "shared basis" in md.lower() or "accounting" in md.lower()
+    assert heur.get("shared_fact_register")
+    assert any(
+        r.get("metric") == "Revenue" for r in heur["shared_fact_register"]
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert "Questions and Inputs Required" in md or "## 7." in md
+    # Growth rows carry formulas and same-basis period_type
+    yoy = [
+        g for g in (heur.get("growth_and_margins") or [])
+        if isinstance(g, dict) and g.get("metric") == "Revenue YoY growth"
+    ]
+    assert yoy
+    assert all(g.get("formula") for g in yoy)
+    assert all(g.get("period_type") for g in yoy)
+
+
+def test_never_mix_actual_and_forecast_in_yoy() -> None:
+    heur = _heuristic_historical_performance_spec(
+        company="Test3",
+        corpus=_hp_corpus(),
+        sources=["05_Financial_Due_Diligence.pdf"],
+    )
+    for g in heur.get("growth_and_margins") or []:
+        if not isinstance(g, dict) or g.get("metric") != "Revenue YoY growth":
+            continue
+        # Prior and current must share period_type (encoded on the row).
+        assert g.get("period_type") in {
+            "actual", "forecast", "year to date", "last twelve months"
+        }
+        # Cur period label must match the row's period_type.
+        assert _period_label(str(g.get("period") or "")) == g.get("period_type")
+
+
+def test_period_label_ytd_vs_forecast() -> None:
+    assert _period_label("YTD2026") == "year to date"
+    assert _period_label("FY2025E") == "forecast"
+    assert _period_label("FY2023") == "actual"
+    assert _period_label("LTM") == "last twelve months"
+
+
+def test_questions_from_hp_gaps_complete_on_empty_facts() -> None:
+    """Regression: _questions_from_hp_gaps must return a full closure schema (not truncated)."""
+    qs = _questions_from_hp_gaps({"period_facts": [], "accounts_vs_cim": [], "seasonality": [], "comparability_distortions": []})
+    assert qs
+    assert questions_complete(qs)
+    assert any("P&L" in q.get("question", "") or "accounts" in q.get("question", "").lower() for q in qs)
+    assert all(q.get("closure_test") and q.get("interim_treatment") for q in qs)
 
 
 def test_normalise_strips_recommendation() -> None:

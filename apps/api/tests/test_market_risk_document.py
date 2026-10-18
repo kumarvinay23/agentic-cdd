@@ -54,6 +54,11 @@ def _legacy() -> dict:
                 "probability": "Medium",
                 "impact": "Medium",
             },
+            {
+                "risk": "Market risk",
+                "probability": "High",
+                "impact": "High",
+            },
         ],
         "regulatory_items": [
             {
@@ -84,6 +89,10 @@ def test_market_risk_prompt_book_listed() -> None:
     assert "early-warning" in body.lower() or "early warning" in body.lower()
     assert "escrow" in body.lower() or "structure" in body.lower()
     assert "numeric" in body.lower() or "probabilities" in body.lower()
+    assert "trigger" in body.lower()
+    assert "internal risk" in body.lower()
+    assert "unnamed" in body.lower() or "generic" in body.lower()
+    assert "deal perimeter" in system.lower() or "as-of" in system.lower()
 
 
 def test_market_risk_not_company_hardcoded() -> None:
@@ -96,7 +105,7 @@ def test_market_risk_not_company_hardcoded() -> None:
         assert banned not in text, f"hardcoded: {banned}"
 
 
-def test_external_risks_mechanism_exposure_time() -> None:
+def test_external_risks_row_schema() -> None:
     heur = _heuristic_market_risk_spec(
         company="Test3",
         corpus=_mr_corpus(),
@@ -108,10 +117,17 @@ def test_external_risks_mechanism_exposure_time() -> None:
     real = [r for r in risks if not str(r.get("risk") or "").startswith("Information")]
     assert real
     for r in real[:3]:
+        assert r.get("trigger")
+        assert r.get("population")
+        assert r.get("timing") or r.get("time_horizon")
         assert r.get("mechanism")
+        assert r.get("mitigation")
         assert r.get("exposure")
-        assert r.get("time_horizon")
         assert r.get("family")
+    # Unnamed "Market risk" seed must be rejected
+    names = {str(r.get("risk") or "").lower() for r in real}
+    assert "market risk" not in names
+    assert heur.get("rejected_unnamed") is not None
 
 
 def test_likelihood_from_evidence_no_invented_probability() -> None:
@@ -188,12 +204,78 @@ def test_legacy_dual_write() -> None:
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
 
 
+def test_mr_qa_internal_cross_check_and_unnamed() -> None:
+    heur = _heuristic_market_risk_spec(
+        company="Test3",
+        corpus=_mr_corpus(),
+        sources=["03_Investment_Thesis.pdf", "06_Legal_Due_Diligence.pdf"],
+        legacy_spec=_legacy(),
+        internal_risk_spec={
+            "key_person_exposure": [
+                {"person": "Founder CEO", "effect_if_left": "Succession gap"},
+            ],
+            "financial_strain": [
+                {"issue": "Covenant headroom thin", "detail": "Net debt / EBITDA"},
+            ],
+            "control_governance": [],
+        },
+    )
+    assert (heur.get("internal_risk_cross_check") or {}).get("internal_prior_present") is True
+    qa = heur.get("mr_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "risk_row_schema",
+        "dollar_exposure",
+        "evidence_based_likelihood",
+        "early_warning_indicators",
+        "price_vs_structure",
+        "non_overlap_internal_risk",
+        "reject_unnamed_threats",
+    ):
+        assert need in checks
+    unnamed_qa = next(r for r in qa if r.get("check") == "reject_unnamed_threats")
+    assert unnamed_qa.get("status") == "PASS"
+    schema_qa = next(r for r in qa if r.get("check") == "risk_row_schema")
+    assert schema_qa.get("status") == "PASS"
+    questions = heur.get("questions") or []
+    assert isinstance(questions, list)
+    if any(isinstance(r, dict) and r.get("status") == "FAIL" for r in qa):
+        assert heur.get("reliance_verdict") != "READY" or questions
+
+
+def test_handoff_internal_looking_risks() -> None:
+    legacy = _legacy()
+    legacy["market_risk_items"] = list(legacy["market_risk_items"]) + [
+        {
+            "risk": "Key-person succession gap on founder CEO",
+            "probability": "High",
+            "impact": "High",
+        },
+    ]
+    heur = _heuristic_market_risk_spec(
+        company="Test3",
+        corpus=_mr_corpus() + " Key-person succession gap on founder CEO.",
+        sources=["10_HR_Organizational_Due_Diligence.pdf"],
+        legacy_spec=legacy,
+        internal_risk_spec={"key_person_exposure": [{"person": "Founder CEO"}]},
+    )
+    names = {
+        str(r.get("risk") or "").lower()
+        for r in (heur.get("external_risks") or [])
+        if isinstance(r, dict)
+    }
+    assert not any("key-person" in n or "key person" in n for n in names)
+    handed = (heur.get("internal_risk_cross_check") or {}).get("handed_to_internal") or []
+    assert handed
+
+
 def test_render_no_invest() -> None:
     heur = _heuristic_market_risk_spec(
         company="Test3",
         corpus=_mr_corpus() + " We recommend invest.",
         sources=["03_Investment_Thesis.pdf"],
         legacy_spec=_legacy(),
+        internal_risk_spec={"key_person_exposure": []},
     )
     md = render_market_risk_markdown("Market Risk", heur)
     assert "## 1. External Risks" in md
@@ -201,10 +283,14 @@ def test_render_no_invest() -> None:
     assert "## 3. Quantified Downside" in md
     assert "## 4. Early-Warning" in md
     assert "## 5. Price vs Structure" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Internal Risk Boundary" in md
+    assert "## 7. Market Risk Evidence QA" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
     assert "Not assigned" in md or "no evidenced basis" in md.lower()
+    assert "Trigger" in md
 
 
 def test_render_agent_document_dispatch() -> None:
@@ -219,10 +305,11 @@ def test_render_agent_document_dispatch() -> None:
             corpus=_mr_corpus(),
             sources=["03_Investment_Thesis.pdf"],
             legacy_spec=_legacy(),
+            internal_risk_spec={"key_person_exposure": []},
         ),
     }
     md = render_agent_document("market_risk", output)
-    assert "## 6. Quality & Reliance" in md
+    assert "## 9. Quality & Reliance" in md or "## 6. Internal Risk Boundary" in md
     assert "External Risks" in md
 
 
@@ -236,6 +323,9 @@ def test_build_prefers_heuristic_when_flagged() -> None:
         sources=["03_Investment_Thesis.pdf"],
         prefer_heuristic=True,
         legacy_spec=_legacy(),
+        internal_risk_spec={"key_person_exposure": []},
     )
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-20"
+    assert isinstance(spec.get("deal_slots"), dict)
+    assert spec.get("mr_evidence_qa")

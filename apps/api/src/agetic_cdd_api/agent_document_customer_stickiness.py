@@ -208,7 +208,7 @@ _BRIDGE_ANY = re.compile(r"(?i)\b(bridge|roll[- ]?forward|rollforward|reconcil\w
                          r"|movement\s+in\s+(?:ARR|MRR|revenue))\b")
 _EXCLUDE_NEW_CUE = re.compile(
     r"(?i)(?:exclud\w+\s+new\s+(?:customers?|logos?|accounts?|business|revenue)|retention\s+numerators?\s+exclude"
-    r"|new\s+(?:customers?|logos?|accounts?|business|revenue)\s+(?:are|is)\s+excluded"
+    r"|new\s+(?:customers?|logos?|accounts?|business|revenue)\s+(?:are|is\s+)?excluded"
     r"|net\s+of\s+new\s+(?:customers?|business|logos?)"
     r"|excludes?\s+new\s+(?:logo|customer|account)\s+(?:wins?|additions?|revenue))"
 )
@@ -1560,6 +1560,7 @@ def _verdicts(
     by_tenure: list[dict[str, Any]],
     loss_reasons: list[dict[str, Any]],
     deltas: list[dict[str, Any]],
+    new_logo_qa_fail: bool = False,
 ) -> tuple[str, str, str, int, int]:
     metric_count = sum(1 for key in _METRIC_KEYS if _pct(metrics.get(key)) is not None)
     named = _contracts_named(contracts)
@@ -1577,7 +1578,267 @@ def _verdicts(
         loss_rows=_real_rows(loss_reasons, "reason"),
         falling=_falling(deltas),
     )
+    if new_logo_qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = (
+            "New-logo exclusion from retention numerators is not confirmed — "
+            + rationale
+        )
     return quality, reliance, rationale, metric_count, named
+
+
+def _new_logo_exclusion_confirmed(bridge: dict[str, Any], corpus: str = "") -> bool:
+    """True only when packs state exclusion or bridge records an explicit True."""
+    excluded = bridge.get("new_customers_excluded") if isinstance(bridge, dict) else None
+    if excluded is True:
+        return True
+    if isinstance(excluded, str):
+        low = excluded.lower()
+        if "exclud" in low and not any(
+            tok in low for tok in ("request", "not state", "not document", "not evidenced", "assumed")
+        ):
+            return True
+    return bool(_EXCLUDE_NEW_CUE.search(corpus or ""))
+
+
+def _new_logo_exclusion_qa(
+    bridge: dict[str, Any],
+    same_pop: dict[str, Any],
+    *,
+    on_same: bool,
+    corpus: str,
+) -> list[dict[str, str]]:
+    """QA: exclude new logos / new customers from retention numerators."""
+    rows: list[dict[str, str]] = []
+    confirmed = _new_logo_exclusion_confirmed(bridge, corpus)
+
+    if confirmed:
+        rows.append({
+            "check": "new_logo_exclusion",
+            "status": "PASS",
+            "finding": "New customers / logos excluded from retention numerators",
+            "action": "Retention numerators use opening population only",
+        })
+    else:
+        rows.append({
+            "check": "new_logo_exclusion",
+            "status": "FAIL",
+            "finding": _info_request(
+                "confirmation that new logos / new customers are excluded "
+                "from GRR, NRR and logo retention numerators"
+            ),
+            "action": (
+                "Do not treat headline retention as diligence-grade until "
+                "new-logo exclusion is confirmed"
+            ),
+        })
+
+    if not on_same:
+        rows.append({
+            "check": "same_population_grr_nrr_logo",
+            "status": "FAIL",
+            "finding": _clean(same_pop.get("notes"), 200) or "Rates not on one population",
+            "action": "Recompute GRR, NRR and logo retention on one constant population",
+        })
+    else:
+        rows.append({
+            "check": "same_population_grr_nrr_logo",
+            "status": "PASS",
+            "finding": _clean(same_pop.get("notes"), 200) or _SAME_POP_RULE,
+            "action": "Headline rates held on one constant population",
+        })
+    return rows
+
+
+def _questions_from_stick_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    metrics = (
+        spec.get("retention_metrics")
+        if isinstance(spec.get("retention_metrics"), dict)
+        else {}
+    )
+    metric_count = sum(1 for key in _METRIC_KEYS if _pct(metrics.get(key)) is not None)
+    cohorts = spec.get("cohorts") if isinstance(spec.get("cohorts"), list) else []
+    if metric_count == 0 and not cohorts:
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide the retention workbook / customer-month ledger "
+                        "with GRR, NRR, logo retention and cohorts by start period"
+                    ),
+                    "required_records": (
+                        "Customer-month billing ledger and retention workbook "
+                        "for the stated population"
+                    ),
+                    "decision_effect": "Persistence of revenue cannot be measured",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 of GRR/NRR/logo retention + ≥1 cohort by start period",
+                    "interim_treatment": "Empty retention table is an information gap, not a finding",
+                }
+            )
+        )
+
+    bridge = (
+        spec.get("retention_bridge")
+        if isinstance(spec.get("retention_bridge"), dict)
+        else {}
+    )
+    if _bridge_filled(bridge) < 3:
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Reconcile opening, churn, contraction, expansion and "
+                        "closing revenue for the retention period"
+                    ),
+                    "required_records": "Period retention bridge from the billing ledger",
+                    "decision_effect": "GRR/NRR cannot be verified without a complete bridge",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial / financial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥3 of 5 bridge components evidenced and reconciling",
+                    "interim_treatment": "LIMITED reliance on headline GRR/NRR",
+                }
+            )
+        )
+
+    same_pop = (
+        spec.get("retention_on_same_population")
+        if isinstance(spec.get("retention_on_same_population"), dict)
+        else {}
+    )
+    qa = (
+        spec.get("new_logo_exclusion_qa")
+        if isinstance(spec.get("new_logo_exclusion_qa"), list)
+        else []
+    )
+    exclusion_fail = any(
+        isinstance(r, dict)
+        and r.get("check") == "new_logo_exclusion"
+        and r.get("status") == "FAIL"
+        for r in qa
+    )
+    same_pop_fail = any(
+        isinstance(r, dict)
+        and r.get("check") == "same_population_grr_nrr_logo"
+        and r.get("status") == "FAIL"
+        for r in qa
+    ) or same_pop.get("on_same_population") is False
+
+    if exclusion_fail:
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Confirm new logos / new customers are excluded from "
+                        "GRR, NRR and logo retention numerators"
+                    ),
+                    "required_records": (
+                        "Retention methodology note + opening-population definition"
+                    ),
+                    "decision_effect": (
+                        "Including new logos flatters retention and misstates persistence"
+                    ),
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "new_logo_exclusion_qa status PASS for exclusion check",
+                    "interim_treatment": "Do not treat headline retention as diligence-grade",
+                }
+            )
+        )
+
+    if same_pop_fail:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Recompute GRR, NRR and logo retention on one constant population",
+                    "required_records": "Single population definition held across rates and cohorts",
+                    "decision_effect": "Mixed populations make rates non-comparable",
+                    "priority": "signing_condition",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "retention_on_same_population.on_same_population = true",
+                    "interim_treatment": "LIMITED reliance until populations align",
+                }
+            )
+        )
+
+    contracts = (
+        spec.get("contract_protections")
+        if isinstance(spec.get("contract_protections"), list)
+        else []
+    )
+    if _contracts_named(contracts) == 0:
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Open executed contracts for largest customers "
+                        "(term, renewal, notice, commitment, escalator, termination)"
+                    ),
+                    "required_records": "Contract register / top customer executed agreements",
+                    "decision_effect": "Stayed behaviour cannot be confused with contractual protection",
+                    "priority": "signing_condition",
+                    "owner": "legal / commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 named contract with protection fields",
+                    "interim_treatment": "Treat retention as behavioural only — not contractual floor",
+                }
+            )
+        )
+
+    renewal = (
+        spec.get("renewal_cliff") if isinstance(spec.get("renewal_cliff"), dict) else {}
+    )
+    if not _is_filled(renewal.get("material_share_pct")):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Size the revenue-weighted renewal cliff (share and window)",
+                    "required_records": "Contract end dates × revenue for the next 12–24 months",
+                    "decision_effect": "Material renewal exposure may be invisible in average retention",
+                    "priority": "signing_condition",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "renewal_cliff.material_share_pct and window filled",
+                    "interim_treatment": "Do not assume renewals are evenly spread",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material customer-stickiness inputs are missing "
+                        "for the stated population"
+                    ),
+                    "required_records": "N/A — retention bridge, rates and contracts publishable",
+                    "decision_effect": "None — stickiness publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "commercial diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if population definition or ledger period changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
 
 
 # ---------------------------------------------------------------------------
@@ -1626,7 +1887,7 @@ def _heuristic_customer_stickiness_spec(
     metrics, legacy_notes = _merge_metrics(extracted, legacy=legacy)
     same_pop = _retention_on_same_population(metrics, population=population, corpus=corpus_full,
                                              bridge=bridge)
-    on_same = bool(same_pop.pop("on_same_population"))
+    on_same = bool(same_pop.get("on_same_population"))
     deltas = _extract_retention_delta(corpus_full)
     falls = _falling(deltas)
 
@@ -1642,9 +1903,17 @@ def _heuristic_customer_stickiness_spec(
     notes = _derive_stickiness_notes(corpus_full, legacy, metrics=metrics, deltas=deltas, cohorts=cohorts,
                                      bridge=bridge, population=population, renewal=renewal,
                                      extra=[*metric_notes, *legacy_notes])
+    new_logo_qa = _new_logo_exclusion_qa(
+        bridge, same_pop, on_same=on_same, corpus=corpus_full
+    )
+    new_logo_qa_fail = any(
+        isinstance(r, dict) and r.get("status") == "FAIL" for r in new_logo_qa
+    )
     quality, reliance, rationale, metric_count, named = _verdicts(
         metrics=metrics, on_same=on_same, cohorts=cohorts, bridge=bridge, contracts=contracts,
-        by_segment=by_segment, by_tenure=by_tenure, loss_reasons=loss_reasons, deltas=deltas)
+        by_segment=by_segment, by_tenure=by_tenure, loss_reasons=loss_reasons, deltas=deltas,
+        new_logo_qa_fail=new_logo_qa_fail,
+    )
 
     headline = ", ".join(f"{_METRIC_LABEL[key].split(' (')[0]} {_pct(metrics.get(key)):g}%"
                          for key in ("grr_pct", "nrr_pct", "logo_retention_pct")
@@ -1662,7 +1931,7 @@ def _heuristic_customer_stickiness_spec(
         falling=bool(falls),
     )
 
-    return {
+    out = {
         "insight_snapshot": insight,
         "population_definition": pop_def,
         "cohorts": cohorts,
@@ -1679,6 +1948,7 @@ def _heuristic_customer_stickiness_spec(
         "contract_protections": contracts,
         "renewal_cliff": renewal,
         "behaviour_vs_protection": behaviour,
+        "new_logo_exclusion_qa": new_logo_qa,
         "stickiness_notes": notes,
         "document": legacy.get("document") or _DOCUMENT_TITLE,
         "dd_code": legacy.get("dd_code") or _DD_CODE,
@@ -1690,6 +1960,8 @@ def _heuristic_customer_stickiness_spec(
         "empty": (metric_count == 0 and not cohorts and named == 0
                   and _bridge_filled(bridge) == 0 and not notes),
     }
+    out["questions"] = _questions_from_stick_gaps(out)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1705,6 +1977,11 @@ def _llm_customer_stickiness_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -1712,8 +1989,18 @@ def _llm_customer_stickiness_spec(
     if not gemini_configured() or not (corpus or "").strip():
         return None
     try:
-        system = compose_system("customer_stickiness", sector=sector, geography=geography,
-                                materiality=materiality)
+        system = compose_system(
+            "customer_stickiness",
+            sector=sector,
+            geography=geography,
+            materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
+        )
     except KeyError:
         return None
 
@@ -1744,6 +2031,10 @@ def _llm_customer_stickiness_spec(
         "price_escalator, termination_for_convenience, source}],\n"
         "renewal_cliff: {material_share_pct, window, note, source, information_request},\n"
         "behaviour_vs_protection: {stayed_note, committed_note, distinction, source},\n"
+        "new_logo_exclusion_qa: [{check, status (PASS|FAIL), finding, action}] — must confirm new logos "
+        "excluded from retention numerators and GRR/NRR/logo on one population,\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "stickiness_notes: [string] — legacy Revenue Retention Table shape for decks,\n"
         "quality_verdict (PASS|REWORK),\n"
         "reliance_verdict (READY|LIMITED|BLOCKED),\n"
@@ -1763,6 +2054,8 @@ def _llm_customer_stickiness_spec(
         "the material share of revenue coming up for renewal — and the window it falls in.\n"
         "Distinguish behaviour (stayed) from protection (contractually committed). Customers who have "
         "stayed are not the same as customers who are contractually committed.\n"
+        "Run QA that new logos are excluded from retention numerators. Include Questions for every "
+        "material gap (or state none are missing).\n"
         "Never invent customer or counterparty names — if a name is not in the evidence, raise a named "
         "information request instead.\n"
         "Do NOT recommend invest or pass. Do NOT include recommendation, confidence or investment verdict "
@@ -1876,12 +2169,13 @@ def _normalise_same_population(
     bridge: dict[str, Any],
 ) -> tuple[dict[str, Any], bool]:
     heuristic = _retention_on_same_population(metrics, population=population, corpus=corpus, bridge=bridge)
-    ok = bool(heuristic.pop("on_same_population"))
+    ok = bool(heuristic.get("on_same_population"))
     raw = llm.get("retention_on_same_population")
     if not isinstance(raw, dict):
         return heuristic, ok
     out = dict(raw)
     out["population"] = population
+    out["on_same_population"] = ok
     for key in ("grr", "nrr", "logo_retention"):
         if not _is_filled(out.get(key)):
             out[key] = heuristic[key]
@@ -2149,11 +2443,19 @@ def _normalise_llm_spec(
     else:
         llm["stickiness_notes"] = heuristic_notes
 
-    # --- verdicts / housekeeping ------------------------------------------
+    # --- QA / Questions / verdicts ----------------------------------------
+    new_logo_qa = _new_logo_exclusion_qa(
+        bridge, same_pop, on_same=on_same, corpus=corpus
+    )
+    llm["new_logo_exclusion_qa"] = new_logo_qa
+    new_logo_qa_fail = any(
+        isinstance(r, dict) and r.get("status") == "FAIL" for r in new_logo_qa
+    )
+
     quality, reliance, rationale, metric_count, named = _verdicts(
         metrics=metrics, on_same=on_same, cohorts=cohorts, bridge=bridge, contracts=contracts,
         by_segment=llm["retention_by_segment"], by_tenure=llm["retention_by_tenure"],
-        loss_reasons=loss_reasons, deltas=deltas)
+        loss_reasons=loss_reasons, deltas=deltas, new_logo_qa_fail=new_logo_qa_fail)
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else quality
@@ -2167,6 +2469,12 @@ def _normalise_llm_spec(
             "Reliance is limited: GRR, NRR and logo retention are not demonstrably on one constant "
             "population with cohorts by start period. "
             + _clean(llm.get("quality_reliance_rationale"), 300))
+    if llm["reliance_verdict"] == "READY" and new_logo_qa_fail:
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "New-logo exclusion from retention numerators is not confirmed — "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
     if metric_count == 0 and not cohorts:
         llm["reliance_verdict"] = "BLOCKED"
     if falls:
@@ -2174,6 +2482,18 @@ def _normalise_llm_spec(
         if "fall" not in lowered and "finding" not in lowered:
             llm["quality_reliance_rationale"] = (_falling_statement(deltas) + " "
                                                  + _clean(llm.get("quality_reliance_rationale"), 380))
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_stick_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_stick_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "key_conditions",
                  "invest_recommendation"):
@@ -2238,13 +2558,36 @@ def build_customer_stickiness_spec(
         corpus = "\n".join(bits)
 
     if not prefer_heuristic:
-        llm = _llm_customer_stickiness_spec(company=target, corpus=corpus, sources=sources, sector=sector,
-                                            geography=geography, materiality=vars_.get("materiality"))
+        llm = _llm_customer_stickiness_spec(
+            company=target,
+            corpus=corpus,
+            sources=sources,
+            sector=sector,
+            geography=geography,
+            materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
+        )
         if llm:
-            return _normalise_llm_spec(llm, sources=sources, legacy_spec=legacy_spec, corpus=corpus)
+            out = _normalise_llm_spec(
+                llm, sources=sources, legacy_spec=legacy_spec, corpus=corpus
+            )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_customer_stickiness_spec(company=target, corpus=corpus, sources=sources, sector=sector,
-                                               geography=geography, legacy_spec=legacy_spec)
+    heur = _heuristic_customer_stickiness_spec(
+        company=target,
+        corpus=corpus,
+        sources=sources,
+        sector=sector,
+        geography=geography,
+        legacy_spec=legacy_spec,
+    )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 # ---------------------------------------------------------------------------
@@ -2439,7 +2782,56 @@ def render_customer_stickiness_markdown(
     parts.append("---\n\n")
 
     # --- 6 ----------------------------------------------------------------
-    parts.append("## 6. Quality & Reliance\n\n")
+    new_logo_qa = _rows("new_logo_exclusion_qa")
+    parts.append("## 6. New-Logo Exclusion QA\n\n")
+    parts.append(
+        "Retention numerators must exclude new logos / new customers. GRR, NRR and logo "
+        f"retention must sit on one constant **{population}** population. Failures below "
+        "cap reliance until confirmed.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in new_logo_qa
+            ],
+        )
+        or (
+            f"{_info_request('new-logo exclusion QA rows for retention numerators')}\n\n"
+        )
+    )
+    parts.append("---\n\n")
+
+    # --- 7 ----------------------------------------------------------------
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material customer-stickiness gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # --- 8 ----------------------------------------------------------------
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(["Metric", "Verdict / Explanation"], [
         ["Quality Verdict", _clean(spec.get("quality_verdict") or "PASS", 30)],
         ["Reliance Verdict", _clean(spec.get("reliance_verdict") or "LIMITED", 30)],

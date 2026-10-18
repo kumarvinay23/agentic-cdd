@@ -23,6 +23,9 @@ _DISPLAY_LABELS: dict[str, str] = {
     "yoy_growth": "YoY Growth",
     "nrr": "Net Revenue Retention (NRR)",
     "grr": "Gross Revenue Retention (GRR)",
+    # Prefer these when caption / line already names the commercial segment.
+    "nrr_commercial": "Commercial NRR",
+    "grr_commercial": "Commercial GRR",
     "revenue_churn": "Revenue Churn",
     "arr": "ARR",
     "logo_churn": "Logo Churn",
@@ -97,6 +100,11 @@ def map_caption(
 
     hit = map_caption_coa(caption, statement=statement, sector_pack=sector_pack)
     if hit is None:
+        return None
+    # Retention KPIs mention "revenue" ("Net Revenue Retention") — never map as P&L revenue.
+    if hit.metric_key == "revenue" and re.search(
+        r"(?i)\b(?:nrr|grr|retention)\b", caption or ""
+    ):
         return None
     return MetricMapHit(
         metric_key=hit.metric_key,
@@ -174,7 +182,13 @@ def display_metric_label(
     if caption:
         hit = map_caption(caption, sector_pack=sector_pack)
         if hit and hit.metric_key == metric_key:
+            # Preserve segment-qualified captions (Commercial NRR / GRR).
             return normalize_caption(caption)
+        low = normalize_caption(caption).lower()
+        if metric_key == "nrr" and "commercial" in low:
+            return "Commercial NRR"
+        if metric_key == "grr" and "commercial" in low:
+            return "Commercial GRR"
     if metric_key in _DISPLAY_LABELS:
         return _DISPLAY_LABELS[metric_key]
     label = display_label_for_metric(metric_key, sector_pack)

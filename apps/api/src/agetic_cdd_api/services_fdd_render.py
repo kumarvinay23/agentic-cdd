@@ -79,8 +79,18 @@ def _strip_fy_from_label(label: str, fiscal_year: int | None) -> str:
     if not text:
         return text
     # Keep YTD / plan stamps intact (year is part of the period label).
-    if re.search(r"\bYTD\b|\(plan\)", text, flags=re.IGNORECASE):
-        return text
+    if re.search(r"\bYTD\b|\(plan\)|·\s*FY", text, flags=re.IGNORECASE):
+        # Still clear empty "()" left by a prior strip of FY inside parens.
+        text = re.sub(r"\(\s*\)", "", text)
+        text = re.sub(r"\s{2,}", " ", text).strip(" -·,/|")
+        return text or (label or "").strip()
+    # Drop parenthetical FY stamps first so we never leave "()".
+    text = re.sub(
+        r"\(\s*FY\s*20?\d{2}A?E?(?:\s*\(plan\))?\s*\)",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
     # Drop any FY / calendar-year tokens already embedded in the caption.
     text = re.sub(
         r"\bFY\s*20\d{2}A?\b|\bFY\s*\d{2}A?\b",
@@ -90,6 +100,7 @@ def _strip_fy_from_label(label: str, fiscal_year: int | None) -> str:
     )
     if fiscal_year is not None:
         text = re.sub(rf"\b{int(fiscal_year)}\b", "", text)
+    text = re.sub(r"\(\s*\)", "", text)
     text = re.sub(r"\s{2,}", " ", text).strip(" -·,/|")
     return text or (label or "").strip()
 
@@ -114,12 +125,22 @@ def _exhibit_body(ex: Exhibit) -> tuple[str, list[str]]:
         token = make_token(ex.exhibit_id, cell.cell_id)
         raw_label = cell.label or cell.cell_id
         period_stamped = bool(
-            re.search(r"\bYTD\b|\(plan\)", raw_label or "", flags=re.IGNORECASE)
+            re.search(r"\bYTD\b|\(plan\)|·\s*FY", raw_label or "", flags=re.IGNORECASE)
         )
         fy = "" if period_stamped else (f"FY{cell.fiscal_year}" if cell.fiscal_year else "")
         from agetic_cdd_api.services_fdd_tokens import display_unit_for_cell
 
         unit = display_unit_for_cell(cell)
+        # Percent metrics: never show money units in the suffix.
+        mk = (cell.metric_key or "").lower()
+        if (
+            "margin" in mk
+            or mk in {"nrr", "grr", "cash_conversion"}
+            or mk.endswith("_pct")
+            or mk.endswith("_rate")
+            or mk.endswith("_pp")
+        ):
+            unit = "%" if unit not in {"%", "pp"} else unit
         status = cell.status.value if cell.status else ""
         # Year once (suffix) — strip duplicates already in the caption.
         clean = _strip_fy_from_label(raw_label, cell.fiscal_year)

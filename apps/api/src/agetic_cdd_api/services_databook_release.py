@@ -232,7 +232,17 @@ def _best_held_row(group: list[ExtractedRow], metric_key: str, fy: int) -> Extra
         return None
 
     def rank(r: ExtractedRow) -> tuple:
+        cap_l = (r.caption or "").lower()
+        # Prefer commercial-segment retention over residential / unlabeled.
+        commercial_boost = 0
+        if metric_key in {"grr", "nrr"}:
+            if "commercial" in cap_l:
+                commercial_boost = 2
+            elif "residential" in cap_l:
+                commercial_boost = -2
+            # Unlabeled retention rows stay neutral — segment comes from caption only.
         return (
+            commercial_boost,
             1 if r.dual_agree else 0,
             caption_plainness(r.caption, metric_key),
             0 if r.assumption else 1,
@@ -554,7 +564,159 @@ def build_release_cells(deal: DealLike) -> list[ReleasedCell]:
                 auto=True,
             )
 
+    _prefer_commercial_retention_cells(cells, rows)
     return sorted(cells.values(), key=lambda c: (c.metric_key, c.fiscal_year))
+
+
+def _prefer_commercial_retention_cells(
+    cells: dict[tuple[str, int], ReleasedCell],
+    rows: list,
+) -> None:
+    """If GRR was released on a residential-captioned row, prefer a commercial peer.
+
+    Segment choice is caption-driven only — never match fixed deal GRR/NRR ratios.
+    """
+    for (metric_key, fy), cell in list(cells.items()):
+        if metric_key not in {"grr", "nrr"} or cell.value is None:
+            continue
+        try:
+            val = float(cell.value)
+        except (TypeError, ValueError):
+            continue
+        caps = list(cell.captions or [])
+        has_commercial = any("commercial" in str(c).lower() for c in caps)
+        has_residential = any("residential" in str(c).lower() for c in caps)
+
+        peers = [
+            r
+            for r in rows
+            if getattr(r, "metric_key", None) == metric_key
+            and getattr(r, "fiscal_year", None) == fy
+            and r.value is not None
+        ]
+
+        def _peer_val(r: Any) -> float | None:
+            try:
+                return float(r.value)
+            except (TypeError, ValueError):
+                return None
+
+        def _retention_equiv(a: float, b: float) -> bool:
+            """True when a and b are the same retention figure (ratio or %)."""
+            if abs(a - b) < 1e-6:
+                return True
+            # 1.0656 ↔ 106.56
+            if abs(a * 100.0 - b) < 0.15 or abs(b * 100.0 - a) < 0.15:
+                return True
+            return False
+
+        def _row_blob(r: Any) -> str:
+            return " ".join(
+                [
+                    str(getattr(r, "caption", None) or ""),
+                    str(getattr(r, "source_name", None) or ""),
+                    str(getattr(r, "table_name", None) or ""),
+                ]
+            ).lower()
+
+        commercial_peer = next(
+            (
+                r
+                for r in peers
+                if "commercial" in _row_blob(r)
+                and "residential" not in (getattr(r, "caption", None) or "").lower()
+            ),
+            None,
+        )
+        residential_peer = next(
+            (r for r in peers if "residential" in (r.caption or "").lower()),
+            None,
+        )
+        c_val = _peer_val(commercial_peer) if commercial_peer else None
+        r_val = _peer_val(residential_peer) if residential_peer else None
+
+        # Value matches commercial peer but captions say residential → relabel
+        # (fixes Residential NRR 106.56 when 106.56 is the commercial series).
+        if (
+            c_val is not None
+            and _retention_equiv(c_val, val)
+            and (has_residential or not has_commercial)
+            and (r_val is None or not _retention_equiv(r_val, val))
+        ):
+            label = "Commercial NRR" if metric_key == "nrr" else "Commercial GRR"
+            alts = list(cell.alternatives or [])
+            alts.append(
+                {
+                    "value": val,
+                    "sources": list(cell.sources or []),
+                    "captions": list(caps),
+                    "note": f"{metric_key}_relabeled_commercial_from_value_match",
+                }
+            )
+            cells[(metric_key, fy)] = cell.model_copy(
+                update={
+                    "row_id": commercial_peer.row_id,
+                    "sources": (
+                        [commercial_peer.source_name]
+                        if commercial_peer.source_name
+                        else list(cell.sources or [])
+                    ),
+                    "captions": (
+                        [label, commercial_peer.caption]
+                        if commercial_peer.caption
+                        else [label]
+                    ),
+                    "alternatives": alts,
+                    "reason": (
+                        f"{cell.reason or 'Released'}; {label} (value matched "
+                        f"commercial-captioned peer)"
+                    ),
+                }
+            )
+            continue
+
+        # Classic path: residential-captioned GRR/NRR with a distinct commercial peer
+        # — prefer commercial when the cell was not already commercial-labeled.
+        if has_commercial and not has_residential:
+            continue
+        if commercial_peer is None or c_val is None:
+            continue
+        if _retention_equiv(c_val, val):
+            continue
+        # Do not overwrite a residential value that already matches the residential peer.
+        if r_val is not None and _retention_equiv(r_val, val) and has_residential:
+            continue
+        alts = list(cell.alternatives or [])
+        alts.append(
+            {
+                "value": val,
+                "sources": list(cell.sources or []),
+                "captions": list(cell.captions or []),
+                "note": f"residential_{metric_key}_superseded_by_commercial_caption",
+            }
+        )
+        label = "Commercial NRR" if metric_key == "nrr" else "Commercial GRR"
+        cells[(metric_key, fy)] = cell.model_copy(
+            update={
+                "value": c_val,
+                "row_id": commercial_peer.row_id,
+                "sources": (
+                    [commercial_peer.source_name]
+                    if commercial_peer.source_name
+                    else list(cell.sources or [])
+                ),
+                "captions": (
+                    [label, commercial_peer.caption]
+                    if commercial_peer.caption
+                    else [label]
+                ),
+                "alternatives": alts,
+                "reason": (
+                    f"{cell.reason or 'Released'}; commercial-captioned {metric_key.upper()} "
+                    f"preferred over residential/unlabeled ratio {val:g}"
+                ),
+            }
+        )
 
 
 def _counts(cells: list[ReleasedCell], request_list: list | None = None) -> dict[str, int]:

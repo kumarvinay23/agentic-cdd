@@ -151,6 +151,21 @@ _PLACEHOLDER_CLAIM = re.compile(
     r"competitive\s+advantage\s*\d*"
     r")$",
 )
+_UNSUPPORTED_BENCHMARK = re.compile(
+    r"\b(industry[- ](?:leading|average|avg|standard)|"
+    r"best[- ]in[- ]class|world[- ]class|category[- ]leading|"
+    r"peer\s*#?\s*1|number[- ]one\s+peer|top[- ]quartile|"
+    r"market[- ]leading|unmatched|unparalleled|"
+    r"vs\.?\s+(?:industry|peers?|competitors?)\s+average)\b",
+    re.IGNORECASE,
+)
+_HOLD_PERIOD = re.compile(
+    r"\b((?:hold|investment|ownership)\s+period|"
+    r"(?:\d{1,2}[-–]?\d{0,2})\s*(?:year|yr)s?\s+hold|"
+    r"(?:over|across|through)\s+(?:the\s+)?(?:hold|investment)\s+period|"
+    r"\d{1,2}[-–]\d{1,2}\s*years?\b)",
+    re.IGNORECASE,
+)
 
 
 def _insight(text: Any, *, max_chars: int = 520) -> str:
@@ -755,9 +770,379 @@ def _replication_assessment(
             "competitor_spend": _info_request("competitor spend to match"),
             "time_to_match": _info_request("time to match"),
             "erosion_risk": _info_request("erosion risk over hold period"),
+            "hold_period": _info_request("stated hold period"),
             "claim_kind": "management_assertion",
         })
+    else:
+        hold_hit = next(
+            (s for s in sents if _HOLD_PERIOD.search(s)),
+            None,
+        )
+        hold_default = (
+            _clean(hold_hit, 80) + f" {_DOC_CITE}"
+            if hold_hit
+            else _info_request("stated hold period")
+        )
+        for r in rows:
+            if isinstance(r, dict) and not r.get("hold_period"):
+                r["hold_period"] = hold_default
     return rows
+
+
+def _moat_cross_checks(
+    tests: list[dict[str, str]],
+    corpus: str,
+) -> list[dict[str, str]]:
+    """Cross-check NPS / retention / IP before any moat / durable-advantage language."""
+    sents = _sentences(corpus)
+    rows: list[dict[str, str]] = []
+    checks = (
+        (
+            "retention",
+            ("retention", "churn", "repeat"),
+            "customer_stickiness / customer_satisfaction",
+            "Reconcile retention differential with customer agent before moat language",
+        ),
+        (
+            "nps_satisfaction",
+            ("nps", "csat", "satisfaction"),
+            "customer_satisfaction",
+            "Reconcile NPS/CSAT with customer agent before moat language",
+        ),
+        (
+            "ip",
+            ("patent", "intellectual property", "trade secret", "ip "),
+            "ip_and_technology",
+            "Technology ≠ IP — reconcile with IP agent before treating as protected moat",
+        ),
+    )
+    claim_blobs = [
+        " ".join(
+            str(t.get(k) or "")
+            for k in ("claim", "evidence", "metric", "economic_effect", "durability")
+        )
+        for t in tests if isinstance(t, dict)
+    ]
+    joined = " ".join(claim_blobs) + "\n" + (corpus or "")
+
+    for check_key, needles, against_agent, action in checks:
+        mentioned = any(n in joined.lower() for n in needles)
+        if not mentioned:
+            rows.append({
+                "check": check_key,
+                "status": "not_claimed",
+                "against_agent": against_agent,
+                "finding": _NA,
+                "action": "No claim requiring this cross-check in opened packs",
+            })
+            continue
+        evidenced = any(
+            isinstance(t, dict)
+            and t.get("claim_kind") == "demonstrated_advantage"
+            and str(t.get("test_result") or "").upper() == "PASS"
+            and any(n in " ".join(
+                str(t.get(k) or "") for k in ("claim", "evidence", "metric")
+            ).lower() for n in needles)
+            for t in tests
+        )
+        hit = next(
+            (
+                s for s in sents
+                if any(n in s.lower() for n in needles)
+                and _EVIDENCE_CUE.search(s)
+            ),
+            None,
+        )
+        if evidenced or hit:
+            rows.append({
+                "check": check_key,
+                "status": "needs_reconcile" if not evidenced else "aligned_pending_agent",
+                "against_agent": against_agent,
+                "finding": (
+                    _clean(hit, 140) + f" {_DOC_CITE}"
+                    if hit
+                    else "Demonstrated in advantage tests — still reconcile with agent"
+                ),
+                "action": action,
+            })
+        else:
+            rows.append({
+                "check": check_key,
+                "status": "BLOCK_MOAT",
+                "against_agent": against_agent,
+                "finding": _info_request(f"primary {check_key} evidence"),
+                "action": (
+                    "Do not describe as moat / durable advantage until "
+                    + action[0].lower() + action[1:]
+                ),
+            })
+    return rows
+
+
+def _unsupported_benchmarks(
+    tests: list[dict[str, str]],
+    claims: list[dict[str, str]],
+    corpus: str,
+) -> list[dict[str, str]]:
+    """Reject industry-average / best-in-class / peer#1 language without evidence."""
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def _add(source_label: str, blob: str, *, has_metric: bool) -> None:
+        m = _UNSUPPORTED_BENCHMARK.search(blob or "")
+        if not m:
+            return
+        phrase = _clean(m.group(0), 60)
+        key = phrase.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        if has_metric and _EVIDENCE_CUE.search(blob or ""):
+            status = "PASS_WITH_EVIDENCE"
+            action = "Benchmark retained — numeric evidence present"
+        else:
+            status = "REJECTED"
+            action = (
+                "Drop unsupported benchmark; request named peer metric "
+                "with source (no industry average / best-in-class without proof)"
+            )
+        rows.append({
+            "phrase": phrase,
+            "source": source_label,
+            "status": status,
+            "action": action,
+            "evidence": (
+                _clean(blob, 140) + f" {_DOC_CITE}"
+                if blob and not blob.startswith("Information")
+                else _info_request("named peer metric with source")
+            ),
+        })
+
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        blob = " ".join(str(c.get(k) or "") for k in ("claim", "where_stated"))
+        _add(_clean(c.get("claim"), 40), blob, has_metric=bool(re.search(r"\d", blob)))
+
+    for t in tests:
+        if not isinstance(t, dict):
+            continue
+        blob = " ".join(
+            str(t.get(k) or "")
+            for k in ("claim", "metric", "evidence", "economic_effect", "named_alternative")
+        )
+        has_metric = bool(
+            _PRICE_PREMIUM.search(blob)
+            or _COST_UNIT.search(blob)
+            or _RETENTION.search(blob)
+            or (re.search(r"\d+(?:\.\d+)?\s*%", blob) and _EVIDENCE_CUE.search(blob))
+        )
+        _add(_clean(t.get("claim"), 40), blob, has_metric=has_metric)
+
+    for s in _sentences(corpus):
+        if _UNSUPPORTED_BENCHMARK.search(s):
+            _add("corpus", s, has_metric=bool(
+                re.search(r"\d+(?:\.\d+)?\s*%", s) and _EVIDENCE_CUE.search(s)
+            ))
+        if len(rows) >= 8:
+            break
+
+    if not rows:
+        rows.append({
+            "phrase": _NA,
+            "source": _NA,
+            "status": "none_flagged",
+            "action": "No unsupported benchmark language flagged",
+            "evidence": _NA,
+        })
+    return rows[:8]
+
+
+def _questions_from_cd_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    claims = (
+        spec.get("claimed_advantages")
+        if isinstance(spec.get("claimed_advantages"), list)
+        else []
+    )
+    named = [
+        c for c in claims
+        if isinstance(c, dict)
+        and c.get("claim")
+        and not str(c["claim"]).startswith("Information")
+    ]
+    if not named:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Identify claimed advantages with claimant and source location",
+                    "required_records": "CIM / management presentation / competition pack",
+                    "decision_effect": "Without claims, differentiation cannot be tested",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 named claim with claimed_by and where_stated",
+                    "interim_treatment": "Do not invent differentiators or OEM peer lists",
+                }
+            )
+        )
+
+    tests = (
+        spec.get("advantage_tests")
+        if isinstance(spec.get("advantage_tests"), list)
+        else []
+    )
+    demonstrated = sum(
+        1 for t in tests
+        if isinstance(t, dict) and t.get("claim_kind") == "demonstrated_advantage"
+        and str(t.get("test_result") or "").upper() == "PASS"
+    )
+    if named and demonstrated == 0:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Evidence at least one advantage test to PASS with a metric",
+                    "required_records": (
+                        "Customer survey / win-loss / pricing / retention pack "
+                        "with named alternative"
+                    ),
+                    "decision_effect": "Assertions cannot support moat or pricing premium",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 demonstrated_advantage with test_result PASS",
+                    "interim_treatment": "Treat all claims as management assertion / LIMITED",
+                }
+            )
+        )
+
+    economics = (
+        spec.get("economic_effects")
+        if isinstance(spec.get("economic_effects"), list)
+        else []
+    )
+    economic_filled = sum(
+        1 for e in economics
+        if isinstance(e, dict)
+        and e.get("magnitude")
+        and not str(e["magnitude"]).startswith("Information")
+        and e["magnitude"] != _NA
+    )
+    if named and economic_filled == 0:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Quantify economic effect (price premium, unit cost, or retention)",
+                    "required_records": "Pricing bridge / unit cost / cohort retention vs named peer",
+                    "decision_effect": "Advantage without economics cannot support model assumptions",
+                    "priority": "signing_condition",
+                    "owner": "commercial / financial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 economic channel with magnitude and model assumption",
+                    "interim_treatment": "Do not hard-wire premium or retention into the plan",
+                }
+            )
+        )
+
+    replication = (
+        spec.get("replication") if isinstance(spec.get("replication"), list) else []
+    )
+    if named and not any(
+        isinstance(r, dict)
+        and r.get("competitor_spend")
+        and not str(r["competitor_spend"]).startswith("Information")
+        and not str(r["competitor_spend"]).startswith("Low —")
+        for r in replication
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Assess competitor spend, time-to-match, and hold-period erosion",
+                    "required_records": "Ops / product roadmap notes on replication cost and timeline",
+                    "decision_effect": "Durability of advantage over the hold period is untested",
+                    "priority": "signing_condition",
+                    "owner": "market / product diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 replication row with spend, time, and erosion over hold period",
+                    "interim_treatment": "Treat durability as unproven",
+                }
+            )
+        )
+
+    moat_x = (
+        spec.get("moat_cross_checks")
+        if isinstance(spec.get("moat_cross_checks"), list)
+        else []
+    )
+    if any(isinstance(r, dict) and r.get("status") == "BLOCK_MOAT" for r in moat_x):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Reconcile NPS / retention / IP claims before moat language",
+                    "required_records": (
+                        "Customer satisfaction / stickiness packs and IP register "
+                        "aligned with advantage claims"
+                    ),
+                    "decision_effect": "Unsupported moat language overstates durable advantage",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead (with customer + IP leads)",
+                    "timing": "before IC",
+                    "closure_test": "No BLOCK_MOAT rows remain on moat_cross_checks",
+                    "interim_treatment": "Use 'durable advantage' only if demonstrated; never invent IP",
+                }
+            )
+        )
+
+    benchmarks = (
+        spec.get("unsupported_benchmarks")
+        if isinstance(spec.get("unsupported_benchmarks"), list)
+        else []
+    )
+    if any(isinstance(r, dict) and r.get("status") == "REJECTED" for r in benchmarks):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Replace unsupported benchmarks with named peer metrics",
+                    "required_records": "Named competitor metric with source (no industry average)",
+                    "decision_effect": "Best-in-class / industry-average claims are not diligence-grade",
+                    "priority": "residual_uncertainty",
+                    "owner": "market diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "All REJECTED benchmark rows cleared or evidenced",
+                    "interim_treatment": "Exclude REJECTED phrases from differentiators / moat_signals",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material competitive-differentiation inputs are missing "
+                        "for the stated geography"
+                    ),
+                    "required_records": "N/A — current pack sufficient for advantage tests",
+                    "decision_effect": "None — differentiation tests publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "market diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if claimed advantages or peer set changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
 
 
 def _legacy_fields(
@@ -836,23 +1221,41 @@ def _quality_reliance(
     demonstrated: int,
     economic_filled: int,
     replication_filled: int,
+    moat_blocks: int = 0,
+    rejected_benchmarks: int = 0,
 ) -> tuple[str, str, str]:
-    if claim_count >= 1 and demonstrated >= 1 and tested_pass >= 1:
+    if claim_count >= 1 and demonstrated >= 1 and tested_pass >= 1 and moat_blocks == 0:
+        ready = (
+            economic_filled >= 1
+            and replication_filled >= 1
+            and rejected_benchmarks == 0
+        )
         return (
             "PASS",
-            "READY" if economic_filled >= 1 and replication_filled >= 1 else "LIMITED",
+            "READY" if ready else "LIMITED",
             (
                 f"{claim_count} claim(s); {demonstrated} demonstrated; "
                 f"{tested_pass} PASS test(s); "
                 f"{economic_filled} economic channel(s) quantified; "
-                f"{replication_filled} replication row(s) evidenced."
+                f"{replication_filled} replication row(s) evidenced"
+                + (
+                    f"; {rejected_benchmarks} unsupported benchmark(s) rejected"
+                    if rejected_benchmarks
+                    else ""
+                )
+                + "."
             ),
         )
     if claim_count >= 1:
         return (
             "PASS",
             "LIMITED",
-            "Claims identified but tests, economic effects, or replication incomplete.",
+            (
+                "Claims identified but tests, economic effects, replication, "
+                "or moat cross-checks incomplete"
+                + (f"; {moat_blocks} moat block(s)" if moat_blocks else "")
+                + "."
+            ),
         )
     return "PASS", "BLOCKED", "No advantage claims evidenced in the data room."
 
@@ -865,6 +1268,11 @@ def _llm_competitive_differentiation_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -878,6 +1286,12 @@ def _llm_competitive_differentiation_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -904,7 +1318,14 @@ def _llm_competitive_differentiation_spec(
         "model_assumption_supported, source}] "
         "— effect_type one of price_premium|cost_per_unit|retention_differential; "
         "state which model assumption each supports,\n"
-        "replication: [{claim, competitor_spend, time_to_match, erosion_risk, claim_kind}],\n"
+        "replication: [{claim, competitor_spend, time_to_match, erosion_risk, "
+        "hold_period, claim_kind}],\n"
+        "moat_cross_checks: [{check, status, against_agent, finding, action}] "
+        "— check retention|nps_satisfaction|ip; BLOCK_MOAT when unverified,\n"
+        "unsupported_benchmarks: [{phrase, source, status, action, evidence}] "
+        "— REJECT industry average / best-in-class / peer#1 without evidence,\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "differentiators: [string],\n"
         "moat_signals: [string] — use 'durable advantage' not 'moat' unless evidence is strong; "
         "technology is not IP; reconcile retention/satisfaction/IP with customer and IP agents,\n"
@@ -942,7 +1363,21 @@ def _heuristic_competitive_differentiation_spec(
     buckets = _capability_separation(tests)
     economics = _economic_effects(tests, corpus_full)
     replication = _replication_assessment(tests, corpus_full)
+    moat_x = _moat_cross_checks(tests, corpus_full)
+    benchmarks = _unsupported_benchmarks(tests, claims, corpus_full)
     legacy_fields = _legacy_fields(tests, corpus_full, legacy)
+    # Strip rejected unsupported benchmark phrases from legacy differentiators.
+    rejected_phrases = {
+        str(b.get("phrase") or "").lower()
+        for b in benchmarks
+        if isinstance(b, dict) and b.get("status") == "REJECTED"
+    }
+    if rejected_phrases:
+        for key in ("differentiators", "moat_signals"):
+            legacy_fields[key] = [
+                x for x in legacy_fields[key]
+                if not any(p and p in x.lower() for p in rejected_phrases)
+            ]
 
     named_claims = sum(
         1 for c in claims
@@ -971,12 +1406,20 @@ def _heuristic_competitive_differentiation_spec(
         and not str(r["competitor_spend"]).startswith("Information")
         and not str(r["competitor_spend"]).startswith("Low —")
     )
+    moat_blocks = sum(
+        1 for r in moat_x if isinstance(r, dict) and r.get("status") == "BLOCK_MOAT"
+    )
+    rejected_benchmarks = sum(
+        1 for b in benchmarks if isinstance(b, dict) and b.get("status") == "REJECTED"
+    )
     quality, reliance, qr = _quality_reliance(
         claim_count=named_claims,
         tested_pass=tested_pass,
         demonstrated=demonstrated,
         economic_filled=economic_filled,
         replication_filled=replication_filled,
+        moat_blocks=moat_blocks,
+        rejected_benchmarks=rejected_benchmarks,
     )
 
     insight = _soften_moat_language(
@@ -985,20 +1428,23 @@ def _heuristic_competitive_differentiation_spec(
             f"advantage(s); {demonstrated} demonstrated with evidence; "
             f"{tested_pass} PASS test(s). Ordinary capabilities, management assertions, "
             f"and demonstrated advantages separated. Economic effects and replication "
-            f"cost/time/erosion assessed where evidenced. "
+            f"cost/time/hold-period erosion assessed where evidenced. "
+            f"Moat cross-checks and unsupported-benchmark rejection applied. "
             f"'Moat' language softened to durable advantage unless demonstrated."
         ),
-        demonstrated=demonstrated >= 1 and tested_pass >= 1,
-        strong_evidence=demonstrated >= 1 and tested_pass >= 1,
+        demonstrated=demonstrated >= 1 and tested_pass >= 1 and moat_blocks == 0,
+        strong_evidence=demonstrated >= 1 and tested_pass >= 1 and moat_blocks == 0,
     )
 
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "claimed_advantages": claims,
         "advantage_tests": tests,
         "capability_separation": buckets,
         "economic_effects": economics,
         "replication": replication,
+        "moat_cross_checks": moat_x,
+        "unsupported_benchmarks": benchmarks,
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": qr,
@@ -1012,6 +1458,8 @@ def _heuristic_competitive_differentiation_spec(
         "peer_software": legacy_fields["peer_software"],
         "empty": named_claims == 0 and not legacy_fields["differentiators"],
     }
+    out["questions"] = _questions_from_cd_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -1021,7 +1469,10 @@ def _normalise_llm_spec(
     legacy_spec: dict[str, Any] | None,
     corpus: str = "",
 ) -> dict[str, Any]:
-    for key in ("claimed_advantages", "advantage_tests", "economic_effects", "replication"):
+    for key in (
+        "claimed_advantages", "advantage_tests", "economic_effects", "replication",
+        "moat_cross_checks", "unsupported_benchmarks", "questions",
+    ):
         if not isinstance(llm.get(key), list):
             llm[key] = []
 
@@ -1147,11 +1598,34 @@ def _normalise_llm_spec(
                 row[req] = _info_request(req.replace("_", " "))
     if not llm.get("replication"):
         llm["replication"] = _replication_assessment(cleaned_tests, corpus)
+    else:
+        for row in llm["replication"]:
+            if isinstance(row, dict) and not row.get("hold_period"):
+                row["hold_period"] = _info_request("stated hold period")
+
+    if not llm.get("moat_cross_checks"):
+        llm["moat_cross_checks"] = _moat_cross_checks(cleaned_tests, corpus)
+    if not llm.get("unsupported_benchmarks"):
+        llm["unsupported_benchmarks"] = _unsupported_benchmarks(
+            cleaned_tests, cleaned_claims, corpus,
+        )
 
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else "PASS"
     llm["reliance_verdict"] = rv if rv in {"READY", "LIMITED", "BLOCKED"} else "LIMITED"
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_cd_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_cd_gaps(llm)
 
     for dead in ("recommendation", "confidence", "key_conditions"):
         llm.pop(dead, None)
@@ -1164,6 +1638,11 @@ def _normalise_llm_spec(
 
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
     heur_legacy = _legacy_fields(cleaned_tests, corpus, legacy)
+    rejected_phrases = {
+        str(b.get("phrase") or "").lower()
+        for b in (llm.get("unsupported_benchmarks") or [])
+        if isinstance(b, dict) and b.get("status") == "REJECTED"
+    }
     for key in ("differentiators", "moat_signals", "feature_gaps", "peer_software"):
         raw = llm.get(key)
         if isinstance(raw, list) and raw:
@@ -1171,9 +1650,13 @@ def _normalise_llm_spec(
                 _soften_moat_language(x)
                 for x in raw
                 if isinstance(x, str) and x.strip()
+                and not any(p and p in x.lower() for p in rejected_phrases)
             ][:5]
         else:
-            llm[key] = heur_legacy[key]
+            llm[key] = [
+                x for x in heur_legacy[key]
+                if not any(p and p in x.lower() for p in rejected_phrases)
+            ]
 
     named = sum(
         1 for c in cleaned_claims
@@ -1230,22 +1713,31 @@ def build_competitive_differentiation_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_competitive_differentiation_spec(
+    heur = _heuristic_competitive_differentiation_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_competitive_differentiation_markdown(
@@ -1279,6 +1771,17 @@ def render_competitive_differentiation_markdown(
         if isinstance(spec.get("replication"), list)
         else []
     )
+    moat_x = (
+        spec.get("moat_cross_checks")
+        if isinstance(spec.get("moat_cross_checks"), list)
+        else []
+    )
+    benchmarks = (
+        spec.get("unsupported_benchmarks")
+        if isinstance(spec.get("unsupported_benchmarks"), list)
+        else []
+    )
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
@@ -1380,33 +1883,99 @@ def render_competitive_differentiation_markdown(
         ))
     parts.append("---\n\n")
 
-    parts.append("## 5. Replication Cost, Time & Erosion\n\n")
+    parts.append("## 5. Replication Cost, Time & Hold-Period Erosion\n\n")
     parts.append(
         "What a competitor must spend, time to match, and erosion risk over the hold period. "
         "**Prefer 'durable advantage' over 'moat' unless demonstrated.**\n\n"
     )
     if replication:
         parts.append(_table(
-            ["Claim", "Competitor Spend", "Time to Match", "Erosion Risk"],
+            [
+                "Claim", "Competitor Spend", "Time to Match",
+                "Hold Period", "Erosion Risk",
+            ],
             [
                 [
-                    _clean(r.get("claim"), 60),
-                    _clean(r.get("competitor_spend"), 100),
-                    _clean(r.get("time_to_match"), 80),
-                    _clean(r.get("erosion_risk"), 100),
+                    _clean(r.get("claim"), 50),
+                    _clean(r.get("competitor_spend"), 80),
+                    _clean(r.get("time_to_match"), 60),
+                    _clean(r.get("hold_period"), 50),
+                    _clean(r.get("erosion_risk"), 80),
                 ]
                 for r in replication if isinstance(r, dict)
             ],
         ))
+    parts.append("---\n\n")
+
+    parts.append("## 6. Moat Cross-Checks (NPS / Retention / IP)\n\n")
+    parts.append(
+        "Reconcile retention, satisfaction and IP claims with the customer and IP agents "
+        "before describing anything as a durable advantage or moat. "
+        "**Technology ≠ intellectual property.**\n\n"
+    )
+    if moat_x:
+        parts.append(_table(
+            ["Check", "Status", "Against Agent", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 30).replace("_", " "),
+                    _clean(r.get("status"), 30),
+                    _clean(r.get("against_agent"), 50),
+                    _clean(r.get("finding"), 100),
+                    _clean(r.get("action"), 100),
+                ]
+                for r in moat_x if isinstance(r, dict)
+            ],
+        ))
+    parts.append("---\n\n")
+
+    parts.append("## 7. Unsupported Benchmarks (Rejected)\n\n")
+    parts.append(
+        "Industry average, best-in-class, peer #1 and similar phrases without "
+        "named-peer evidence are rejected.\n\n"
+    )
+    if benchmarks:
+        parts.append(_table(
+            ["Phrase", "Source", "Status", "Action"],
+            [
+                [
+                    _clean(r.get("phrase"), 50),
+                    _clean(r.get("source"), 50),
+                    _clean(r.get("status"), 30),
+                    _clean(r.get("action"), 120),
+                ]
+                for r in benchmarks if isinstance(r, dict)
+            ],
+        ))
     parts.append(
         "*This section does not recommend invest or pass. "
-        "Retention, satisfaction and IP claims must be reconciled with the customer "
-        "and IP agents before describing anything as a durable advantage or moat. "
-        "Technology ≠ intellectual property.*\n\n"
+        "It tests whether claimed advantages are real, durable, and economically material.*\n\n"
     )
     parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            f"{_info_request('Questions for material competitive-differentiation gaps')}\n\n"
+        )
+    parts.append("---\n\n")
+
+    parts.append("## 9. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

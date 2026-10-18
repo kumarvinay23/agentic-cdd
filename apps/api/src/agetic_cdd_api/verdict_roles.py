@@ -1,4 +1,4 @@
-"""Phase 4 Final Verdict roles — FV-01…FV-07 bound to live slug keys.
+"""Phase 4 Final Verdict roles — FV-01…FV-08 bound to live slug keys.
 
 Runtime identity is DiligenceIQ `agent_key` (`slug`). Genovation `code` (FV-01…)
 is the stable spec id. Orchestration and the Verdict Store key on **slug**.
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class VerdictRole:
-    code: str  # FV-01…FV-07
+    code: str  # FV-01…FV-08
     name: str
     slug: str  # DiligenceIQ agent_key
     stage: str  # A | B | C
@@ -32,7 +32,7 @@ STAGE_LABELS: dict[str, str] = {
 
 STAGE_ORDER: tuple[str, ...] = ("A", "B", "C")
 
-# Sequential stages A → B → C; in-phase depends_on for FV-02→FV-04→FV-07 chain.
+# Sequential stages A → B → C; in-phase depends_on for FV-02→FV-04→FV-08 chain.
 VERDICT_ROLES: tuple[VerdictRole, ...] = (
     VerdictRole(
         code="FV-01",
@@ -88,17 +88,21 @@ VERDICT_ROLES: tuple[VerdictRole, ...] = (
         stage_key="valuation",
         spec_output="One earnings basis; comps / precedents / DCF reconciled",
         depends_on=("trading_comps", "precedent_transactions"),
-        deep_dive_deps=("historical_performance", "capital_structure"),  # DD-23, DD-24
+        deep_dive_deps=(
+            "historical_performance",
+            "capital_structure",
+            "cash_flow",
+        ),  # DD-23, DD-24, Cash Flow (DCF gate)
         vdr_ref="Valuation_Summary_Bridge.xlsx",
         filename_needles=("valuation", "dcf", "sensitivity", "bridge", "wacc"),
     ),
     VerdictRole(
         code="FV-06",
-        name="IC Synthesis",
+        name="Executive Summary",
         slug="ic_synthesis",
         stage="C",
         stage_key="executive_synthesis",
-        spec_output="Executive Summary (committee page)",
+        spec_output="Executive Summary / IC Synthesis (committee page)",
         depends_on=(
             "execution_risk",
             "compensation_alignment",
@@ -107,7 +111,7 @@ VERDICT_ROLES: tuple[VerdictRole, ...] = (
             "valuation_modeling",
         ),
         vdr_ref="Final_Diligence_Findings_All_Agents.txt",
-        filename_needles=("findings", "investment thesis", "executive summary"),
+        filename_needles=("findings", "investment thesis", "executive summary", "ic synthesis"),
     ),
     VerdictRole(
         code="FV-07",
@@ -119,6 +123,24 @@ VERDICT_ROLES: tuple[VerdictRole, ...] = (
         depends_on=("ic_synthesis",),
         vdr_ref="Term_Sheet_Draft_v1.pdf",
         filename_needles=("investment thesis", "term sheet", "deal structure", "valuation", "executive summary"),
+    ),
+    VerdictRole(
+        code="FV-08",
+        name="Appendices",
+        slug="appendices",
+        stage="C",
+        stage_key="executive_synthesis",
+        spec_output="Appendices — claim / evidence / calculation registers + citation check",
+        depends_on=("recommendation",),
+        vdr_ref="Final_Diligence_Findings_All_Agents.txt",
+        filename_needles=(
+            "appendix",
+            "appendices",
+            "source index",
+            "citation",
+            "evidence register",
+            "data room inventory",
+        ),
     ),
 )
 

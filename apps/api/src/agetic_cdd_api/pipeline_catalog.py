@@ -169,17 +169,18 @@ PIPELINE_PHASES: list[dict] = [
                 "agents": [
                     {"agentName": "Trading Comps", "agent_key": "trading_comps", "category": "financial_data", "description": "Valuation benchmark analysis (FV-03)."},
                     {"agentName": "Precedent Transactions", "agent_key": "precedent_transactions", "category": "financial_data", "description": "Precedent transaction analysis (FV-04)."},
-                    {"agentName": "Valuation Model", "agent_key": "valuation_modeling", "category": "financial_data", "description": "Earnings basis, methods, sensitivity, final range (FV-05)."},
+                    {"agentName": "Valuation Model", "agent_key": "valuation_modeling", "category": "financial_data", "description": "Earnings basis; comps/precedents as method inputs; DCF gated on Cash Flow bridge; nested sensitivity + final range (FV-05)."},
                 ],
             },
             {
                 "stageTitle": "Summary & Recommendation",
                 "stageKey": "executive_synthesis",
                 "stageNumber": 11,
-                "description": "IC synthesis and Go/No-Go recommendation.",
+                "description": "Executive Summary (IC Synthesis), Recommendations, and Appendices (audit trail).",
                 "agents": [
-                    {"agentName": "IC Synthesis", "agent_key": "ic_synthesis", "category": "deal_overview", "description": "Executive summary for the committee (FV-06)."},
-                    {"agentName": "Recommendation", "agent_key": "recommendation", "category": "strategy", "description": "Transaction structure and returns (FV-07)."},
+                    {"agentName": "Executive Summary", "agent_key": "ic_synthesis", "category": "deal_overview", "description": "Committee page / IC Synthesis (FV-06): register-only opening, thesis, blockers, decision support."},
+                    {"agentName": "Recommendation", "agent_key": "recommendation", "category": "strategy", "description": "Finding→action synthesis: price/structure/protection, CPs, blocked workstreams (FV-07)."},
+                    {"agentName": "Appendices", "agent_key": "appendices", "category": "deal_overview", "description": "Audit trail (FV-08): claim/evidence/calculation registers, citation check, availability≠verification."},
                 ],
             },
         ],
@@ -255,6 +256,7 @@ PHASE4_AGENT_KEYS = [
     "valuation_modeling",
     "ic_synthesis",
     "recommendation",
+    "appendices",
 ]
 REPORT_PHASE_ID = "reports"
 

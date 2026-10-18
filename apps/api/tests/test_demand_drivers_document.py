@@ -9,7 +9,12 @@ from agetic_cdd_api.agent_document_demand_drivers import (
     render_demand_drivers_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -42,6 +47,8 @@ def test_demand_drivers_prompt_book_listed() -> None:
     assert "demand_drivers" in listed_agents()
     assert "transmission" in system.lower() or "customers won" in system.lower()
     assert "do not stack" in system.lower() or "do not stack" in agent_prompt("demand_drivers").lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("demand_drivers")
     assert "Ola" not in body and "SoftBank" not in body
     assert "placeholder" in body.lower()
@@ -97,7 +104,10 @@ def test_demand_drivers_markdown_follows_prompt_book() -> None:
     assert "## 3. Transmission Path" in md
     assert "## 4. Counter-Drivers" in md
     assert "## 5. Ranked Contribution" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Regulatory Cross-Check" in md
+    assert "## 7. Hypothesis Register" in md
+    assert "## 8. Questions" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "do not stack" in md.lower() or "do not stack" in str(heur).lower()
     assert any(
@@ -109,6 +119,11 @@ def test_demand_drivers_markdown_follows_prompt_book() -> None:
     ).lower() or "tbd" not in " ".join(
         str(d.get("driver") or "") for d in (heur.get("drivers") or []) if isinstance(d, dict)
     ).lower()
+    assert heur.get("regulatory_cross_checks")
+    assert heur.get("hypothesis_register")
+    assert heur.get("volume_growth_reconcile")
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
 
@@ -160,7 +175,7 @@ def test_render_agent_document_demand_drivers() -> None:
             "# Demand Drivers\n\n"
             "## 1. Drivers That Apply\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 9. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -190,5 +205,23 @@ def test_build_demand_drivers_from_corpus() -> None:
     md = render_demand_drivers_markdown("Demand Drivers", spec)
     assert "## 1. Drivers" in md
     assert "## 3. Transmission" in md
+    assert "## 8. Questions" in md
+    assert "## 9. Quality & Reliance" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+
+
+def test_thin_corpus_emits_driver_questions() -> None:
+    heur = _heuristic_demand_drivers_spec(
+        company="ThinCo",
+        corpus="No usable demand driver language here.",
+        sources=["empty.pdf"],
+        geography="India",
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert any(
+        "driver" in q.get("question", "").lower() for q in heur["questions"]
+    )
