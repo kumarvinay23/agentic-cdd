@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 # Keep hints specific — bare ".xlsx" / "p&l" mis-classify QBO exports as workbook.
@@ -83,14 +84,29 @@ def classify_source(*parts: Any) -> str:
 
 
 def display_source_name(kind: str, raw: Iterable[str] | None = None) -> str:
+    """Human source label for exhibits / Key findings.
+
+    Prefer ``monthly pack`` for management / pack-backed figures. Reserve
+    ``QBO ledger`` for explicit ledger/QBO provenance only.
+    """
     if kind == "workbook":
         return "investor workbook"
-    if kind == "ledger":
-        return "QBO ledger"
     if kind == "management":
         return "monthly pack"
+    if kind == "ledger":
+        blob = " ".join(str(s).lower() for s in (raw or []) if s)
+        # Explicit QBO / QuickBooks only — otherwise treat as monthly pack.
+        if any(h in blob for h in ("qbo", "quickbooks", "intuit", ".qbo")):
+            return "QBO ledger"
+        return "monthly pack"
     names = [str(s).strip() for s in (raw or []) if str(s).strip()]
-    return names[0] if names else "alternate source"
+    if not names:
+        return "alternate source"
+    # Prefer a short file/sheet stem over the opaque "alternate source" label.
+    stem = names[0]
+    stem = re.sub(r"\.[A-Za-z0-9]{2,5}$", "", stem)
+    stem = re.sub(r"[_]+", " ", stem).strip()
+    return stem[:48] if stem else "alternate source"
 
 
 def prefer_workbook_among(

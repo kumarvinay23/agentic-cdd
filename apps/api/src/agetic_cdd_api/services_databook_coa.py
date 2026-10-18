@@ -173,7 +173,8 @@ def _generic_nodes() -> tuple[CoANode, ...]:
             captions=["revenue", "total revenue", "total revenues", "net revenue", "net sales", "sales"],
             patterns=[
                 r"\btotal\s+revenues?\b",
-                r"\bnet\s+revenue\b",
+                # "Net revenue retention" must not match the P&L net-revenue line.
+                r"\bnet\s+revenue\b(?!\s+retention)",
                 r"\bnet\s+sales\b",
                 # Total line only — not cohort / mix / "% of revenue" / retention.
                 r"\brevenue\b(?!\s*(?:share|churn|retention|per\b|by\b|mix\b|bridge\b))",
@@ -740,11 +741,22 @@ def _generic_nodes() -> tuple[CoANode, ...]:
             family=MetricFamily.RETENTION,
             definition="Net revenue retention",
             captions=[
-                "net revenue retention",
+                # Bare NRR is OK; residential captions are ignored in _is_ignored_caption.
                 "nrr",
+                "net revenue retention",
                 "net revenue retention (nrr)",
+                "commercial nrr",
+                "commercial net revenue retention",
+                "commercial net revenue retention (nrr)",
             ],
-            patterns=[r"\bnet\s+revenue\s+retention\b", r"(?i)^nrr$"],
+            patterns=[
+                r"(?i)^nrr$",
+                r"(?i)^net\s+revenue\s+retention(?:\s*\(nrr\))?$",
+                r"(?i)\bnet\s+revenue\s+retention\b",
+                r"(?i)^commercial\s+nrr$",
+                r"(?i)^commercial\s+net\s+revenue\s+retention(?:\s*\(nrr\))?$",
+                r"(?i)commercial\s+net\s+revenue\s+retention",
+            ],
             unit="%",
         ),
         _node(
@@ -755,11 +767,24 @@ def _generic_nodes() -> tuple[CoANode, ...]:
             family=MetricFamily.RETENTION,
             definition="Gross revenue retention",
             captions=[
-                "gross revenue retention",
+                # Bare GRR / gross revenue retention OK; unlabeled "gross dollar
+                # retention" stays unmapped (ambiguous commercial vs residential).
                 "grr",
+                "gross revenue retention",
                 "gross revenue retention (grr)",
+                "commercial grr",
+                "commercial gross revenue retention",
+                "commercial gross dollar retention",
+                "commercial gross revenue retention (grr)",
             ],
-            patterns=[r"\bgross\s+revenue\s+retention\b", r"(?i)^grr$"],
+            patterns=[
+                r"(?i)^grr$",
+                r"(?i)^gross\s+revenue\s+retention(?:\s*\(grr\))?$",
+                r"(?i)\bgross\s+revenue\s+retention\b",
+                r"(?i)^commercial\s+grr$",
+                r"(?i)^commercial\s+gross\s+(?:revenue|dollar)\s+retention(?:\s*\(grr\))?$",
+                r"(?i)commercial\s+gross\s+(?:revenue|dollar)\s+retention",
+            ],
             unit="%",
         ),
         _node(
@@ -851,6 +876,11 @@ def _is_ignored_caption(text: str) -> bool:
         return True
     if _ASSET_SCHEDULE_LOAN_RE.search(text):
         return True
+    # Residential retention must not overwrite commercial GRR/NRR on the same key.
+    if re.search(r"(?i)\bresidential\b", text) and re.search(
+        r"(?i)\b(?:grr|nrr|retention)\b", text
+    ):
+        return True
     return False
 
 
@@ -891,6 +921,9 @@ _SOFT_ALIAS_PREFIXES = frozenset(
         "group",
         "company",
         "adjusted",
+        # Segment tag on retention KPIs ("Commercial NRR") — residential stays unmapped
+        # so it cannot overwrite the commercial figure on the same metric key.
+        "commercial",
         # Section tags after a labour line ("Labor & related benefits - SG&A")
         "sg",
         "sga",

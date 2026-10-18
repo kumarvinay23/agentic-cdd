@@ -7,10 +7,16 @@ actually protect it.
 Do not recommend invest or pass. If retention has moved, say by how much and
 in which direction. A falling retention rate is a finding, not a caveat.
 Distinguish behaviour from protection: customers who have stayed are not the
-same as customers who are contractually committed.
+same as customers who are contractually committed. Exclude new logos from
+retention numerators.
 
 Sector focus (if known): [SECTOR]
 Geography focus (if known): [GEOGRAPHY]
+Deal perimeter: [DEAL_PERIMETER]
+Transaction type: [TRANSACTION_TYPE]
+As-of date: [AS_OF_DATE]
+Review periods: [REVIEW_PERIODS]
+Decision stage: [DECISION_STAGE]
 
 1. Build monthly customer and revenue cohorts by start period. Define the
 population precisely and keep it constant: logos, accounts, locations or
@@ -31,6 +37,10 @@ comes up for renewal.
 
 5. Distinguish behaviour from protection. Customers who have stayed are not
 the same as customers who are contractually committed.
+
+6. Run QA that new logos / new customers are excluded from retention
+numerators. Include Questions for every material gap (or state none are
+missing).
 
 Return ONLY JSON matching the schema requested in the user message.
 Use citation tags exactly as '(DOC: data room financials)', '(COMPUTED FACTS)',

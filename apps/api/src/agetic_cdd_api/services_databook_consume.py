@@ -427,9 +427,28 @@ def released_pl_display_rows(
             label = f"{label} †"
             doubtful = True
         years: list[str] = []
+        unit = str(line.get("unit") or "")
+        metric_key = str(line.get("metric_key") or line.get("line_item") or "")
         for k, v in sorted(line.items()):
             if str(k).startswith("fy") and str(k).endswith("_value") and v is not None:
-                years.append(f"{str(k).replace('_value', '').upper()}={v}")
+                display_v: Any = v
+                if unit in {"%", "pp", "pct", "percent"} or "margin" in metric_key.lower():
+                    try:
+                        from agetic_cdd_api.report_builder_base import (
+                            coerce_percent_points,
+                        )
+
+                        display_v = coerce_percent_points(
+                            float(v),
+                            family=str(line.get("metric_key") or "ebitda_margin"),
+                            unit=unit or "%",
+                        )
+                        display_v = (
+                            f"{float(display_v):.2f}".rstrip("0").rstrip(".")
+                        )
+                    except (TypeError, ValueError):
+                        display_v = v
+                years.append(f"{str(k).replace('_value', '').upper()}={display_v}")
         if not years and status == "missing":
             years_txt = "missing"
         elif not years and status == "doubtful":

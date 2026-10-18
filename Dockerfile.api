@@ -4,12 +4,20 @@
 
 FROM python:3.12-slim-bookworm AS base
 
+# Optional provenance (set by scripts/deploy-local-docker.sh)
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+LABEL org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_TIME}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     AGETIC_CDD_HOST=0.0.0.0 \
-    AGETIC_CDD_PORT=4600
+    AGETIC_CDD_PORT=4600 \
+    AGETIC_CDD_IMAGE_GIT_SHA="${GIT_SHA}" \
+    AGETIC_CDD_IMAGE_BUILD_TIME="${BUILD_TIME}"
 
 WORKDIR /app
 

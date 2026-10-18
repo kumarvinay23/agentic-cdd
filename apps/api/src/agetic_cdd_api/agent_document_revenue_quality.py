@@ -59,6 +59,62 @@ _DURABILITY_RULE = (
     "This agent answers how much of the revenue is real and repeating. "
     "Balance-sheet ratios do not belong here."
 )
+_BILLING_RULE = (
+    "Billed revenue is reconciled to recognised revenue — deferred, unbilled "
+    "and cut-off differences are shown, not assumed away."
+)
+_TAXONOMY_RULE = (
+    "Revenue is classified as contracted, cancellable, habitual (behavioural "
+    "uncommitted), one-off / project, or pass-through — not a seller label alone."
+)
+_PVMA_RULE = (
+    "The revenue bridge separates price, volume, mix and acquisition / new "
+    "customers from expansion and churn."
+)
+_RENEWAL_RULE = (
+    "Renewal and cancellation exposure are sized from contracts — remaining "
+    "term and short-notice share alone are not enough."
+)
+_PIPELINE_RULE = (
+    "Pipeline is kept separate from enforceable backlog; behavioural recurring "
+    "is not treated as backlog."
+)
+_ARR_RULE = (
+    "ARR / MRR is stated only when the definition and evidence are present — "
+    "otherwise omitted or labelled as an information request."
+)
+_CROSS_CHECK_RULE = (
+    "Revenue durability is cross-checked with Customer Stickiness and Cash Flow "
+    "where those agents are available."
+)
+_RECURRING_NE_BACKLOG = (
+    "Recurring by behaviour is not enforceable backlog."
+)
+_BILLING_CUE = re.compile(
+    r"(?i)\b(billed|billing|invoiced|invoice\s+value|recognised|recognized|"
+    r"deferred\s+revenue|unbilled|cut[- ]?off)\b"
+)
+_PIPELINE_CUE = re.compile(
+    r"(?i)\b(pipeline|backlog|booked\s+not\s+billed|order\s+book|"
+    r"committed\s+orders?|soft\s+pipeline)\b"
+)
+_ARR_CUE = re.compile(
+    r"(?i)\b(ARR|MRR|annual\s+recurring\s+revenue|monthly\s+recurring\s+revenue)\b"
+)
+_ACQ_CUE = re.compile(
+    r"(?i)\b(new\s+customers?|acquisition|acquired\s+revenue|logo\s+adds?|"
+    r"new\s+logos?)\b"
+)
+_VOLUME_CUE = re.compile(
+    r"(?i)\b(volume|units?\s+sold|quantity|same[- ]store|like[- ]for[- ]like)\b"
+)
+_MIX_CUE = re.compile(
+    r"(?i)\b(mix|channel\s+mix|product\s+mix|segment\s+mix)\b"
+)
+_RENEWAL_CUE = re.compile(
+    r"(?i)\b(renewal|renew(?:ed|ing)?|auto[- ]renew|cancellation\s+exposure|"
+    r"at[- ]risk\s+renewal|upcoming\s+renewal)\b"
+)
 
 _GRR_RE = re.compile(r"(?i)Gross Revenue Retention\s*\(GRR\)\s+(\d+(?:\.\d+)?)%")
 _NRR_RE = re.compile(r"(?i)Net Revenue Retention\s*\(NRR\)\s+(\d+(?:\.\d+)?)%")
@@ -293,7 +349,8 @@ def _extract_revenue_split(
         (
             "recurring_behavioural",
             behavioural,
-            "Repeat / referral purchase (uncommitted)" if behavioural is not None else None,
+            "Repeat / referral purchase (uncommitted) — habitual, not backlog"
+            if behavioural is not None else None,
         ),
         (
             "project_or_one_off",
@@ -453,11 +510,14 @@ def _extract_revenue_bridge(
                 "notes": _BRIDGE_RULE,
             },
             {
-                "component": "New customers",
-                "value": _info_request("new-logo revenue addition between periods"),
+                "component": "New customers / acquisition",
+                "value": (
+                    _clean(next((s for s in _sentences(text) if _ACQ_CUE.search(s)), ""), 120)
+                    or _info_request("new-logo / acquisition revenue between periods")
+                ),
                 "period": "FY2023 → FY2024",
-                "source": _NA,
-                "notes": _BRIDGE_RULE,
+                "source": _DOC_CITE if _ACQ_CUE.search(text) else _NA,
+                "notes": f"{_BRIDGE_RULE} {_PVMA_RULE}",
             },
             {
                 "component": "Expansion",
@@ -472,10 +532,30 @@ def _extract_revenue_bridge(
             },
             {
                 "component": "Price",
-                "value": _info_request("price/mix contribution to the bridge"),
+                "value": _info_request("price contribution to the bridge"),
                 "period": "FY2023 → FY2024",
                 "source": _NA,
-                "notes": _BRIDGE_RULE,
+                "notes": f"{_BRIDGE_RULE} {_PVMA_RULE}",
+            },
+            {
+                "component": "Volume",
+                "value": (
+                    _clean(next((s for s in _sentences(text) if _VOLUME_CUE.search(s)), ""), 120)
+                    or _info_request("volume contribution to the bridge")
+                ),
+                "period": "FY2023 → FY2024",
+                "source": _DOC_CITE if _VOLUME_CUE.search(text) else _NA,
+                "notes": f"{_BRIDGE_RULE} {_PVMA_RULE}",
+            },
+            {
+                "component": "Mix",
+                "value": (
+                    _clean(next((s for s in _sentences(text) if _MIX_CUE.search(s)), ""), 120)
+                    or _info_request("mix contribution to the bridge")
+                ),
+                "period": "FY2023 → FY2024",
+                "source": _DOC_CITE if _MIX_CUE.search(text) else _NA,
+                "notes": f"{_BRIDGE_RULE} {_PVMA_RULE}",
             },
             {
                 "component": "Contraction",
@@ -526,8 +606,8 @@ def _extract_revenue_bridge(
                     break
         if not rows:
             for comp in (
-                "Opening revenue", "New customers", "Expansion", "Price",
-                "Contraction", "Churn", "Closing revenue",
+                "Opening revenue", "New customers / acquisition", "Expansion",
+                "Price", "Volume", "Mix", "Contraction", "Churn", "Closing revenue",
             ):
                 rows.append({
                     "component": comp,
@@ -692,6 +772,629 @@ def _legacy_dual_write(
     return metrics, mix, flags[:6], notes[:8]
 
 
+def _extract_billing_recognised(corpus: str, recognition: list[dict]) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    for s in _sentences(text):
+        if not _BILLING_CUE.search(s):
+            continue
+        if not re.search(r"(?i)billed|invoic|recognised|recognized|deferred|unbilled", s):
+            continue
+        rows.append({
+            "line": _clean(s, 80),
+            "billed": (
+                _clean(s, 100) if re.search(r"(?i)bill|invoic", s) else _info_request("billed amount")
+            ),
+            "recognised": (
+                _clean(s, 100)
+                if re.search(r"(?i)recognised|recognized|deferred|unbilled", s)
+                else _info_request("recognised amount")
+            ),
+            "difference": _info_request("billed − recognised / deferred / unbilled variance"),
+            "source": _DOC_CITE,
+            "notes": _BILLING_RULE,
+        })
+        if len(rows) >= 4:
+            break
+    # Fold recognition findings
+    for r in recognition:
+        if not isinstance(r, dict):
+            continue
+        if not _is_filled(r.get("finding")) or str(r.get("finding")).startswith("Information"):
+            continue
+        rows.append({
+            "line": _clean(r.get("topic") or "Recognition", 60),
+            "billed": _info_request("billed amount for this line"),
+            "recognised": _clean(r.get("finding"), 120),
+            "difference": _clean(r.get("deferred_or_unbilled"), 80),
+            "source": str(r.get("source") or _DOC_CITE),
+            "notes": _BILLING_RULE,
+        })
+        if len(rows) >= 6:
+            break
+    if not rows:
+        rows.append({
+            "line": "Total revenue",
+            "billed": _info_request("billed / invoiced revenue"),
+            "recognised": _info_request("recognised revenue"),
+            "difference": _info_request("deferred / unbilled / cut-off variance"),
+            "source": _NA,
+            "notes": _BILLING_RULE,
+        })
+    return rows[:6]
+
+
+def _extract_revenue_taxonomy(
+    split: list[dict],
+    contracts: list[dict],
+) -> list[dict[str, Any]]:
+    """Map split + contracts into contracted / cancellable / habitual / one-off / pass-through."""
+    rows: list[dict[str, Any]] = []
+    mapping = {
+        "under contract": "contracted",
+        "behavioural": "habitual",
+        "one_off": "one_off",
+        "one-off": "one_off",
+        "project": "one_off",
+        "pass": "pass_through",
+    }
+    for r in split:
+        if not isinstance(r, dict):
+            continue
+        bucket = str(r.get("bucket") or "").lower()
+        if "reconcile" in bucket:
+            continue
+        tax = "other"
+        for needle, label in mapping.items():
+            if needle in bucket:
+                tax = label
+                break
+        share = r.get("share_pct")
+        rows.append({
+            "taxonomy": tax,
+            "bucket": _clean(r.get("bucket"), 40),
+            "share_pct": share,
+            "evidence": _clean(r.get("evidence"), 120),
+            "source": str(r.get("source") or _NA),
+            "notes": f"{_TAXONOMY_RULE} {_RECURRING_NE_BACKLOG}",
+        })
+    # Explicit cancellable from contract terms
+    cancel = next(
+        (
+            c for c in contracts
+            if isinstance(c, dict) and "cancellable" in str(c.get("metric") or "").lower()
+        ),
+        None,
+    )
+    if cancel:
+        rows.append({
+            "taxonomy": "cancellable",
+            "bucket": "cancellable at short notice",
+            "share_pct": cancel.get("value"),
+            "evidence": _clean(cancel.get("detail"), 120),
+            "source": str(cancel.get("source") or _NA),
+            "notes": f"{_TAXONOMY_RULE} {_RENEWAL_RULE}",
+        })
+    if not rows:
+        for tax in ("contracted", "cancellable", "habitual", "one_off", "pass_through"):
+            rows.append({
+                "taxonomy": tax,
+                "bucket": tax,
+                "share_pct": _info_request(f"{tax} share of revenue"),
+                "evidence": _NA,
+                "source": _NA,
+                "notes": _TAXONOMY_RULE,
+            })
+    return rows[:8]
+
+
+def _extract_renewal_cancellation(
+    contracts: list[dict],
+    corpus: str,
+) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    for c in contracts:
+        if not isinstance(c, dict):
+            continue
+        metric = str(c.get("metric") or "")
+        rows.append({
+            "exposure": metric,
+            "value": _clean(c.get("value"), 100),
+            "detail": _clean(c.get("detail"), 120),
+            "source": str(c.get("source") or _NA),
+            "notes": _RENEWAL_RULE,
+        })
+    for s in _sentences(text):
+        if not _RENEWAL_CUE.search(s):
+            continue
+        rows.append({
+            "exposure": "Renewal / cancellation evidence",
+            "value": _clean(s, 120),
+            "detail": _clean(s, 160),
+            "source": _DOC_CITE,
+            "notes": _RENEWAL_RULE,
+        })
+        if len(rows) >= 6:
+            break
+    if len(rows) < 2:
+        rows.append({
+            "exposure": "Upcoming renewal book",
+            "value": _info_request("renewal schedule / at-risk renewal $"),
+            "detail": _NA,
+            "source": _NA,
+            "notes": _RENEWAL_RULE,
+        })
+        rows.append({
+            "exposure": "Cancellation exposure",
+            "value": _info_request("cancellation $ / short-notice share"),
+            "detail": _NA,
+            "source": _NA,
+            "notes": _RENEWAL_RULE,
+        })
+    return rows[:8]
+
+
+def _extract_pipeline_vs_backlog(corpus: str) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for s in _sentences(text):
+        if not _PIPELINE_CUE.search(s):
+            continue
+        has_pipe = bool(re.search(r"(?i)\bpipeline|soft\s+pipeline\b", s))
+        has_back = bool(
+            re.search(r"(?i)\bbacklog|booked\s+not\s+billed|committed\s+orders?\b", s)
+        )
+        kinds: list[str] = []
+        if has_pipe:
+            kinds.append("pipeline")
+        if has_back:
+            kinds.append("backlog")
+        if not kinds:
+            kinds.append("pipeline")
+        for kind in kinds:
+            if kind in seen:
+                continue
+            seen.add(kind)
+            rows.append({
+                "kind": kind,
+                "finding": _clean(s, 160),
+                "enforceable": (
+                    "Yes — treat as backlog"
+                    if kind == "backlog"
+                    else "No — pipeline / soft; not enforceable backlog"
+                ),
+                "source": _DOC_CITE,
+                "notes": f"{_PIPELINE_RULE} {_RECURRING_NE_BACKLOG}",
+            })
+        if len(rows) >= 4:
+            break
+    if "pipeline" not in seen:
+        rows.append({
+            "kind": "pipeline",
+            "finding": _info_request("sales pipeline (non-enforceable)"),
+            "enforceable": "No — pipeline is not backlog",
+            "source": _NA,
+            "notes": _PIPELINE_RULE,
+        })
+    if "backlog" not in seen:
+        rows.append({
+            "kind": "backlog",
+            "finding": _info_request("enforceable backlog / booked orders"),
+            "enforceable": "Yes if contracted and cancellable terms allow",
+            "source": _NA,
+            "notes": f"{_PIPELINE_RULE} {_RECURRING_NE_BACKLOG}",
+        })
+    return rows[:6]
+
+
+def _arr_discipline(corpus: str, retention: dict[str, float]) -> dict[str, Any]:
+    del retention
+    text = _prose(corpus)
+    hit = _ARR_CUE.search(text)
+    if not hit:
+        return {
+            "stated": False,
+            "metric": _NA,
+            "definition": _info_request("ARR/MRR definition (if used)"),
+            "value": _NA,
+            "source": _NA,
+            "notes": _ARR_RULE,
+        }
+    sent = next((s for s in _sentences(text) if _ARR_CUE.search(s)), hit.group(0))
+    # Explicit denial / absence of a definition is not "defined"
+    denied = bool(
+        re.search(
+            r"(?i)\b(no|not|without|absent|missing|undefined)\b.{0,40}\b"
+            r"(ARR|MRR|defin(?:ed|ition))\b"
+            r"|\b(ARR|MRR)\b.{0,40}\b(no|not|undefined|missing)\b.{0,20}\bdefin",
+            sent,
+        )
+    )
+    if denied:
+        return {
+            "stated": False,
+            "metric": "ARR" if re.search(r"(?i)\bARR\b", sent) else "MRR",
+            "definition": _info_request("ARR/MRR definition (if used)"),
+            "value": _NA,
+            "source": _DOC_CITE,
+            "notes": _ARR_RULE,
+            "definition_present": False,
+        }
+    val = _NA
+    vm = re.search(r"(?i)(?:ARR|MRR)[^.%]{0,40}?([\d,]+(?:\.\d+)?\s*(?:Cr|cr|mn|m|bn)?)", sent)
+    if vm:
+        val = _clean(vm.group(0), 80)
+    defined = bool(
+        re.search(r"(?i)\b(defined\s+as|definition\s*[:=]|means|equals|calculated\s+as)\b", sent)
+    )
+    return {
+        "stated": True,
+        "metric": "ARR" if re.search(r"(?i)\bARR\b", sent) else "MRR",
+        "definition": (
+            _clean(sent, 160) if defined
+            else _info_request("ARR/MRR definition — metric named but not defined")
+        ),
+        "value": val if defined else _info_request("ARR/MRR value only after definition evidenced"),
+        "source": _DOC_CITE,
+        "notes": _ARR_RULE,
+        "definition_present": defined,
+    }
+
+
+def _cross_check_stickiness_cash_flow(
+    *,
+    stickiness_spec: dict[str, Any] | None,
+    cash_flow_spec: dict[str, Any] | None,
+    retention: dict[str, float],
+) -> dict[str, Any]:
+    stick_present = isinstance(stickiness_spec, dict) and bool(stickiness_spec)
+    cf_present = isinstance(cash_flow_spec, dict) and bool(cash_flow_spec)
+    aligned: list[str] = []
+    conflicts: list[str] = []
+
+    if stick_present:
+        s_ret = stickiness_spec.get("retention_metrics") if isinstance(
+            stickiness_spec.get("retention_metrics"), dict
+        ) else {}
+        # Also check common stickiness keys
+        for key in ("nrr_pct", "grr_pct", "logo_churn_pct"):
+            rq_v = retention.get(key)
+            st_v = s_ret.get(key) if isinstance(s_ret, dict) else None
+            if st_v is None and isinstance(stickiness_spec.get(key), (int, float)):
+                st_v = stickiness_spec.get(key)
+            if rq_v is not None and st_v is not None:
+                try:
+                    if abs(float(rq_v) - float(st_v)) > 5.0:
+                        conflicts.append(
+                            f"{key}: Revenue Quality {rq_v} vs Stickiness {st_v}"
+                        )
+                    else:
+                        aligned.append(f"{key} aligned with Stickiness ({rq_v})")
+                except (TypeError, ValueError):
+                    pass
+        if not aligned and not conflicts:
+            aligned.append("Stickiness present — no overlapping retention keys to compare yet.")
+    if cf_present:
+        metrics = cash_flow_spec.get("cash_metrics") if isinstance(
+            cash_flow_spec.get("cash_metrics"), dict
+        ) else {}
+        wc = cash_flow_spec.get("working_capital")
+        if metrics or wc:
+            aligned.append("Cash Flow present — durability cross-check available.")
+        else:
+            conflicts.append(
+                "Cash Flow present but thin (no cash_metrics / working_capital) for reconcile."
+            )
+
+    return {
+        "stickiness_present": stick_present,
+        "cash_flow_present": cf_present,
+        "aligned": aligned[:6],
+        "conflicts": conflicts[:6],
+        "notes": (
+            f"{_CROSS_CHECK_RULE} "
+            + (
+                f"{len(conflicts)} conflict(s)."
+                if conflicts
+                else (
+                    "No conflicts detected."
+                    if stick_present or cf_present
+                    else "Stickiness and Cash Flow not available in this run."
+                )
+            )
+        ),
+        "source": _DOC_CITE if (stick_present or cf_present) else _NA,
+    }
+
+
+def _rq_evidence_qa(
+    *,
+    billing: list[dict[str, Any]],
+    taxonomy: list[dict[str, Any]],
+    bridge: list[dict],
+    renewals: list[dict[str, Any]],
+    pipeline: list[dict[str, Any]],
+    arr: dict[str, Any],
+    cross: dict[str, Any],
+    split: list[dict],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    bill_ok = any(
+        isinstance(r, dict)
+        and (
+            (
+                _is_filled(r.get("recognised"))
+                and not str(r.get("recognised")).startswith("Information")
+            )
+            or (
+                _is_filled(r.get("billed"))
+                and not str(r.get("billed")).startswith("Information")
+            )
+        )
+        for r in billing
+    )
+    rows.append({
+        "check": "billing_recognised_reconcile",
+        "status": "PASS" if bill_ok else "FAIL",
+        "finding": (
+            "Billing / recognition evidence present"
+            if bill_ok
+            else _info_request("billed ↔ recognised reconcile (deferred / unbilled)")
+        ),
+        "action": _BILLING_RULE,
+    })
+
+    tax_filled = {
+        str(r.get("taxonomy") or "")
+        for r in taxonomy
+        if isinstance(r, dict)
+        and (
+            isinstance(r.get("share_pct"), (int, float))
+            or (
+                _is_filled(r.get("share_pct"))
+                and not str(r.get("share_pct")).startswith("Information")
+            )
+        )
+    }
+    need = {"contracted", "habitual", "one_off", "cancellable"}
+    tax_ok = len(tax_filled & need) >= 2
+    rows.append({
+        "check": "revenue_taxonomy",
+        "status": "PASS" if tax_ok else "FAIL",
+        "finding": (
+            f"Taxonomy buckets filled: {', '.join(sorted(tax_filled)) or 'none'}"
+            if tax_ok
+            else _info_request("contracted / cancellable / habitual / one-off taxonomy")
+        ),
+        "action": _TAXONOMY_RULE,
+    })
+
+    pvma = {"Price", "Volume", "Mix", "New customers / acquisition", "New customers"}
+    pvma_ok = sum(
+        1 for b in bridge
+        if isinstance(b, dict)
+        and str(b.get("component") or "") in pvma
+        and _is_filled(b.get("value"))
+        and not str(b.get("value")).startswith("Information")
+    )
+    rows.append({
+        "check": "price_volume_mix_acquisition",
+        "status": "PASS" if pvma_ok >= 1 else "FAIL",
+        "finding": (
+            f"{pvma_ok} price/volume/mix/acquisition bridge component(s)"
+            if pvma_ok >= 1
+            else _info_request("price / volume / mix / acquisition bridge drivers")
+        ),
+        "action": _PVMA_RULE,
+    })
+
+    ren_ok = sum(
+        1 for r in renewals
+        if isinstance(r, dict)
+        and _is_filled(r.get("value"))
+        and not str(r.get("value")).startswith("Information")
+    )
+    rows.append({
+        "check": "renewal_cancellation_exposure",
+        "status": "PASS" if ren_ok >= 1 else "FAIL",
+        "finding": (
+            f"{ren_ok} renewal / cancellation exposure row(s)"
+            if ren_ok >= 1
+            else _info_request("renewal schedule and cancellation exposure")
+        ),
+        "action": _RENEWAL_RULE,
+    })
+
+    pipe_ok = any(
+        isinstance(r, dict)
+        and r.get("kind") in {"pipeline", "backlog"}
+        and _is_filled(r.get("finding"))
+        and not str(r.get("finding")).startswith("Information")
+        for r in pipeline
+    )
+    # Also PASS if explicit separation rule is present with kinds
+    kinds = {str(r.get("kind") or "") for r in pipeline if isinstance(r, dict)}
+    rows.append({
+        "check": "pipeline_vs_backlog",
+        "status": "PASS" if pipe_ok or ({"pipeline", "backlog"} <= kinds) else "FAIL",
+        "finding": (
+            "Pipeline kept separate from backlog"
+            if pipe_ok or ({"pipeline", "backlog"} <= kinds)
+            else _info_request("pipeline vs enforceable backlog")
+        ),
+        "action": _PIPELINE_RULE,
+    })
+
+    if arr.get("stated") and not arr.get("definition_present"):
+        arr_status = "FAIL"
+        arr_finding = _info_request("ARR/MRR definition before stating the metric")
+    else:
+        arr_status = "PASS"
+        arr_finding = (
+            _ARR_RULE if not arr.get("stated")
+            else f"{arr.get('metric')} stated with definition"
+        )
+    rows.append({
+        "check": "arr_discipline",
+        "status": arr_status,
+        "finding": arr_finding,
+        "action": _ARR_RULE,
+    })
+
+    cross_ok = (
+        (cross.get("stickiness_present") or cross.get("cash_flow_present"))
+        and not cross.get("conflicts")
+    )
+    rows.append({
+        "check": "stickiness_cash_flow_cross_check",
+        "status": "PASS" if cross_ok else "FAIL",
+        "finding": (
+            "; ".join(cross.get("aligned") or [])[:200]
+            if cross_ok
+            else (
+                "; ".join(cross.get("conflicts") or [])[:200]
+                if cross.get("conflicts")
+                else _info_request("Stickiness + Cash Flow outputs for cross-check")
+            )
+        ),
+        "action": _CROSS_CHECK_RULE,
+    })
+
+    # Recurring ≠ backlog: FAIL if habitual/behavioural labelled as backlog
+    bad = any(
+        isinstance(r, dict)
+        and (
+            "behavioural" in str(r.get("bucket") or "").lower()
+            or str(r.get("taxonomy") or "") == "habitual"
+        )
+        and re.search(r"(?i)\bbacklog\b", str(r.get("evidence") or "") + str(r.get("notes") or ""))
+        and "not backlog" not in str(r.get("evidence") or "").lower()
+        and "not backlog" not in str(r.get("notes") or "").lower()
+        for r in list(split) + list(taxonomy)
+    )
+    rows.append({
+        "check": "recurring_ne_enforceable_backlog",
+        "status": "FAIL" if bad else "PASS",
+        "finding": (
+            "Behavioural recurring incorrectly treated as backlog"
+            if bad
+            else _RECURRING_NE_BACKLOG
+        ),
+        "action": _RECURRING_NE_BACKLOG,
+    })
+    return rows
+
+
+def _questions_from_rq_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("rq_evidence_qa")
+        if isinstance(spec.get("rq_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("billing_recognised_reconcile"):
+        out.append(normalize_question({
+            "question": "Provide billed ↔ recognised revenue reconcile with deferred/unbilled",
+            "required_records": "Billing ledger + revenue recognition schedule",
+            "decision_effect": "Durability cannot rest on unreconciled recognition",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "billing_recognised_reconcile QA PASS",
+            "interim_treatment": "BLOCKED — do not invent recognition bridges",
+        }))
+    if _qa_fail("revenue_taxonomy"):
+        out.append(normalize_question({
+            "question": "Classify revenue as contracted / cancellable / habitual / one-off / pass-through",
+            "required_records": "Contract register + revenue by durability bucket",
+            "decision_effect": "Seller labels misstate the multiple",
+            "priority": "signing_condition",
+            "owner": "financial / commercial diligence",
+            "timing": "per deal timetable",
+            "closure_test": "revenue_taxonomy QA PASS",
+            "interim_treatment": "LIMITED — withhold durability claims",
+        }))
+    if _qa_fail("price_volume_mix_acquisition"):
+        out.append(normalize_question({
+            "question": "Complete the revenue bridge with price, volume, mix and acquisition",
+            "required_records": "Period bridge with driver pack",
+            "decision_effect": "NRR alone does not explain growth quality",
+            "priority": "signing_condition",
+            "owner": "financial diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "price_volume_mix_acquisition QA PASS",
+            "interim_treatment": "LIMITED — flag bridge as incomplete",
+        }))
+    if _qa_fail("renewal_cancellation_exposure"):
+        out.append(normalize_question({
+            "question": "Size renewal book and cancellation / short-notice exposure",
+            "required_records": "Contract renewal schedule + termination terms",
+            "decision_effect": "Near-term cancellation risk is untested",
+            "priority": "signing_condition",
+            "owner": "commercial diligence lead",
+            "timing": "before IC",
+            "closure_test": "renewal_cancellation_exposure QA PASS",
+            "interim_treatment": "LIMITED — treat renewals as at risk",
+        }))
+    if _qa_fail("pipeline_vs_backlog"):
+        out.append(normalize_question({
+            "question": "Separate sales pipeline from enforceable backlog",
+            "required_records": "Order book / backlog vs CRM pipeline",
+            "decision_effect": "Soft pipeline must not be valued as backlog",
+            "priority": "mandatory_pre_decision",
+            "owner": "commercial diligence lead",
+            "timing": "before IC",
+            "closure_test": "pipeline_vs_backlog QA PASS",
+            "interim_treatment": "Strip pipeline from backlog claims",
+        }))
+    if _qa_fail("arr_discipline"):
+        out.append(normalize_question({
+            "question": "Define ARR/MRR with calculation evidence or remove the metric",
+            "required_records": "ARR definition memo + bridge to recognised revenue",
+            "decision_effect": "Undefined ARR misstates recurring revenue",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "arr_discipline QA PASS",
+            "interim_treatment": "Omit ARR until defined",
+        }))
+    if _qa_fail("stickiness_cash_flow_cross_check"):
+        out.append(normalize_question({
+            "question": "Supply Stickiness and Cash Flow outputs to cross-check durability",
+            "required_records": "Customer Stickiness + Cash Flow agent specs",
+            "decision_effect": "Retention / cash conflicts undermine revenue quality",
+            "priority": "signing_condition",
+            "owner": "financial diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "stickiness_cash_flow_cross_check QA PASS",
+            "interim_treatment": "LIMITED until cross-check complete",
+        }))
+    if _qa_fail("recurring_ne_enforceable_backlog"):
+        out.append(normalize_question({
+            "question": "Remove behavioural recurring from backlog; keep as habitual only",
+            "required_records": "Contract vs behavioural revenue split",
+            "decision_effect": "Habitual revenue is not enforceable backlog",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "recurring_ne_enforceable_backlog QA PASS",
+            "interim_treatment": "REWORK — strip backlog label from habitual",
+        }))
+    return out
+
+
 def _quality_reliance(
     *,
     split: list[dict],
@@ -768,6 +1471,8 @@ def _heuristic_revenue_quality_spec(
     sources: list[str],
     geography: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    stickiness_spec: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del geography
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
@@ -782,6 +1487,16 @@ def _heuristic_revenue_quality_spec(
     bridge = _extract_revenue_bridge(corpus, retention)
     recognition = _extract_recognition(corpus)
     nonrep = _extract_non_repeating(corpus)
+    billing = _extract_billing_recognised(corpus, recognition)
+    taxonomy = _extract_revenue_taxonomy(split, contracts)
+    renewals = _extract_renewal_cancellation(contracts, corpus)
+    pipeline = _extract_pipeline_vs_backlog(corpus)
+    arr = _arr_discipline(corpus, retention)
+    cross = _cross_check_stickiness_cash_flow(
+        stickiness_spec=stickiness_spec,
+        cash_flow_spec=cash_flow_spec,
+        retention=retention,
+    )
 
     metrics, mix, flags, notes = _legacy_dual_write(
         retention=retention,
@@ -790,6 +1505,25 @@ def _heuristic_revenue_quality_spec(
         corpus=corpus,
         legacy=legacy,
     )
+    for rule in (
+        _BILLING_RULE, _TAXONOMY_RULE, _PVMA_RULE, _RENEWAL_RULE,
+        _PIPELINE_RULE, _ARR_RULE, _CROSS_CHECK_RULE, _RECURRING_NE_BACKLOG,
+    ):
+        if not any(rule[:28].lower() in str(n).lower() for n in notes):
+            notes.append(rule)
+
+    rq_qa = _rq_evidence_qa(
+        billing=billing,
+        taxonomy=taxonomy,
+        bridge=bridge,
+        renewals=renewals,
+        pipeline=pipeline,
+        arr=arr,
+        cross=cross,
+        split=split,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in rq_qa)
+
     quality, reliance, rationale = _quality_reliance(
         split=split,
         contracts=contracts,
@@ -797,6 +1531,12 @@ def _heuristic_revenue_quality_spec(
         recognition=recognition,
         nonrep=nonrep,
     )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "Revenue quality QA has open FAILs — reliance limited. " + rationale
+    if cross.get("conflicts"):
+        quality = "REWORK"
+        rationale = "Stickiness/Cash Flow cross-check conflicts — rework. " + rationale
 
     contracted = next(
         (
@@ -820,18 +1560,25 @@ def _heuristic_revenue_quality_spec(
     )
     bits.append(f"{nonrep_n} non-repeating item(s)")
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "revenue_split": split,
         "contract_terms": contracts,
         "revenue_bridge": bridge,
         "recognition_cutoff": recognition,
         "non_repeating": nonrep,
+        "billing_recognised": billing,
+        "revenue_taxonomy": taxonomy,
+        "renewal_cancellation": renewals,
+        "pipeline_vs_backlog": pipeline,
+        "arr_discipline": arr,
+        "stickiness_cash_flow_cross_check": cross,
+        "rq_evidence_qa": rq_qa,
         # Legacy dual-write
         "retention_metrics": metrics,
         "revenue_mix": mix,
         "quality_flags": flags,
-        "quality_notes": notes,
+        "quality_notes": notes[:12],
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": rationale,
@@ -841,6 +1588,8 @@ def _heuristic_revenue_quality_spec(
         "dd_code": legacy.get("dd_code") or _DD_CODE,
         "empty": not split and not metrics,
     }
+    out["questions"] = _questions_from_rq_gaps(out)
+    return out
 
 
 def _llm_revenue_quality_spec(
@@ -851,6 +1600,11 @@ def _llm_revenue_quality_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -863,6 +1617,12 @@ def _llm_revenue_quality_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -877,18 +1637,35 @@ def _llm_revenue_quality_spec(
         "insight_snapshot: string,\n"
         "revenue_split: [{bucket, period, share_pct, amount, evidence, source, notes}],\n"
         "contract_terms: [{metric, value, detail, source, notes}],\n"
-        "revenue_bridge: [{component, value, period, source, notes}],\n"
+        "revenue_bridge: [{component, value, period, source, notes}] — include "
+        "Opening, New customers/acquisition, Expansion, Price, Volume, Mix, "
+        "Contraction, Churn, Closing,\n"
         "recognition_cutoff: [{topic, finding, deferred_or_unbilled, "
         "treatment_change, source, notes}],\n"
         "non_repeating: [{item, kind, size, will_repeat, source, notes}],\n"
+        "billing_recognised: [{line, billed, recognised, difference, source, notes}],\n"
+        "revenue_taxonomy: [{taxonomy (contracted|cancellable|habitual|one_off|"
+        "pass_through), bucket, share_pct, evidence, source, notes}],\n"
+        "renewal_cancellation: [{exposure, value, detail, source, notes}],\n"
+        "pipeline_vs_backlog: [{kind (pipeline|backlog), finding, enforceable, "
+        "source, notes}],\n"
+        "arr_discipline: {stated, metric, definition, value, source, notes, "
+        "definition_present},\n"
         "retention_metrics: {string: number},\n"
         "revenue_mix: {string: number},\n"
         "quality_flags: [string],\n"
         "quality_notes: [string],\n"
+        "rq_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "billing_recognised_reconcile, revenue_taxonomy, price_volume_mix_acquisition, "
+        "renewal_cancellation_exposure, pipeline_vs_backlog, arr_discipline, "
+        "stickiness_cash_flow_cross_check, recurring_ne_enforceable_backlog,\n"
+        "questions: [{question, required_records, decision_effect, priority, owner, "
+        "timing, closure_test, interim_treatment}],\n"
         "quality_verdict: PASS|REWORK,\n"
         "reliance_verdict: READY|LIMITED|BLOCKED,\n"
         "quality_reliance_rationale: string.\n"
-        "Do NOT include balance-sheet ratios. No invest or pass."
+        "Do NOT include balance-sheet ratios. No invest or pass. "
+        "Recurring by behaviour is not enforceable backlog. ARR only if defined."
     )
     try:
         return generate_json(system=system, user=user, temperature=0.1)
@@ -902,12 +1679,16 @@ def _normalise_llm_spec(
     sources: list[str],
     legacy_spec: dict[str, Any] | None,
     corpus: str,
+    stickiness_spec: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     heur = _heuristic_revenue_quality_spec(
         company="Target",
         corpus=corpus,
         sources=sources,
         legacy_spec=legacy_spec,
+        stickiness_spec=stickiness_spec,
+        cash_flow_spec=cash_flow_spec,
     )
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
 
@@ -917,7 +1698,6 @@ def _normalise_llm_spec(
         for row in raw:
             if not isinstance(row, dict):
                 continue
-            # Drop balance-sheet contamination
             blob = " ".join(str(v) for v in row.values())
             if _BALANCE_SHEET_CUE.search(blob):
                 continue
@@ -935,6 +1715,17 @@ def _normalise_llm_spec(
     llm["revenue_bridge"] = _rows("revenue_bridge", "component")
     llm["recognition_cutoff"] = _rows("recognition_cutoff", "topic")
     llm["non_repeating"] = _rows("non_repeating", "item")
+    llm["billing_recognised"] = _rows("billing_recognised", "line")
+    llm["revenue_taxonomy"] = _rows("revenue_taxonomy", "taxonomy")
+    llm["renewal_cancellation"] = _rows("renewal_cancellation", "exposure")
+    llm["pipeline_vs_backlog"] = _rows("pipeline_vs_backlog", "kind")
+
+    arr_raw = llm.get("arr_discipline") if isinstance(llm.get("arr_discipline"), dict) else {}
+    llm["arr_discipline"] = arr_raw or heur.get("arr_discipline") or {}
+
+    llm["stickiness_cash_flow_cross_check"] = (
+        heur.get("stickiness_cash_flow_cross_check") or {}
+    )
 
     ret = llm.get("retention_metrics") if isinstance(llm.get("retention_metrics"), dict) else {}
     llm["retention_metrics"] = {
@@ -961,9 +1752,27 @@ def _normalise_llm_spec(
         for n in notes
         if isinstance(n, str) and n.strip() and not _BALANCE_SHEET_CUE.search(n)
     ]
-    if _DURABILITY_RULE not in notes:
-        notes.insert(0, _DURABILITY_RULE)
-    llm["quality_notes"] = (notes or heur.get("quality_notes") or [])[:8]
+    for rule in (
+        _DURABILITY_RULE, _BILLING_RULE, _TAXONOMY_RULE, _PVMA_RULE, _RENEWAL_RULE,
+        _PIPELINE_RULE, _ARR_RULE, _CROSS_CHECK_RULE, _RECURRING_NE_BACKLOG,
+    ):
+        if not any(rule[:28].lower() in str(n).lower() for n in notes):
+            notes.append(rule)
+    llm["quality_notes"] = (notes or heur.get("quality_notes") or [])[:12]
+
+    rq_qa = _rq_evidence_qa(
+        billing=llm["billing_recognised"],
+        taxonomy=llm["revenue_taxonomy"],
+        bridge=llm["revenue_bridge"],
+        renewals=llm["renewal_cancellation"],
+        pipeline=llm["pipeline_vs_backlog"],
+        arr=llm["arr_discipline"] if isinstance(llm["arr_discipline"], dict) else {},
+        cross=llm["stickiness_cash_flow_cross_check"],
+        split=llm["revenue_split"],
+    )
+    llm["rq_evidence_qa"] = rq_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in rq_qa)
+    cross = llm["stickiness_cash_flow_cross_check"]
 
     quality, reliance, rationale = _quality_reliance(
         split=llm["revenue_split"],
@@ -981,6 +1790,30 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "Revenue quality QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+    if isinstance(cross, dict) and cross.get("conflicts"):
+        llm["quality_verdict"] = "REWORK"
+        llm["quality_reliance_rationale"] = (
+            "Stickiness/Cash Flow cross-check conflicts — rework. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_rq_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_rq_gaps(llm)
 
     for dead in (
         "recommendation", "confidence", "investment_verdict", "verdict",
@@ -1005,6 +1838,8 @@ def build_revenue_quality_spec(
     index: dict[str, Any] | None = None,
     company: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    stickiness_spec: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
     corpus: str | None = None,
     sources: list[str] | None = None,
     prefer_heuristic: bool = False,
@@ -1016,6 +1851,7 @@ def build_revenue_quality_spec(
     target = (company or deal.company or deal.name or "Target").strip()
     vars_ = prompt_vars_from_deal(deal)
     geography = vars_.get("geography")
+    legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
 
     if corpus is None:
         gathered_corpus, gathered_sources = gather_revenue_quality_corpus(deal, idx)
@@ -1044,22 +1880,35 @@ def build_revenue_quality_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
-                legacy_spec=legacy_spec,
+                legacy_spec=legacy,
                 corpus=corpus,
+                stickiness_spec=stickiness_spec,
+                cash_flow_spec=cash_flow_spec,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_revenue_quality_spec(
+    heur = _heuristic_revenue_quality_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
-        legacy_spec=legacy_spec,
+        legacy_spec=legacy,
+        stickiness_spec=stickiness_spec,
+        cash_flow_spec=cash_flow_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def _table(headers: list[str], rows: list[list[str]]) -> str:
@@ -1110,6 +1959,30 @@ def render_revenue_quality_markdown(
     nonrep = (
         spec.get("non_repeating") if isinstance(spec.get("non_repeating"), list) else []
     )
+    billing = (
+        spec.get("billing_recognised")
+        if isinstance(spec.get("billing_recognised"), list) else []
+    )
+    taxonomy = (
+        spec.get("revenue_taxonomy")
+        if isinstance(spec.get("revenue_taxonomy"), list) else []
+    )
+    renewals = (
+        spec.get("renewal_cancellation")
+        if isinstance(spec.get("renewal_cancellation"), list) else []
+    )
+    pipeline = (
+        spec.get("pipeline_vs_backlog")
+        if isinstance(spec.get("pipeline_vs_backlog"), list) else []
+    )
+    arr = (
+        spec.get("arr_discipline")
+        if isinstance(spec.get("arr_discipline"), dict) else {}
+    )
+    cross = (
+        spec.get("stickiness_cash_flow_cross_check")
+        if isinstance(spec.get("stickiness_cash_flow_cross_check"), dict) else {}
+    )
     flags = spec.get("quality_flags") if isinstance(spec.get("quality_flags"), list) else []
     notes = spec.get("quality_notes") if isinstance(spec.get("quality_notes"), list) else []
     retention = (
@@ -1125,6 +1998,7 @@ def render_revenue_quality_markdown(
     # 1
     parts.append("## 1. Revenue Split\n\n")
     parts.append(f"{_SPLIT_RULE}\n\n")
+    parts.append(f"{_TAXONOMY_RULE}\n\n")
     if split:
         parts.append(_table(
             ["Bucket", "Period", "Share", "Amount", "Evidence", "Source"],
@@ -1142,11 +2016,43 @@ def render_revenue_quality_markdown(
         ))
     else:
         parts.append(f"**{_info_request('revenue split by durability bucket')}**\n\n")
+    if taxonomy:
+        parts.append("### Taxonomy (contracted / cancellable / habitual / one-off)\n\n")
+        parts.append(_table(
+            ["Taxonomy", "Bucket", "Share", "Evidence", "Source"],
+            [
+                [
+                    _clean(r.get("taxonomy"), 24),
+                    _clean(r.get("bucket"), 40),
+                    _fmt_share(r.get("share_pct")),
+                    _clean(r.get("evidence"), 100),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in taxonomy if isinstance(r, dict)
+            ],
+        ))
+    if billing:
+        parts.append("### Billing ↔ recognised\n\n")
+        parts.append(f"{_BILLING_RULE}\n\n")
+        parts.append(_table(
+            ["Line", "Billed", "Recognised", "Difference", "Source"],
+            [
+                [
+                    _clean(r.get("line"), 60),
+                    _clean(r.get("billed"), 80),
+                    _clean(r.get("recognised"), 80),
+                    _clean(r.get("difference"), 60),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in billing if isinstance(r, dict)
+            ],
+        ))
     parts.append("---\n\n")
 
     # 2
     parts.append("## 2. Contract Share, Term & Cancellation\n\n")
     parts.append(f"{_CONTRACT_RULE}\n\n")
+    parts.append(f"{_RENEWAL_RULE}\n\n")
     if contracts:
         parts.append(_table(
             ["Metric", "Value", "Detail", "Source"],
@@ -1162,11 +2068,26 @@ def render_revenue_quality_markdown(
         ))
     else:
         parts.append(f"**{_info_request('contract share and remaining term')}**\n\n")
+    if renewals:
+        parts.append("### Renewal / cancellation exposure\n\n")
+        parts.append(_table(
+            ["Exposure", "Value", "Detail", "Source"],
+            [
+                [
+                    _clean(r.get("exposure"), 40),
+                    _clean(r.get("value"), 80),
+                    _clean(r.get("detail"), 100),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in renewals if isinstance(r, dict)
+            ],
+        ))
     parts.append("---\n\n")
 
     # 3
     parts.append("## 3. Revenue Bridge\n\n")
     parts.append(f"{_BRIDGE_RULE}\n\n")
+    parts.append(f"{_PVMA_RULE}\n\n")
     if bridge:
         parts.append(_table(
             ["Component", "Value", "Period", "Source"],
@@ -1192,6 +2113,7 @@ def render_revenue_quality_markdown(
     # 4
     parts.append("## 4. Recognition & Cut-off\n\n")
     parts.append(f"{_RECOG_RULE}\n\n")
+    parts.append(f"{_PIPELINE_RULE}\n\n")
     if recog:
         parts.append(_table(
             ["Topic", "Finding", "Deferred / unbilled", "Treatment change", "Source"],
@@ -1208,11 +2130,27 @@ def render_revenue_quality_markdown(
         ))
     else:
         parts.append(f"**{_info_request('revenue recognition and cut-off')}**\n\n")
+    if pipeline:
+        parts.append("### Pipeline vs enforceable backlog\n\n")
+        parts.append(f"{_RECURRING_NE_BACKLOG}\n\n")
+        parts.append(_table(
+            ["Kind", "Finding", "Enforceable?", "Source"],
+            [
+                [
+                    _clean(r.get("kind"), 20),
+                    _clean(r.get("finding"), 140),
+                    _clean(r.get("enforceable"), 80),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in pipeline if isinstance(r, dict)
+            ],
+        ))
     parts.append("---\n\n")
 
     # 5
     parts.append("## 5. Non-repeating Revenue\n\n")
     parts.append(f"{_NONREP_RULE}\n\n")
+    parts.append(f"{_ARR_RULE}\n\n")
     if nonrep:
         parts.append(_table(
             ["Item", "Kind", "Size", "Will repeat?", "Source"],
@@ -1229,6 +2167,37 @@ def render_revenue_quality_markdown(
         ))
     else:
         parts.append(f"**{_info_request('non-repeating revenue items')}**\n\n")
+    if arr:
+        parts.append("### ARR / MRR discipline\n\n")
+        parts.append(_table(
+            ["Field", "Value"],
+            [
+                ["Stated", "Yes" if arr.get("stated") else "No"],
+                ["Metric", _clean(arr.get("metric"), 40)],
+                ["Definition", _clean(arr.get("definition"), 160)],
+                ["Value", _clean(arr.get("value"), 80)],
+                ["Source", _clean(arr.get("source") or _NA, 40)],
+            ],
+        ))
+    if cross:
+        parts.append("### Stickiness + Cash Flow cross-check\n\n")
+        parts.append(f"{_CROSS_CHECK_RULE}\n\n")
+        parts.append(_table(
+            ["Field", "Value"],
+            [
+                ["Stickiness present", "Yes" if cross.get("stickiness_present") else "No"],
+                ["Cash Flow present", "Yes" if cross.get("cash_flow_present") else "No"],
+                [
+                    "Aligned",
+                    _clean("; ".join(cross.get("aligned") or []) or _NA, 200),
+                ],
+                [
+                    "Conflicts",
+                    _clean("; ".join(cross.get("conflicts") or []) or "None", 200),
+                ],
+                ["Notes", _clean(cross.get("notes"), 200)],
+            ],
+        ))
     if flags or notes or mix:
         parts.append("### Legacy quality flags / mix\n\n")
         for f in flags[:4]:
@@ -1243,28 +2212,90 @@ def render_revenue_quality_markdown(
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    rq_qa = (
+        spec.get("rq_evidence_qa")
+        if isinstance(spec.get("rq_evidence_qa"), list) else []
+    )
+    parts.append("## 6. Revenue Quality Evidence QA\n\n")
+    parts.append(
+        "QA enforces billing↔recognised, taxonomy, price/volume/mix/acquisition, "
+        "renewal/cancellation, pipeline vs backlog, ARR discipline, Stickiness + "
+        "Cash Flow cross-check, and recurring ≠ enforceable backlog.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in rq_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('revenue quality evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material revenue-quality gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
-    parts.append(f"**Quality:** {qv} — is the work accurate and honest about limits?\n\n")
+    rationale = spec.get("quality_reliance_rationale") or _NA
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _soften_invest(_clean(rationale, 460))],
+        ],
+    ))
     parts.append(
-        f"**Reliance:** {rv} — can diligence rest on this durability picture?\n\n"
+        f"**Quality:** {_clean(qv, 20)} — is the work accurate and honest about limits?\n\n"
     )
-    rationale = spec.get("quality_reliance_rationale")
-    if _is_filled(rationale):
-        parts.append(f"{_soften_invest(str(rationale))}\n\n")
     parts.append(
-        "*This document measures how durable the revenue is. It does not "
-        "recommend invest or pass. Balance-sheet ratios are out of scope.*\n\n"
+        f"**Reliance:** {_clean(rv, 20)} — can diligence rest on this durability picture?\n\n"
+    )
+    parts.append(
+        "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open revenue-quality QA FAILs cap READY → LIMITED. "
+        "This document measures how durable the revenue is. It does not "
+        "recommend invest or pass. Balance-sheet ratios are out of scope. "
+        f"{_RECURRING_NE_BACKLOG}*\n\n"
     )
     parts.append("---\n\n")
 
     parts.append("## Sources\n\n")
+    parts.append(f"{_SOURCES_MARKER}\n\n")
     if srcs:
         for i, s in enumerate(srcs[:16], start=1):
-            parts.append(f"[{i}] {_clean(s, 120)} ")
-        parts.append("\n")
+            parts.append(f"{i}. {_clean(s, 120)}\n")
     else:
-        parts.append(f"{_NA}\n")
-    parts.append(f"\n{_SOURCES_MARKER}\n")
+        parts.append(f"1. {_NA}\n")
+    parts.append("\n")
     return "".join(parts)

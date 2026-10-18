@@ -1,7 +1,8 @@
 """Compose DiligenceIQ Strategic Direction — growth plan vs evidence (prompt book).
 
 Separate ambition / approved budget / tested case. Bridge, plan-vs-actual,
-initiatives, funding. No high-confidence while funding/capacity untested.
+initiatives (stand-alone vs synergy), funding vs Cash Flow / Capital Structure.
+No high-confidence while funding/capacity untested.
 """
 
 from __future__ import annotations
@@ -21,6 +22,42 @@ from agetic_cdd_api.models import Deal
 _COMPUTED = "(COMPUTED FACTS)"
 _NA = "N/A (data room did not provide it)"
 _SOURCES_MARKER = "<!-- cdd:sources - maintained by the document copilot; [n] in the text resolves here -->"
+
+_THREE_CASE_RULE = (
+    "Management ambition, the board-approved budget, and the independently "
+    "tested case stay on separate lines — never merge them."
+)
+_BRIDGE_RULE = (
+    "The plan bridge runs from latest actual revenue/EBITDA to plan final year "
+    "by price, volume, mix, new geography, acquisition and cost."
+)
+_PVA_RULE = (
+    "Delivery history uses original target vs actual for prior years — a future "
+    "target is not evidence of past delivery."
+)
+_INITIATIVE_RULE = (
+    "Each initiative states investment, capacity/hiring, dependencies, owner, "
+    "timing and an on-track milestone — and is flagged stand-alone or synergy."
+)
+_FUNDING_RULE = (
+    "Funding reconciles to available cash and debt capacity and is cross-checked "
+    "with Cash Flow / Capital Structure where those agents are available."
+)
+_SYNERGY_RULE = (
+    "Stand-alone growth is kept separate from synergy / buyer-contributed upside."
+)
+_NO_HIGH_CONF_RULE = (
+    "Do not assign high confidence while material funding or capacity "
+    "assumptions remain untested."
+)
+_SYNERGY_CUE = re.compile(
+    r"(?i)\b(synerg(?:y|ies)|buyer\s+contribut|sponsor\s+value[- ]?add|"
+    r"acquisition\s+upside|post[- ]deal\s+integration)\b"
+)
+_STANDALONE_CUE = re.compile(
+    r"(?i)\b(stand[- ]alone|organic\s+growth|self[- ]funded|"
+    r"funded\s+from\s+operating\s+cash|ex[- ]buyer)\b"
+)
 
 _FY_ROW = re.compile(
     r"FY\s*(20\d{2})E?\s+FY\s*(20\d{2})E?\s+FY\s*(20\d{2})E?\s+"
@@ -385,11 +422,21 @@ def _plan_vs_actual(corpus: str) -> list[dict[str, str]]:
     return rows[:3]
 
 
+def _classify_synergy_flag(text: str, *, default: str = "stand_alone") -> str:
+    if _SYNERGY_CUE.search(text or ""):
+        return "synergy / buyer-dependent"
+    if _STANDALONE_CUE.search(text or ""):
+        return "stand_alone"
+    return default
+
+
 def _initiatives(corpus: str, f01: dict[str, Any] | None) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
+    pack_default = _classify_synergy_flag(corpus, default="stand_alone")
     for m in _MILESTONE.finditer(corpus[:50_000]):
         name = _clean(m.group(1), 40)
         target = f"{m.group(2)}% {m.group(3)}" if m.group(2) else m.group(3)
+        window = m.group(0)
         rows.append({
             "initiative": name,
             "investment": _info_request(f"capex / opex for {name}"),
@@ -398,7 +445,9 @@ def _initiatives(corpus: str, f01: dict[str, Any] | None) -> list[dict[str, str]
             "owner": _info_request(f"owner for {name}"),
             "timing": _clean(m.group(3), 20),
             "milestone": f"{name} → {target} {_DOC_CITE}",
+            "synergy_flag": _classify_synergy_flag(window, default=pack_default),
             "source": _DOC_CITE,
+            "notes": f"{_INITIATIVE_RULE} {_SYNERGY_RULE}",
         })
         if len(rows) >= 5:
             break
@@ -418,7 +467,9 @@ def _initiatives(corpus: str, f01: dict[str, Any] | None) -> list[dict[str, str]
                 "owner": _info_request(f"owner for {label}"),
                 "timing": _NA,
                 "milestone": _clean(driver, 160) + f" {_DOC_CITE}",
+                "synergy_flag": _classify_synergy_flag(driver, default=pack_default),
                 "source": _DOC_CITE,
+                "notes": f"{_INITIATIVE_RULE} {_SYNERGY_RULE}",
             })
             if len(rows) >= 6:
                 break
@@ -432,12 +483,19 @@ def _initiatives(corpus: str, f01: dict[str, Any] | None) -> list[dict[str, str]
             "owner": _NA,
             "timing": _NA,
             "milestone": _NA,
+            "synergy_flag": "stand_alone",
             "source": _NA,
+            "notes": _INITIATIVE_RULE,
         })
     return rows[:6]
 
 
-def _funding(corpus: str) -> dict[str, str]:
+def _funding(
+    corpus: str,
+    *,
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure_spec: dict[str, Any] | None = None,
+) -> dict[str, str]:
     cash_m = _CASH.search(corpus)
     debt_m = _DEBT.search(corpus)
     cash = (
@@ -450,22 +508,50 @@ def _funding(corpus: str) -> dict[str, str]:
         if debt_m
         else _info_request("debt capacity / facilities")
     )
+
+    # Soft-fill from Capital Structure / Cash Flow priors when pack thin
+    if str(cash).startswith("Information") and isinstance(cash_flow_spec, dict):
+        metrics = cash_flow_spec.get("cash_metrics") if isinstance(
+            cash_flow_spec.get("cash_metrics"), dict
+        ) else {}
+        for key in ("closing_cash", "available_cash", "cash", "liquidity"):
+            if metrics.get(key) is not None:
+                cash = f"{metrics[key]} (PRIOR: cash_flow)"
+                break
+    if str(debt).startswith("Information") and isinstance(capital_structure_spec, dict):
+        if capital_structure_spec.get("debt_total_usd_m") is not None:
+            debt = (
+                f"{capital_structure_spec['debt_total_usd_m']} USD M gross debt "
+                "(PRIOR: capital_structure)"
+            )
+        elif isinstance(capital_structure_spec.get("leverage_ratios"), dict):
+            debt = "Debt capacity cues from Capital Structure prior"
+
+    if _STANDALONE_CUE.search(corpus):
+        stand = next(
+            (s for s in _sentences(corpus) if _STANDALONE_CUE.search(s)),
+            "Stand-alone growth funding evidenced in pack",
+        )
+        stand_alone = f"{_clean(stand, 160)} {_DOC_CITE}"
+    else:
+        stand_alone = _info_request("stand-alone funding for the plan (ex-buyer)")
+
     return {
         "available_cash": cash,
         "debt_capacity": debt,
-        "stand_alone_growth_funding": _info_request(
-            "stand-alone funding for the plan (ex-buyer)"
-        ),
+        "stand_alone_growth_funding": stand_alone,
         "buyer_contributed": (
             "Keep buyer / sponsor contributions separate — not evidenced as stand-alone "
             f"funding {_DOC_CITE}"
-            if re.search(r"\b(sponsor|buyer|acquisition financing)\b", corpus, re.I)
+            if re.search(r"(?i)\b(sponsor|buyer|acquisition financing|synerg)\b", corpus)
             else "No buyer-contributed funding identified in the pack; treat plan as stand-alone unless evidenced."
         ),
         "reconciliation": (
             f"Cash {cash}; debt capacity {debt}. "
-            "Do not treat plan delivery as funded until investment by initiative is reconciled."
+            "Do not treat plan delivery as funded until investment by initiative is reconciled. "
+            f"{_FUNDING_RULE}"
         ),
+        "notes": f"{_FUNDING_RULE} {_SYNERGY_RULE}",
     }
 
 
@@ -538,7 +624,319 @@ def _assumptions(
     return supported[:8], untested[:8]
 
 
-def _quality_reliance(*, supported: int, untested: int, funding_untested: bool) -> tuple[str, str, str]:
+def _is_filled(val: Any) -> bool:
+    s = str(val or "").strip()
+    return bool(s) and s != _NA and not s.startswith("Information") and not s.upper().startswith("N/A")
+
+
+def _funding_untested(
+    funding: dict[str, Any],
+    untested: list[dict[str, str]],
+) -> bool:
+    if any(
+        str(funding.get(k, "")).startswith("Information")
+        for k in ("available_cash", "stand_alone_growth_funding")
+    ):
+        return True
+    return any(
+        "fund" in str(a.get("assumption", "")).lower()
+        or "capacity" in str(a.get("assumption", "")).lower()
+        for a in untested
+        if isinstance(a, dict)
+    )
+
+
+def _sd_evidence_qa(
+    *,
+    three: dict[str, Any],
+    bridge: list[dict[str, Any]],
+    pva: list[dict[str, Any]],
+    initiatives: list[dict[str, Any]],
+    funding: dict[str, Any],
+    untested: list[dict[str, Any]],
+    cash_flow_spec: dict[str, Any] | None,
+    capital_structure_spec: dict[str, Any] | None,
+    strategy_read: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    cases_ok = all(
+        _is_filled(three.get(k))
+        for k in (
+            "management_ambition",
+            "board_approved_budget",
+            "independently_tested_case",
+        )
+    )
+    # Independently tested case may be a deliberate "only supported…" placeholder
+    tested = str(three.get("independently_tested_case") or "")
+    if "only supported" in tested.lower():
+        cases_ok = (
+            _is_filled(three.get("management_ambition"))
+            and _is_filled(three.get("board_approved_budget"))
+        )
+    rows.append({
+        "check": "three_case_separation",
+        "status": "PASS" if cases_ok else "FAIL",
+        "finding": (
+            "Ambition, board budget and tested case present as separate lines"
+            if cases_ok
+            else _info_request("management ambition vs board budget vs tested case")
+        ),
+        "action": _THREE_CASE_RULE,
+    })
+
+    driver_set = {
+        str(r.get("driver") or "").lower()
+        for r in bridge if isinstance(r, dict)
+    }
+    required_drivers = {"price", "volume", "mix", "new geography", "acquisition", "cost"}
+    # Accept short aliases
+    aliases = {
+        "geo": "new geography",
+        "geography": "new geography",
+        "m&a": "acquisition",
+        "overall (all legs)": "overall",
+    }
+    normalised = {aliases.get(d, d) for d in driver_set}
+    bridge_ok = bool(bridge) and (
+        "overall" in normalised
+        or len(required_drivers & normalised) >= 3
+        or any(
+            isinstance(r, dict) and r.get("status") == "computed_from_accounts"
+            for r in bridge
+        )
+    )
+    rows.append({
+        "check": "bridge_drivers",
+        "status": "PASS" if bridge_ok else "FAIL",
+        "finding": (
+            f"Bridge legs present ({len(bridge)})"
+            if bridge_ok
+            else _info_request("revenue/EBITDA bridge by price/volume/mix/geo/M&A/cost")
+        ),
+        "action": _BRIDGE_RULE,
+    })
+
+    pva_ok = sum(
+        1 for r in pva
+        if isinstance(r, dict)
+        and _is_filled(r.get("original_target"))
+        and _is_filled(r.get("actual_outcome"))
+    ) >= 1
+    rows.append({
+        "check": "plan_vs_actual",
+        "status": "PASS" if pva_ok else "FAIL",
+        "finding": (
+            "At least one prior-year target vs actual pair evidenced"
+            if pva_ok
+            else _info_request("three-year plan-vs-actual (original target vs dated actual)")
+        ),
+        "action": _PVA_RULE,
+    })
+
+    init_ok = any(
+        isinstance(r, dict)
+        and _is_filled(r.get("initiative"))
+        and (
+            _is_filled(r.get("milestone"))
+            or _is_filled(r.get("investment"))
+            or _is_filled(r.get("owner"))
+        )
+        for r in initiatives
+    )
+    synergy_flagged = all(
+        isinstance(r, dict) and r.get("synergy_flag")
+        for r in initiatives
+        if isinstance(r, dict) and _is_filled(r.get("initiative"))
+    ) if initiatives else False
+    rows.append({
+        "check": "initiatives_complete",
+        "status": "PASS" if init_ok and synergy_flagged else "FAIL",
+        "finding": (
+            f"{len(initiatives)} initiative row(s); synergy/stand-alone flags present"
+            if init_ok and synergy_flagged
+            else _info_request(
+                "initiatives with investment, capacity, owner, milestone, synergy flag"
+            )
+        ),
+        "action": _INITIATIVE_RULE,
+    })
+
+    cash_ok = _is_filled(funding.get("available_cash"))
+    debt_ok = _is_filled(funding.get("debt_capacity"))
+    priors_present = bool(cash_flow_spec) or bool(capital_structure_spec)
+    funding_ok = cash_ok or debt_ok or priors_present
+    rows.append({
+        "check": "funding_vs_cf_cs",
+        "status": "PASS" if funding_ok else "FAIL",
+        "finding": (
+            (
+                f"Cash/debt evidenced"
+                + (" · CF/CS prior present" if priors_present else "")
+            )
+            if funding_ok
+            else _info_request(
+                "available cash / debt capacity (cross-check Cash Flow / Capital Structure)"
+            )
+        ),
+        "action": _FUNDING_RULE,
+    })
+
+    stand_ok = _is_filled(funding.get("stand_alone_growth_funding")) or _is_filled(
+        funding.get("buyer_contributed")
+    )
+    rows.append({
+        "check": "synergy_vs_standalone",
+        "status": "PASS" if (stand_ok and synergy_flagged) or (stand_ok and not initiatives) else "FAIL",
+        "finding": (
+            "Stand-alone vs synergy / buyer contribution kept separate"
+            if stand_ok and (synergy_flagged or not initiatives)
+            else _info_request("stand-alone vs synergy / buyer-contributed funding split")
+        ),
+        "action": _SYNERGY_RULE,
+    })
+
+    fund_gap = _funding_untested(funding, untested)  # type: ignore[arg-type]
+    # Affirmative high-confidence claims only — strip advisory "do not assign…" sentences
+    scrubbed = re.sub(
+        r"(?i)[^.!?\n]*(?:"
+        r"do\s+not\s+(?:assign|give)\s+[^.!?\n]*high[- ]confidence|"
+        r"high[- ]confidence\s+withheld|"
+        r"while\s+(?:material\s+)?(?:funding|capacity)[^.!?\n]*untested|"
+        r"remain(?:s|ing)?\s+untested"
+        r")[^.!?\n]*[.!?]?",
+        " ",
+        strategy_read or "",
+    )
+    high_conf = bool(
+        re.search(
+            r"(?i)\b(?:high[- ]confidence|comprehensive\s+(?:view|assessment|coverage))\b",
+            scrubbed,
+        )
+    )
+    # PASS when we correctly withhold high confidence while gaps remain,
+    # or when there is no funding/capacity gap.
+    no_hc_ok = (not fund_gap) or (not high_conf)
+    rows.append({
+        "check": "no_high_confidence_while_untested",
+        "status": "PASS" if no_hc_ok else "FAIL",
+        "finding": (
+            "High confidence withheld while funding/capacity untested"
+            if fund_gap and not high_conf
+            else (
+                "No material funding/capacity gap — high-confidence gate not triggered"
+                if not fund_gap
+                else "High-confidence language present while funding/capacity remain untested"
+            )
+        ),
+        "action": _NO_HIGH_CONF_RULE,
+    })
+    return rows
+
+
+def _questions_from_sd_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("sd_evidence_qa")
+        if isinstance(spec.get("sd_evidence_qa"), list) else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("three_case_separation"):
+        out.append(normalize_question({
+            "question": "Separate management ambition, board-approved budget and tested case",
+            "required_records": "Board pack + management plan + IC bridge notes",
+            "decision_effect": "Merged cases inflate underwritable growth",
+            "priority": "mandatory_pre_decision",
+            "owner": "strategy diligence lead",
+            "timing": "before IC",
+            "closure_test": "three_case_separation QA PASS",
+            "interim_treatment": "LIMITED — do not merge cases",
+        }))
+    if _qa_fail("bridge_drivers"):
+        out.append(normalize_question({
+            "question": "Build revenue/EBITDA bridge by price, volume, mix, geo, M&A and cost",
+            "required_records": "Plan model + latest actuals + driver schedules",
+            "decision_effect": "Growth path untested without driver bridge",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial / strategy diligence",
+            "timing": "before IC",
+            "closure_test": "bridge_drivers QA PASS",
+            "interim_treatment": "LIMITED — withhold CAGR claims",
+        }))
+    if _qa_fail("plan_vs_actual"):
+        out.append(normalize_question({
+            "question": "Provide three-year original target vs dated actual outcomes",
+            "required_records": "Prior budgets + audited / management actuals",
+            "decision_effect": "Future targets are not delivery evidence",
+            "priority": "signing_condition",
+            "owner": "strategy diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "plan_vs_actual QA PASS",
+            "interim_treatment": "LIMITED — treat delivery history as open",
+        }))
+    if _qa_fail("initiatives_complete"):
+        out.append(normalize_question({
+            "question": "Complete initiative rows (investment, capacity, owner, milestone, synergy flag)",
+            "required_records": "Initiative tracker + capex / hiring plan",
+            "decision_effect": "Uncosted initiatives corrupt funding and capacity tests",
+            "priority": "mandatory_pre_decision",
+            "owner": "strategy diligence lead",
+            "timing": "before IC",
+            "closure_test": "initiatives_complete QA PASS",
+            "interim_treatment": "LIMITED — withhold initiative delivery claims",
+        }))
+    if _qa_fail("funding_vs_cf_cs"):
+        out.append(normalize_question({
+            "question": "Reconcile plan funding to Cash Flow and Capital Structure outputs",
+            "required_records": "Cash Flow + Capital Structure agent specs / bank facilities",
+            "decision_effect": "Unfunded plan cannot be underwritten",
+            "priority": "mandatory_pre_decision",
+            "owner": "financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "funding_vs_cf_cs QA PASS",
+            "interim_treatment": "BLOCKED — do not treat plan as funded",
+        }))
+    if _qa_fail("synergy_vs_standalone"):
+        out.append(normalize_question({
+            "question": "Split stand-alone growth from synergy / buyer-contributed upside",
+            "required_records": "Stand-alone model + synergy schedule",
+            "decision_effect": "Buyer upside must not pad stand-alone underwriting",
+            "priority": "signing_condition",
+            "owner": "strategy diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "synergy_vs_standalone QA PASS",
+            "interim_treatment": "LIMITED — strip synergy from stand-alone case",
+        }))
+    if _qa_fail("no_high_confidence_while_untested"):
+        out.append(normalize_question({
+            "question": "Remove high-confidence language until funding/capacity are tested",
+            "required_records": "Closed funding + capacity diligence",
+            "decision_effect": "High confidence with open funding/capacity misleads IC",
+            "priority": "mandatory_pre_decision",
+            "owner": "strategy diligence lead",
+            "timing": "before IC",
+            "closure_test": "no_high_confidence_while_untested QA PASS",
+            "interim_treatment": "REWORK — strip high-confidence claims",
+        }))
+    return out
+
+
+def _quality_reliance(
+    *,
+    supported: int,
+    untested: int,
+    funding_untested: bool,
+    qa_fail: bool = False,
+) -> tuple[str, str, str]:
     quality = "PASS"
     if funding_untested or untested >= 3:
         reliance = "BLOCKED" if funding_untested and untested >= 2 else "LIMITED"
@@ -552,6 +950,11 @@ def _quality_reliance(*, supported: int, untested: int, funding_untested: bool) 
     else:
         reliance = "LIMITED"
         rationale = f"Thin evidence: {supported} supported; {untested} untested."
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = (
+            "Open strategic-direction QA FAILs cap READY → LIMITED. " + rationale
+        )
     return quality, reliance, rationale
 
 
@@ -563,6 +966,11 @@ def _llm_strategic_direction_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -570,12 +978,21 @@ def _llm_strategic_direction_spec(
     if not gemini_configured() or not corpus.strip():
         return None
 
-    system = compose_system(
-        "strategic_direction",
-        sector=sector,
-        geography=geography,
-        materiality=materiality,
-    )
+    try:
+        system = compose_system(
+            "strategic_direction",
+            sector=sector,
+            geography=geography,
+            materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
+        )
+    except KeyError:
+        return None
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
         f"Target company / deal name: {company}\n\n"
@@ -588,11 +1005,16 @@ def _llm_strategic_direction_spec(
         "ebitda_bridge_note (string),\n"
         "plan_vs_actual: [{year, original_target, actual_outcome, variance, note}],\n"
         "initiatives: [{initiative, investment, capacity_or_hiring, dependencies, owner, "
-        "timing, milestone, source}],\n"
+        "timing, milestone, synergy_flag (stand_alone|synergy / buyer-dependent), source}],\n"
         "funding: {available_cash, debt_capacity, stand_alone_growth_funding, "
         "buyer_contributed, reconciliation},\n"
         "supported_assumptions: [{assumption, basis}],\n"
         "untested_assumptions: [{assumption, basis}],\n"
+        "sd_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "three_case_separation, bridge_drivers, plan_vs_actual, initiatives_complete, "
+        "funding_vs_cf_cs, synergy_vs_standalone, no_high_confidence_while_untested,\n"
+        "questions: [{question, required_records, decision_effect, priority, owner, "
+        "timing, closure_test, interim_treatment}],\n"
         "strategy_read (string — which assumptions supported vs untested; "
         "no high-confidence if funding/capacity untested; no invest/pass),\n"
         "quality_verdict (PASS|REWORK),\n"
@@ -600,6 +1022,7 @@ def _llm_strategic_direction_spec(
         "quality_reliance_rationale (string)\n"
         "Never merge ambition, approved budget, and tested case. "
         "A future target is not evidence of past delivery. "
+        "Keep stand-alone growth separate from synergies. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -612,28 +1035,50 @@ def _heuristic_strategic_direction_spec(
     corpus: str,
     sources: list[str],
     f01_spec: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     three = _three_cases(corpus, f01_spec)
     bridge, ebitda_from, ebitda_to = _bridge_rows(corpus)
     pva = _plan_vs_actual(corpus)
     initiatives = _initiatives(corpus, f01_spec)
-    funding = _funding(corpus)
+    funding = _funding(
+        corpus,
+        cash_flow_spec=cash_flow_spec,
+        capital_structure_spec=capital_structure_spec,
+    )
     supported, untested = _assumptions(
         bridge=bridge,
         funding=funding,
         initiatives=initiatives,
         pva=pva,
     )
-    funding_untested = any(
-        str(funding.get(k, "")).startswith("Information")
-        for k in ("available_cash", "stand_alone_growth_funding")
-    ) or any("funding" in a.get("assumption", "").lower() or "capacity" in a.get("assumption", "").lower()
-             for a in untested)
+    fund_gap = _funding_untested(funding, untested)
+
+    strategy_read = (
+        f"Supported assumptions: {len(supported)}. Untested: {len(untested)}. "
+        "Do not assign high confidence while material funding or capacity assumptions remain untested. "
+        f"EBITDA bridge note: {ebitda_from} → {ebitda_to}."
+    )
+
+    sd_qa = _sd_evidence_qa(
+        three=three,
+        bridge=bridge,
+        pva=pva,
+        initiatives=initiatives,
+        funding=funding,
+        untested=untested,
+        cash_flow_spec=cash_flow_spec,
+        capital_structure_spec=capital_structure_spec,
+        strategy_read=strategy_read,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in sd_qa)
 
     quality, reliance, qr = _quality_reliance(
         supported=len(supported),
         untested=len(untested),
-        funding_untested=funding_untested,
+        funding_untested=fund_gap,
+        qa_fail=qa_fail,
     )
 
     cagr_m = _CAGR.search(corpus)
@@ -645,13 +1090,7 @@ def _heuristic_strategic_direction_spec(
         + "."
     )
 
-    strategy_read = (
-        f"Supported assumptions: {len(supported)}. Untested: {len(untested)}. "
-        "Do not assign high confidence while material funding or capacity assumptions remain untested. "
-        f"EBITDA bridge note: {ebitda_from} → {ebitda_to}."
-    )
-
-    return {
+    out = {
         "insight_snapshot": insight,
         "three_cases": three,
         "bridge": bridge,
@@ -661,6 +1100,9 @@ def _heuristic_strategic_direction_spec(
         "funding": funding,
         "supported_assumptions": supported,
         "untested_assumptions": untested,
+        "sd_evidence_qa": sd_qa,
+        "cash_flow_prior_present": bool(cash_flow_spec),
+        "capital_structure_prior_present": bool(capital_structure_spec),
         "strategy_read": strategy_read,
         "quality_verdict": quality,
         "reliance_verdict": reliance,
@@ -674,6 +1116,8 @@ def _heuristic_strategic_direction_spec(
         "attractiveness_score": (f01_spec or {}).get("attractiveness_score") if isinstance(f01_spec, dict) else None,
         "thesis_framework": (f01_spec or {}).get("thesis_framework") if isinstance(f01_spec, dict) else None,
     }
+    out["questions"] = _questions_from_sd_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -681,18 +1125,32 @@ def _normalise_llm_spec(
     *,
     sources: list[str],
     f01_spec: dict[str, Any] | None,
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure_spec: dict[str, Any] | None = None,
+    corpus: str = "",
 ) -> dict[str, Any]:
-    for key in ("bridge", "plan_vs_actual", "initiatives", "supported_assumptions", "untested_assumptions"):
-        if not isinstance(llm.get(key), list):
-            llm[key] = []
-    if not isinstance(llm.get("three_cases"), dict):
-        llm["three_cases"] = {
+    heur = _heuristic_strategic_direction_spec(
+        company="Target",
+        corpus=corpus,
+        sources=sources,
+        f01_spec=f01_spec,
+        cash_flow_spec=cash_flow_spec,
+        capital_structure_spec=capital_structure_spec,
+    )
+    for key in (
+        "bridge", "plan_vs_actual", "initiatives",
+        "supported_assumptions", "untested_assumptions",
+    ):
+        if not isinstance(llm.get(key), list) or not llm.get(key):
+            llm[key] = list(heur.get(key) or [])
+    if not isinstance(llm.get("three_cases"), dict) or not llm.get("three_cases"):
+        llm["three_cases"] = heur.get("three_cases") or {
             "management_ambition": _NA,
             "board_approved_budget": _NA,
             "independently_tested_case": _NA,
         }
-    if not isinstance(llm.get("funding"), dict):
-        llm["funding"] = {
+    if not isinstance(llm.get("funding"), dict) or not llm.get("funding"):
+        llm["funding"] = heur.get("funding") or {
             "available_cash": _info_request("available cash"),
             "debt_capacity": _info_request("debt capacity"),
             "stand_alone_growth_funding": _info_request("stand-alone funding"),
@@ -700,18 +1158,44 @@ def _normalise_llm_spec(
             "reconciliation": _NA,
         }
 
-    # Strip banned high-confidence language when untested funding remains
-    untested = llm.get("untested_assumptions") or []
-    funding_untested = any(
-        "fund" in str(a.get("assumption", "")).lower() or "capacity" in str(a.get("assumption", "")).lower()
-        for a in untested
+    # Ensure synergy_flag on initiatives
+    for row in llm.get("initiatives") or []:
+        if isinstance(row, dict) and not row.get("synergy_flag"):
+            row["synergy_flag"] = _classify_synergy_flag(
+                " ".join(str(row.get(k) or "") for k in (
+                    "initiative", "milestone", "dependencies", "notes",
+                )),
+                default="stand_alone",
+            )
+
+    untested = [
+        a for a in (llm.get("untested_assumptions") or [])
         if isinstance(a, dict)
-    )
+    ]
+    fund_gap = _funding_untested(llm.get("funding") or {}, untested)
     read = str(llm.get("strategy_read") or "")
-    if funding_untested and re.search(r"high[- ]confidence|comprehensive", read, re.I):
+    if fund_gap and re.search(r"high[- ]confidence|comprehensive", read, re.I):
         llm["strategy_read"] = (
             f"{_clean(read, 400)} — high confidence withheld while funding/capacity remain untested."
         )
+    if not llm.get("strategy_read"):
+        llm["strategy_read"] = heur.get("strategy_read")
+
+    sd_qa = _sd_evidence_qa(
+        three=llm.get("three_cases") or {},
+        bridge=llm.get("bridge") or [],
+        pva=llm.get("plan_vs_actual") or [],
+        initiatives=llm.get("initiatives") or [],
+        funding=llm.get("funding") or {},
+        untested=untested,
+        cash_flow_spec=cash_flow_spec,
+        capital_structure_spec=capital_structure_spec,
+        strategy_read=str(llm.get("strategy_read") or ""),
+    )
+    llm["sd_evidence_qa"] = sd_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in sd_qa)
+    llm["cash_flow_prior_present"] = bool(cash_flow_spec)
+    llm["capital_structure_prior_present"] = bool(capital_structure_spec)
 
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
@@ -719,7 +1203,8 @@ def _normalise_llm_spec(
         qv, rv, rationale = _quality_reliance(
             supported=len(llm.get("supported_assumptions") or []),
             untested=len(untested),
-            funding_untested=funding_untested,
+            funding_untested=fund_gap,
+            qa_fail=qa_fail,
         )
         llm["quality_verdict"] = qv
         llm["reliance_verdict"] = rv
@@ -727,14 +1212,27 @@ def _normalise_llm_spec(
     else:
         llm["quality_verdict"] = qv
         llm["reliance_verdict"] = rv
-        if funding_untested and rv == "READY":
+        if (fund_gap or qa_fail) and rv == "READY":
             llm["reliance_verdict"] = "LIMITED"
             llm["quality_reliance_rationale"] = (
                 (llm.get("quality_reliance_rationale") or "")
-                + " Reliance capped at LIMITED while funding/capacity assumptions stay untested."
+                + " Reliance capped at LIMITED while funding/capacity assumptions "
+                "or strategic-direction QA FAILs remain open."
             ).strip()
 
-    for dead in ("recommendation", "confidence", "key_conditions"):
+    if not isinstance(llm.get("questions"), list) or not llm.get("questions"):
+        llm["questions"] = _questions_from_sd_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_sd_gaps(llm)
+
+    for dead in ("recommendation", "confidence", "key_conditions", "investment_verdict"):
         llm.pop(dead, None)
 
     # Fix off-by-one CAGR year spans (2026→2030 is 4 years, not 5)
@@ -766,8 +1264,11 @@ def build_strategic_direction_spec(
     index: dict[str, Any] | None = None,
     company: str | None = None,
     f01_spec: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
+    capital_structure_spec: dict[str, Any] | None = None,
     corpus: str | None = None,
     sources: list[str] | None = None,
+    prefer_heuristic: bool = False,
 ) -> dict[str, Any]:
     from agetic_cdd_api.prompt_book import prompt_vars_from_deal
     from agetic_cdd_api.services_library import load_library_index
@@ -789,23 +1290,44 @@ def build_strategic_direction_spec(
         corpus = "\n".join(bits)
 
     vars_ = prompt_vars_from_deal(deal)
+    heur = _heuristic_strategic_direction_spec(
+        company=target,
+        corpus=corpus or "",
+        sources=sources or [],
+        f01_spec=f01_spec,
+        cash_flow_spec=cash_flow_spec,
+        capital_structure_spec=capital_structure_spec,
+    )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    if prefer_heuristic:
+        return heur
+
     llm = _llm_strategic_direction_spec(
         company=target,
-        corpus=corpus,
-        sources=sources,
+        corpus=corpus or "",
+        sources=sources or [],
         sector=vars_.get("sector"),
         geography=vars_.get("geography"),
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if llm:
-        return _normalise_llm_spec(llm, sources=sources, f01_spec=f01_spec)
+        out = _normalise_llm_spec(
+            llm,
+            sources=sources or [],
+            f01_spec=f01_spec,
+            cash_flow_spec=cash_flow_spec,
+            capital_structure_spec=capital_structure_spec,
+            corpus=corpus or "",
+        )
+        out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+        return out
 
-    return _heuristic_strategic_direction_spec(
-        company=target,
-        corpus=corpus,
-        sources=sources,
-        f01_spec=f01_spec,
-    )
+    return heur
 
 
 def render_strategic_direction_markdown(
@@ -890,9 +1412,13 @@ def render_strategic_direction_markdown(
     parts.append("---\n\n")
 
     parts.append("## 4. Initiatives\n\n")
+    parts.append(f"{_INITIATIVE_RULE} {_SYNERGY_RULE}\n\n")
     if initiatives:
         parts.append(_table(
-            ["Initiative", "Investment", "Capacity / Hiring", "Dependencies", "Owner", "Timing", "Milestone"],
+            [
+                "Initiative", "Investment", "Capacity / Hiring", "Dependencies",
+                "Owner", "Timing", "Milestone", "Stand-alone / Synergy",
+            ],
             [
                 [
                     _clean(r.get("initiative"), 60),
@@ -902,15 +1428,19 @@ def render_strategic_direction_markdown(
                     _clean(r.get("owner"), 40),
                     _clean(r.get("timing"), 30),
                     _clean(r.get("milestone"), 100),
+                    _clean(r.get("synergy_flag") or "stand_alone", 40),
                 ]
                 for r in initiatives if isinstance(r, dict)
             ],
         ))
     else:
-        parts.append(f"{_info_request('initiatives with investment, capacity, owner, timing, milestone')}\n\n")
+        parts.append(
+            f"{_info_request('initiatives with investment, capacity, owner, timing, milestone, synergy flag')}\n\n"
+        )
     parts.append("---\n\n")
 
     parts.append("## 5. Funding Reconciliation\n\n")
+    parts.append(f"{_FUNDING_RULE}\n\n")
     parts.append(
         "Stand-alone growth funding stays separate from anything a buyer would contribute.\n\n"
     )
@@ -921,8 +1451,15 @@ def render_strategic_direction_markdown(
         f"{_clean(funding.get('stand_alone_growth_funding'), 160)}\n"
     )
     parts.append(f"- **Buyer-contributed:** {_clean(funding.get('buyer_contributed'), 160)}\n")
-    parts.append(f"- **Reconciliation:** {_clean(funding.get('reconciliation'), 280)}\n\n")
-    parts.append("---\n\n")
+    parts.append(f"- **Reconciliation:** {_clean(funding.get('reconciliation'), 280)}\n")
+    if spec.get("cash_flow_prior_present") or spec.get("capital_structure_prior_present"):
+        parts.append(
+            f"- **Priors:** Cash Flow="
+            f"{'yes' if spec.get('cash_flow_prior_present') else 'no'}; "
+            f"Capital Structure="
+            f"{'yes' if spec.get('capital_structure_prior_present') else 'no'}\n"
+        )
+    parts.append("\n---\n\n")
 
     parts.append("## 6. Assumptions — Supported vs Untested\n\n")
     parts.append("### Supported\n\n")
@@ -955,17 +1492,88 @@ def render_strategic_direction_markdown(
     )
     parts.append("---\n\n")
 
-    parts.append("## 7. Quality & Reliance\n\n")
+    # 7
+    sd_qa = (
+        spec.get("sd_evidence_qa")
+        if isinstance(spec.get("sd_evidence_qa"), list) else []
+    )
+    parts.append("## 7. Strategic Direction Evidence QA\n\n")
     parts.append(
-        f"**Quality:** {_clean(spec.get('quality_verdict') or 'PASS', 20)} — "
+        "QA enforces three-case separation, bridge drivers, plan-vs-actual, "
+        "initiatives (incl. synergy flag), funding vs Cash Flow / Capital Structure, "
+        "and no high-confidence while funding/capacity remain untested.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in sd_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('strategic direction evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 8
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material strategic-direction gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    # 9
+    parts.append("## 9. Quality & Reliance\n\n")
+    qv = spec.get("quality_verdict") or "PASS"
+    rv = spec.get("reliance_verdict") or "LIMITED"
+    rationale = spec.get("quality_reliance_rationale") or _NA
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _clean(rationale, 460)],
+        ],
+    ))
+    parts.append(
+        f"**Quality:** {_clean(qv, 20)} — "
         f"is the work accurate and honest about limits?\n\n"
     )
     parts.append(
-        f"**Reliance:** {_clean(spec.get('reliance_verdict') or 'LIMITED', 20)} — "
+        f"**Reliance:** {_clean(rv, 20)} — "
         f"can a decision rest on this strategy test?\n\n"
     )
-    if spec.get("quality_reliance_rationale"):
-        parts.append(f"**Rationale:** {_clean(spec.get('quality_reliance_rationale'), 520)}\n\n")
+    parts.append(
+        "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open strategic-direction QA FAILs cap READY → LIMITED. "
+        "This agent does not issue an invest or pass recommendation. "
+        f"{_NO_HIGH_CONF_RULE}*\n\n"
+    )
+    parts.append("---\n\n")
 
     parts.append("## Sources\n\n")
     parts.append(f"{_SOURCES_MARKER}\n\n")

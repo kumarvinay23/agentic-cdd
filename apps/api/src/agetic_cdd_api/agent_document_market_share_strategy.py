@@ -1337,6 +1337,348 @@ def _movement_split_complete(movement: list[dict[str, str]]) -> bool:
     return False
 
 
+def _numerator_denominator_reconcile(
+    matched: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Explicit reconcile: numerator ↔ accounts; denominator ↔ approved market."""
+    rows: list[dict[str, str]] = []
+    calculable = bool(matched.get("calculable"))
+    num = str(matched.get("numerator") or "")
+    den = str(matched.get("denominator") or "")
+    num_ok = _is_filled(num) and bool(_NUMERATOR_CUE.search(num) or re.search(
+        r"(?i)accounts|revenue|units|billings", num
+    ))
+    den_ok = _is_filled(den) and bool(_DENOMINATOR_CUE.search(den) or re.search(
+        r"(?i)TAM|SAM|perimeter|market\s+size|market\s+volume", den
+    ))
+    rows.append({
+        "side": "numerator",
+        "expected_source": "accounts (management / audited)",
+        "value": _clean(num, 160) if _is_filled(num) else _info_request("numerator from accounts"),
+        "status": "PASS" if num_ok else "FAIL",
+        "action": (
+            "Numerator tied to accounts evidence"
+            if num_ok
+            else "Request accounts-sourced numerator on matched service/geo/unit/date"
+        ),
+    })
+    rows.append({
+        "side": "denominator",
+        "expected_source": "approved market perimeter (Market Definition / Volume)",
+        "value": _clean(den, 160) if _is_filled(den) else _info_request("denominator from perimeter"),
+        "status": "PASS" if den_ok else "FAIL",
+        "action": (
+            "Denominator tied to approved market perimeter"
+            if den_ok
+            else "Request approved-perimeter denominator on same service/geo/unit/date"
+        ),
+    })
+    rows.append({
+        "side": "match_gate",
+        "expected_source": "service + geography + unit + date",
+        "value": _clean(matched.get("match_notes"), 200) or _NA,
+        "status": "PASS" if calculable else "FAIL",
+        "action": (
+            f"Share publishable: {_clean(matched.get('share_pct'), 40)}"
+            if calculable
+            else (
+                "Do not publish share or leadership conclusions — "
+                + _UNASSESSED
+            )
+        ),
+    })
+    return rows
+
+
+def _capacity_constraints(
+    plan: dict[str, str],
+    funnel: list[dict[str, str]],
+    attainable: dict[str, str],
+) -> list[dict[str, str]]:
+    """Test sales capacity to win and ops capacity to serve the plan."""
+    rows: list[dict[str, str]] = []
+    plan_customers = (
+        _num(plan.get("customers_per_month"))
+        if _is_filled(plan.get("customers_per_month"))
+        else None
+    )
+    plan_volume = _num(plan.get("volume")) if _is_filled(plan.get("volume")) else None
+    plan_capacity = _num(plan.get("capacity")) if _is_filled(plan.get("capacity")) else None
+    headcount = (
+        _num(plan.get("sales_headcount"))
+        if _is_filled(plan.get("sales_headcount"))
+        else None
+    )
+    _, attainable_customers = _bottom_up_from_funnel(funnel)
+
+    # Sales capacity to win
+    if plan_customers is not None and attainable_customers is not None:
+        shortfall = plan_customers - attainable_customers
+        ok = shortfall <= 0
+        rows.append({
+            "constraint": "sales_capacity_to_win",
+            "plan_need": f"~{plan_customers:g} customers / month",
+            "evidenced_capacity": f"~{attainable_customers:.0f} from funnel rates {_COMPUTED}",
+            "status": "PASS" if ok else "CONSTRAINT",
+            "action": (
+                "Funnel rates can win the plan customers"
+                if ok
+                else (
+                    f"Shortfall ~{shortfall:.0f} customers / month — "
+                    "raise conversion, leads, or sales headcount"
+                )
+            ),
+        })
+    elif plan_customers is not None:
+        rows.append({
+            "constraint": "sales_capacity_to_win",
+            "plan_need": f"~{plan_customers:g} customers / month",
+            "evidenced_capacity": (
+                f"Sales headcount {_clean(plan.get('sales_headcount'), 60)}"
+                if headcount is not None
+                else _info_request("funnel rates or sales productivity to win plan customers")
+            ),
+            "status": "UNTESTED" if headcount is None else "LIMITED",
+            "action": "Evidence leads × conversion (or productivity × headcount) vs plan",
+        })
+    else:
+        rows.append({
+            "constraint": "sales_capacity_to_win",
+            "plan_need": _info_request("customers to win per month under the plan"),
+            "evidenced_capacity": _NA,
+            "status": "UNTESTED",
+            "action": "Name plan customer wins before testing sales capacity",
+        })
+
+    # Ops capacity to serve
+    if plan_volume is not None and plan_capacity is not None:
+        ok = plan_capacity >= plan_volume
+        rows.append({
+            "constraint": "ops_capacity_to_serve",
+            "plan_need": f"volume ~{plan_volume:g}",
+            "evidenced_capacity": f"capacity ~{plan_capacity:g}",
+            "status": "PASS" if ok else "CONSTRAINT",
+            "action": (
+                "Operational capacity covers planned volume"
+                if ok
+                else (
+                    f"Capacity shortfall ~{plan_volume - plan_capacity:g} — "
+                    "cap attainable share at serving capacity"
+                )
+            ),
+        })
+    elif _is_filled(plan.get("capacity")) or plan_volume is not None:
+        rows.append({
+            "constraint": "ops_capacity_to_serve",
+            "plan_need": (
+                f"volume {_clean(plan.get('volume'), 60)}"
+                if _is_filled(plan.get("volume"))
+                else _info_request("volume required by the plan")
+            ),
+            "evidenced_capacity": (
+                _clean(plan.get("capacity"), 80)
+                if _is_filled(plan.get("capacity"))
+                else _info_request("vehicles / capacity to serve the plan")
+            ),
+            "status": "UNTESTED",
+            "action": "Match volume and capacity on the same unit and period",
+        })
+    else:
+        rows.append({
+            "constraint": "ops_capacity_to_serve",
+            "plan_need": _info_request("volume required by the plan"),
+            "evidenced_capacity": _info_request("vehicles / capacity to serve the plan"),
+            "status": "UNTESTED",
+            "action": "Name volume and serving capacity before publishing attainable share",
+        })
+
+    gap = str(attainable.get("gap") or "")
+    if _is_filled(gap) and not gap.startswith("Information"):
+        rows.append({
+            "constraint": "ambition_vs_capacity",
+            "plan_need": _clean(attainable.get("management_ambition"), 100),
+            "evidenced_capacity": _clean(attainable.get("bottom_up_attainable"), 100),
+            "status": "CONSTRAINT" if re.search(r"(?i)shortfall|gap|below", gap) else "NOTED",
+            "action": _clean(gap, 160),
+        })
+    return rows
+
+
+def _questions_from_mss_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    matched = spec.get("matched_share") if isinstance(spec.get("matched_share"), dict) else {}
+    if not matched.get("calculable"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide matched share inputs (accounts numerator + "
+                        "approved-perimeter denominator on same service/geo/unit/date)"
+                    ),
+                    "required_records": (
+                        "Management/audited accounts extract and approved market "
+                        "perimeter (Market Definition / Volume) for the same period"
+                    ),
+                    "decision_effect": (
+                        "Without matched share, leadership/laggard conclusions are prohibited"
+                    ),
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "matched_share.calculable = true with share_pct",
+                    "interim_treatment": "Share unassessed — neither strength nor weakness",
+                }
+            )
+        )
+
+    movement = (
+        spec.get("share_movement") if isinstance(spec.get("share_movement"), list) else []
+    )
+    if not _movement_split_complete(movement):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Separate share movement from market growth and from M&A",
+                    "required_records": (
+                        "Period share bridge with organic vs acquisition contribution "
+                        "and market growth rate"
+                    ),
+                    "decision_effect": "Share gains may be market tide or inorganic — not plan-won",
+                    "priority": "signing_condition",
+                    "owner": "market / financial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 movement row with vs_market_growth and acquisition_contribution",
+                    "interim_treatment": "Do not attribute unexplained share change to the plan",
+                }
+            )
+        )
+
+    plan = (
+        spec.get("plan_requirements")
+        if isinstance(spec.get("plan_requirements"), dict)
+        else {}
+    )
+    plan_filled = any(
+        _is_filled(plan.get(k))
+        for k in ("customers_per_month", "volume", "capacity", "sales_headcount")
+    )
+    if not plan_filled:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Translate the growth plan into physical requirements",
+                    "required_records": (
+                        "Plan pack: customers/month, volume, capacity, sales headcount"
+                    ),
+                    "decision_effect": "Ambition without physical requirements is not testable",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥2 of customers/volume/capacity/headcount evidenced",
+                    "interim_treatment": "Treat share ambition as unproven arithmetic",
+                }
+            )
+        )
+
+    capacity = (
+        spec.get("capacity_constraints")
+        if isinstance(spec.get("capacity_constraints"), list)
+        else []
+    )
+    if any(isinstance(r, dict) and r.get("status") == "CONSTRAINT" for r in capacity):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Resolve capacity constraints to win and serve the plan",
+                    "required_records": (
+                        "Funnel productivity vs plan customers; ops capacity vs plan volume"
+                    ),
+                    "decision_effect": "Plan share is arithmetically impossible without capacity bridge",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "ops / commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "No CONSTRAINT rows remain on capacity_constraints",
+                    "interim_treatment": "Cap attainable share at evidenced capacity",
+                }
+            )
+        )
+
+    funnel = (
+        spec.get("funnel_economics") if isinstance(spec.get("funnel_economics"), list) else []
+    )
+    if not any(
+        isinstance(r, dict) and not str(r.get("channel") or "").startswith("Information")
+        for r in funnel
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide CRM funnel metrics by channel (leads, conversion, CAC, retention)",
+                    "required_records": "CRM / pipeline extract by channel for the plan period",
+                    "decision_effect": "Bottom-up attainable case cannot be built without funnel rates",
+                    "priority": "signing_condition",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 channel with leads and conversion rate",
+                    "interim_treatment": "Do not invent funnel rates to close the ambition gap",
+                }
+            )
+        )
+
+    reconcile = (
+        spec.get("numerator_denominator_reconcile")
+        if isinstance(spec.get("numerator_denominator_reconcile"), list)
+        else []
+    )
+    if any(isinstance(r, dict) and r.get("status") == "FAIL" for r in reconcile):
+        # Already covered by matched_share question when not calculable; keep one dedicated if needed
+        if matched.get("calculable"):
+            out.append(
+                normalize_question(
+                    {
+                        "question": "Close numerator↔accounts / denominator↔perimeter reconcile failures",
+                        "required_records": "Source tags proving accounts vs perimeter lineage",
+                        "decision_effect": "Published share may not be diligence-grade",
+                        "priority": "signing_condition",
+                        "owner": "market diligence lead",
+                        "timing": "per deal timetable",
+                        "closure_test": "All reconcile sides PASS",
+                        "interim_treatment": "LIMITED reliance on stated share_pct",
+                    }
+                )
+            )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material market-share-strategy inputs are missing "
+                        "for the stated perimeter"
+                    ),
+                    "required_records": "N/A — matched share and plan arithmetic publishable",
+                    "decision_effect": "None — share strategy tests publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "market diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if perimeter, accounts, or plan changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
+
+
 def _quality_reliance(
     *,
     calculable: bool,
@@ -1346,15 +1688,20 @@ def _quality_reliance(
     plan_filled: bool,
     attainable_filled: bool,
     split_complete: bool,
+    capacity_blocks: int = 0,
+    reconcile_fails: int = 0,
 ) -> tuple[str, str, str]:
     evidence_bits = (
         f"{movement_count} movement row(s); {funnel_count} funnel row(s); "
         f"plan requirements {'evidenced' if plan_filled else 'incomplete'}; "
         f"attainable-vs-ambition {'built' if attainable_filled else 'incomplete'}; "
-        f"organic vs M&A split {'separated' if split_complete else 'not separated'}."
+        f"organic vs M&A split {'separated' if split_complete else 'not separated'}"
+        + (f"; {capacity_blocks} capacity constraint(s)" if capacity_blocks else "")
+        + (f"; {reconcile_fails} reconcile fail(s)" if reconcile_fails else "")
+        + "."
     )
-    if calculable and (movement_count or funnel_count or attainable_filled):
-        if split_complete:
+    if calculable and (movement_count or funnel_count or attainable_filled) and reconcile_fails == 0:
+        if split_complete and capacity_blocks == 0:
             return (
                 "PASS",
                 "READY",
@@ -1364,8 +1711,8 @@ def _quality_reliance(
             "PASS",
             "LIMITED",
             (
-                "Share calculated on matched inputs, but share movement is not separated "
-                f"from market growth and acquisitions. {evidence_bits}"
+                "Share calculated on matched inputs, but movement split, capacity, "
+                f"or reconcile is incomplete. {evidence_bits}"
             ),
         )
     if share_stated or movement_count or funnel_count or plan_filled or attainable_filled:
@@ -1429,6 +1776,8 @@ def _heuristic_market_share_strategy_spec(
         plan=plan,
         calculable=bool(matched.get("calculable")),
     )
+    reconcile = _numerator_denominator_reconcile(matched)
+    capacity = _capacity_constraints(plan, funnel, attainable)
     legacy_fields = _legacy_fields(
         movement,
         corpus_full,
@@ -1455,6 +1804,12 @@ def _heuristic_market_share_strategy_spec(
         attainable.get("management_ambition")
     )
     split_complete = _movement_split_complete(movement)
+    capacity_blocks = sum(
+        1 for r in capacity if isinstance(r, dict) and r.get("status") == "CONSTRAINT"
+    )
+    reconcile_fails = sum(
+        1 for r in reconcile if isinstance(r, dict) and r.get("status") == "FAIL"
+    )
     quality, reliance, rationale = _quality_reliance(
         calculable=calculable,
         share_stated=bool(_stated_share(corpus_full)),
@@ -1463,6 +1818,8 @@ def _heuristic_market_share_strategy_spec(
         plan_filled=plan_filled,
         attainable_filled=attainable_filled,
         split_complete=split_complete,
+        capacity_blocks=capacity_blocks,
+        reconcile_fails=reconcile_fails,
     )
 
     share_txt = (
@@ -1477,18 +1834,21 @@ def _heuristic_market_share_strategy_spec(
             f"contribution held separately; plan translated into physical requirements "
             f"({'evidenced' if plan_filled else 'gaps named'}); "
             f"{funnel_count} funnel row(s); bottom-up attainable case set beside "
-            f"management ambition. Share deltas are stated in percentage points (pp)."
+            f"management ambition; capacity constraints and numerator/denominator "
+            f"reconcile applied. Share deltas are stated in percentage points (pp)."
         ),
         calculable=calculable,
     )
 
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "matched_share": matched,
         "share_movement": movement,
         "plan_requirements": plan,
         "funnel_economics": funnel,
         "attainable_vs_ambition": attainable,
+        "capacity_constraints": capacity,
+        "numerator_denominator_reconcile": reconcile,
         "share_trends": legacy_fields["share_trends"],
         "wins": legacy_fields["wins"],
         "losses": legacy_fields["losses"],
@@ -1508,6 +1868,8 @@ def _heuristic_market_share_strategy_spec(
             and not legacy_fields["share_trends"]
         ),
     }
+    out["questions"] = _questions_from_mss_gaps(out)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1523,6 +1885,11 @@ def _llm_market_share_strategy_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -1536,6 +1903,12 @@ def _llm_market_share_strategy_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -1559,6 +1932,11 @@ def _llm_market_share_strategy_spec(
         "retention, source}],\n"
         "attainable_vs_ambition: {bottom_up_attainable, management_ambition, gap, "
         "what_must_change, source},\n"
+        "capacity_constraints: [{constraint, plan_need, evidenced_capacity, status, action}] "
+        "— sales capacity to win and ops capacity to serve,\n"
+        "numerator_denominator_reconcile: [{side, expected_source, value, status, action}],\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "share_trends: [{name, market_share_pct, units_000s, flagship_price_inr, trend, "
         "nps, software}] — names only from the evidence,\n"
         "wins: [string],\n"
@@ -1578,6 +1956,7 @@ def _llm_market_share_strategy_spec(
         "Separate share movement from market growth and from acquisitions in every row.\n"
         "Translate the growth plan into physical requirements: customers per month, "
         "volume, vehicles/capacity, sales headcount.\n"
+        "Test capacity constraints: can sales win the customers and ops serve the volume?\n"
         "Read the funnel only where CRM/pipeline data exist: leads, conversion, sales "
         "cycle, CAC, retention by channel.\n"
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
@@ -1768,6 +2147,13 @@ def _normalise_llm_spec(
         attainable.setdefault("source", _DOC_CITE)
     llm["attainable_vs_ambition"] = attainable
 
+    if not isinstance(llm.get("capacity_constraints"), list) or not llm.get("capacity_constraints"):
+        llm["capacity_constraints"] = _capacity_constraints(plan, cleaned_funnel, attainable)
+    if not isinstance(llm.get("numerator_denominator_reconcile"), list) or not llm.get(
+        "numerator_denominator_reconcile"
+    ):
+        llm["numerator_denominator_reconcile"] = _numerator_denominator_reconcile(matched)
+
     # --- legacy dual-write -------------------------------------------------
     heur_legacy = _legacy_fields(
         cleaned_movement,
@@ -1794,6 +2180,16 @@ def _normalise_llm_spec(
             llm[key] = heur_legacy[key]
 
     # --- verdicts / housekeeping ------------------------------------------
+    capacity_rows = (
+        llm.get("capacity_constraints")
+        if isinstance(llm.get("capacity_constraints"), list)
+        else []
+    )
+    reconcile_rows = (
+        llm.get("numerator_denominator_reconcile")
+        if isinstance(llm.get("numerator_denominator_reconcile"), list)
+        else []
+    )
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
     if qv not in {"PASS", "REWORK"} or rv not in {"READY", "LIMITED", "BLOCKED"}:
@@ -1817,6 +2213,14 @@ def _normalise_llm_spec(
             attainable_filled=_is_filled(attainable.get("bottom_up_attainable"))
             and _is_filled(attainable.get("management_ambition")),
             split_complete=_movement_split_complete(cleaned_movement),
+            capacity_blocks=sum(
+                1 for r in capacity_rows
+                if isinstance(r, dict) and r.get("status") == "CONSTRAINT"
+            ),
+            reconcile_fails=sum(
+                1 for r in reconcile_rows
+                if isinstance(r, dict) and r.get("status") == "FAIL"
+            ),
         )
         llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else quality
         llm["reliance_verdict"] = (
@@ -1834,6 +2238,18 @@ def _normalise_llm_spec(
             "unassessed, so reliance is limited. "
             + _clean(llm.get("quality_reliance_rationale"), 260)
         )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_mss_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_mss_gaps(llm)
 
     for dead in ("recommendation", "confidence", "key_conditions", "investment_verdict"):
         llm.pop(dead, None)
@@ -1908,16 +2324,23 @@ def build_market_share_strategy_spec(
             sector=sector,
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_market_share_strategy_spec(
+    heur = _heuristic_market_share_strategy_spec(
         company=target,
         corpus=corpus,
         sources=sources,
@@ -1925,6 +2348,8 @@ def build_market_share_strategy_spec(
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 # ---------------------------------------------------------------------------
@@ -1957,6 +2382,17 @@ def render_market_share_strategy_markdown(
         if isinstance(spec.get("attainable_vs_ambition"), dict)
         else {}
     )
+    capacity = (
+        spec.get("capacity_constraints")
+        if isinstance(spec.get("capacity_constraints"), list)
+        else []
+    )
+    reconcile = (
+        spec.get("numerator_denominator_reconcile")
+        if isinstance(spec.get("numerator_denominator_reconcile"), list)
+        else []
+    )
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     srcs = sources or spec.get("primary_sources") or spec.get("sources") or []
     calculable = bool(matched.get("calculable"))
 
@@ -2095,6 +2531,48 @@ def render_market_share_strategy_markdown(
             ["Source", _clean(attainable.get("source") or _NA, 60)],
         ],
     ))
+    parts.append("---\n\n")
+
+    parts.append("## 6. Capacity Constraints (Win & Serve)\n\n")
+    parts.append(
+        "Sales capacity to win the required customers, and operational capacity to "
+        "serve the resulting volume. CONSTRAINT rows cap attainable share.\n\n"
+    )
+    if capacity:
+        parts.append(_table(
+            ["Constraint", "Plan Need", "Evidenced Capacity", "Status", "Action"],
+            [
+                [
+                    _clean(r.get("constraint"), 40).replace("_", " "),
+                    _clean(r.get("plan_need"), 80),
+                    _clean(r.get("evidenced_capacity"), 80),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("action"), 120),
+                ]
+                for r in capacity if isinstance(r, dict)
+            ],
+        ))
+    parts.append("---\n\n")
+
+    parts.append("## 7. Numerator ↔ Accounts / Denominator ↔ Market Reconcile\n\n")
+    parts.append(
+        "Numerator must come from the accounts; denominator from the approved market "
+        "perimeter. Missing match ⇒ share unassessed (neither leadership nor weakness).\n\n"
+    )
+    if reconcile:
+        parts.append(_table(
+            ["Side", "Expected Source", "Value", "Status", "Action"],
+            [
+                [
+                    _clean(r.get("side"), 30),
+                    _clean(r.get("expected_source"), 60),
+                    _clean(r.get("value"), 100),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("action"), 120),
+                ]
+                for r in reconcile if isinstance(r, dict)
+            ],
+        ))
     parts.append(
         "*This section does not recommend invest or pass. Where the numerator and "
         "denominator cannot be matched on service, geography, unit and date, share is "
@@ -2104,7 +2582,27 @@ def render_market_share_strategy_markdown(
     )
     parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material market-share-strategy gaps')}\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 9. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

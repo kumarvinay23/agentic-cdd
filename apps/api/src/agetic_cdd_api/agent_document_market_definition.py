@@ -1,8 +1,10 @@
 """Compose DiligenceIQ Market Definition — competition perimeter (prompt book).
 
 Four-axis perimeter from operating footprint. Exclusions (strategy vs capability).
-Addressable / obtainable with named assumptions. Published figures are context
-unless perimeter matches. Downstream market agents wait until approved.
+TAM/SAM/SOM (addressable / obtainable) with named assumptions + formulas.
+Published figures are context unless perimeter matches. Right-to-win deferred.
+Exports perimeter for Volume / Pricing / Share. Downstream market agents wait
+until approved. No invest/pass.
 """
 
 from __future__ import annotations
@@ -245,40 +247,55 @@ def _perimeter(corpus: str, prior: dict[str, Any] | None) -> dict[str, str]:
     # Organics / regional operators often name metro footprints without % shares.
     # Scan a wide window and assemble the full footprint (not just the first state hit).
     if not geos:
+        # Collect place names from this deal's corpus and compose a clean footprint.
         footprint_re = re.compile(
-            r"(?i)Washington\s*,?\s*D\.?C\.?|Washington\s+metropolitan|"
-            r"DMV|NOVA|Northern\s+Virginia|Maryland|Philadelphia|metropolitan\s+area"
+            r"(?i)\b(?:Washington\s*,?\s*D\.?C\.?|Washington\s+metropolitan\s+area|"
+            r"District of Columbia|DMV|NOVA|Northern\s+Virginia|Maryland|"
+            r"Philadelphia|New\s+York(?:\s+City)?|London|Singapore|"
+            r"Montgomery\s+County|Fairfax\s+County|"
+            r"[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+County)\b"
         )
-        hits = footprint_re.findall(corpus[:60_000])
+        hits = footprint_re.findall(corpus[:80_000])
         if hits:
-            # Canonical order for Compost Crew-style DMV + Philly footprints
-            priority = [
-                ("washington", "Washington D.C."),
-                ("metropolitan", "metropolitan area"),
-                ("maryland", "Maryland"),
-                ("northern", "Northern Virginia"),
-                ("nova", "NOVA"),
-                ("philadelphia", "Philadelphia"),
-                ("dmv", "DMV"),
+            noise = {
+                "metropolitan area", "metro", "region", "across", "during", "in", "the",
+            }
+            # Normalize labels from corpus hits (preserve evidence, drop keyword debris).
+            norm_map = [
+                (r"(?i)washington\s*,?\s*d\.?c\.?|district of columbia", "Washington D.C."),
+                (r"(?i)washington\s+metropolitan", "Washington metropolitan area"),
+                (r"(?i)northern\s+virginia|nova", "Northern Virginia"),
+                (r"(?i)\bmaryland\b", "Maryland"),
+                (r"(?i)\bphiladelphia\b", "Philadelphia"),
+                (r"(?i)\bdmv\b", "DMV"),
+                (r"(?i)montgomery\s+county", "Montgomery County"),
+                (r"(?i)fairfax\s+county", "Fairfax County"),
+                (r"(?i)new\s+york(?:\s+city)?", "New York"),
+                (r"(?i)\blondon\b", "London"),
+                (r"(?i)\bsingapore\b", "Singapore"),
             ]
             seen: set[str] = set()
             ordered: list[str] = []
-            lower_hits = [h.lower() for h in hits]
-            for key, label in priority:
-                if any(key in h for h in lower_hits) and label.lower() not in seen:
+            lower_hits = [re.sub(r"\s+", " ", str(h)).strip().lower() for h in hits]
+            for pat, label in norm_map:
+                if any(re.search(pat, h) for h in lower_hits) and label.lower() not in seen:
+                    if label.lower() in noise:
+                        continue
                     seen.add(label.lower())
                     ordered.append(label)
-            # Prefer a composed footprint when we have metro + state signals
-            if any("washington" in h for h in lower_hits) and (
-                any("maryland" in h for h in lower_hits)
-                or any("virginia" in h or "nova" in h for h in lower_hits)
+            # Compose a readable metro footprint when the pack names the core + satellites.
+            if "washington d.c." in seen and (
+                "maryland" in seen or "northern virginia" in seen or "dmv" in seen
             ):
-                phrase = "Washington D.C. metropolitan area (including Maryland and Northern Virginia)"
-                if any("philadelphia" in h for h in lower_hits):
+                phrase = "Washington D.C. metropolitan area"
+                bits = [b for b in ("Maryland", "Northern Virginia") if b.lower() in seen]
+                if bits:
+                    phrase += f" (including {' and '.join(bits)})"
+                if "philadelphia" in seen:
                     phrase += " and Philadelphia"
-                geos.append(_clean(phrase, 200) + f" {_DOC_CITE}")
+                geos.append(_clean(phrase, 220) + f" {_DOC_CITE}")
             elif ordered:
-                geos.append(_clean(", ".join(ordered), 160) + f" {_DOC_CITE}")
+                geos.append(_clean(", ".join(ordered[:5]), 200) + f" {_DOC_CITE}")
 
     service_txt = (
         _clean(service[0], 280) + (f" {_DOC_CITE}" if "DOC:" not in service[0] else "")
@@ -432,7 +449,7 @@ def _markets(corpus: str) -> tuple[dict[str, str], dict[str, str], list[dict[str
     ]
 
     addressable = {
-        "label": "Addressable market (from this perimeter)",
+        "label": "Addressable market / SAM (from this perimeter)",
         "value": _money(sam_m) if sam_m else (_money(tam_m) if tam_m else _info_request("addressable market sized from the perimeter")),
         "basis": (
             "SAM cited in pack — only valid if published perimeter matches ours; else treat as context"
@@ -443,15 +460,27 @@ def _markets(corpus: str) -> tuple[dict[str, str], dict[str, str], list[dict[str
                 else "No perimeter-matched addressable figure in opened packs"
             )
         ),
+        "formula": (
+            "SAM = TAM × serviceable share × regulated eligible share "
+            "(only when each input is evidenced on this perimeter)"
+            if (sam_m or tam_m)
+            else _info_request("formula + inputs for addressable market")
+        ),
         "source": _DOC_CITE if (sam_m or tam_m) else _NA,
     }
     obtainable = {
-        "label": "Obtainable market (from this perimeter)",
+        "label": "Obtainable market / SOM (from this perimeter)",
         "value": _money(som_m) if som_m else _info_request("obtainable market from the perimeter"),
         "basis": (
             "SOM cited — subject to capacity and realistic penetration assumptions"
             if som_m
             else "Obtainable slice not evidenced independently of published SOM"
+        ),
+        "formula": (
+            "SOM = SAM × realistic penetration (capacity / reach constrained); "
+            "right-to-win deferred — not scored in Market Definition"
+            if som_m
+            else _info_request("formula + inputs for obtainable market")
         ),
         "source": _DOC_CITE if som_m else _NA,
     }
@@ -467,7 +496,9 @@ def _published_figures(corpus: str) -> list[dict[str, str]]:
         rows.append({
             "figure": f"{label} {_fmt_num(m.group(1), m.group(2))}",
             "published_perimeter": _info_request(f"published perimeter behind {label}"),
-            "matches_ours": "unknown — confirm perimeter match before using as addressable",
+            "as_of_date": _info_request(f"as-of date for {label}"),
+            "unit": "currency (as stated in source)",
+            "matches_ours": "unknown — confirm perimeter/date/unit match before using as addressable",
             "use": (
                 "Context only until perimeter match is confirmed — cannot be used as the addressable market"
                 if label == "TAM"
@@ -479,11 +510,200 @@ def _published_figures(corpus: str) -> list[dict[str, str]]:
         rows.append({
             "figure": _info_request("published market figure"),
             "published_perimeter": _NA,
+            "as_of_date": _NA,
+            "unit": _NA,
             "matches_ours": "n/a",
             "use": "Broader industry figures are context, not the market",
             "source": _NA,
         })
     return rows[:5]
+
+
+def _perimeter_export(
+    perimeter: dict[str, str],
+    *,
+    as_of_date: str | None = None,
+    unit: str | None = None,
+) -> dict[str, Any]:
+    """Shared fact register consumed by Volume / Pricing / Share agents."""
+    axes = {
+        k: perimeter.get(k)
+        for k in ("service", "customer_types", "geography", "value_chain_stage")
+    }
+    complete = all(
+        v
+        and not str(v).startswith("Information")
+        and v != _NA
+        for v in axes.values()
+    )
+    return {
+        "service": axes["service"],
+        "customer_types": axes["customer_types"],
+        "geography": axes["geography"],
+        "value_chain_stage": axes["value_chain_stage"],
+        "footprint_basis": perimeter.get("footprint_basis")
+        or "Operating footprint — not an industry label alone.",
+        "as_of_date": (as_of_date or "").strip() or _info_request("as-of date for perimeter"),
+        "unit": (unit or "").strip() or "value (currency) unless volume stated",
+        "complete": complete,
+        "right_to_win": "deferred",
+        "export_for": ["market_volume_and_growth", "market_pricing", "market_share_strategy"],
+    }
+
+
+def _perimeter_consistency_qa(
+    *,
+    perimeter_export: dict[str, Any],
+    published: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """QA: same perimeter / date / unit across published comparisons."""
+    checks: list[dict[str, str]] = []
+    export_date = str(perimeter_export.get("as_of_date") or "")
+    export_unit = str(perimeter_export.get("unit") or "")
+    for row in published:
+        if not isinstance(row, dict):
+            continue
+        fig = str(row.get("figure") or "published figure")
+        match = str(row.get("matches_ours") or "").lower()
+        pub_date = str(row.get("as_of_date") or "")
+        pub_unit = str(row.get("unit") or "")
+        ok_perimeter = "match" in match and "unknown" not in match and "no" not in match
+        date_aligned = (
+            pub_date
+            and not pub_date.startswith("Information")
+            and pub_date != _NA
+            and export_date
+            and not export_date.startswith("Information")
+            and pub_date[:4] == export_date[:4]
+            if len(export_date) >= 4 and len(pub_date) >= 4
+            else False
+        )
+        unit_aligned = bool(pub_unit and export_unit and pub_unit != _NA)
+        if ok_perimeter and date_aligned and unit_aligned:
+            status = "PASS"
+            note = f"{fig}: perimeter, date and unit aligned with export."
+        elif "n/a" in match:
+            status = "N/A"
+            note = f"{fig}: no published figure to compare."
+        else:
+            status = "REWORK"
+            note = (
+                f"{fig}: hold as context until perimeter, as-of date and unit "
+                f"match the exported four-axis object "
+                f"(export date={_clean(export_date, 40)}; unit={_clean(export_unit, 40)})."
+            )
+        checks.append({
+            "check": "same_perimeter_date_unit",
+            "figure": fig,
+            "status": status,
+            "note": note,
+        })
+    if not checks:
+        checks.append({
+            "check": "same_perimeter_date_unit",
+            "figure": "n/a",
+            "status": "N/A",
+            "note": "No published figures to reconcile to the exported perimeter.",
+        })
+    return checks
+
+
+def _questions_from_md_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    perimeter = spec.get("perimeter") if isinstance(spec.get("perimeter"), dict) else {}
+    for axis, label in (
+        ("service", "service sold"),
+        ("customer_types", "customer types served"),
+        ("geography", "geography actually reachable"),
+        ("value_chain_stage", "value-chain stage occupied"),
+    ):
+        val = str(perimeter.get(axis) or "")
+        if not val or val.startswith("Information") or val == _NA:
+            out.append(
+                normalize_question(
+                    {
+                        "question": f"Evidence the {label} axis from operating footprint",
+                        "required_records": f"Operating / commercial pack describing {label}",
+                        "decision_effect": "Wrong perimeter biases every later market number",
+                        "priority": "mandatory_pre_decision",
+                        "owner": "market diligence lead",
+                        "timing": "before other market agents",
+                        "closure_test": f"{label} stated with locator on operating footprint",
+                        "interim_treatment": "Keep downstream market agents blocked",
+                    }
+                )
+            )
+
+    published = spec.get("published_figures") if isinstance(spec.get("published_figures"), list) else []
+    for row in published:
+        if not isinstance(row, dict):
+            continue
+        match = str(row.get("matches_ours") or "").lower()
+        fig = str(row.get("figure") or "published figure")
+        if "unknown" in match or match.startswith("information"):
+            out.append(
+                normalize_question(
+                    {
+                        "question": f"Confirm whether {fig} perimeter/date/unit matches ours",
+                        "required_records": "Publisher scope note / methodology appendix",
+                        "decision_effect": "Prevents using context figures as addressable",
+                        "priority": "mandatory_pre_decision",
+                        "owner": "market diligence lead",
+                        "timing": "before IC sizing",
+                        "closure_test": "Explicit match or context-only label with same unit/date",
+                        "interim_treatment": "Treat figure as context only",
+                    }
+                )
+            )
+
+    assumptions = spec.get("assumptions") if isinstance(spec.get("assumptions"), list) else []
+    for row in assumptions:
+        if not isinstance(row, dict):
+            continue
+        stmt = str(row.get("statement") or "")
+        name = str(row.get("assumption") or "assumption")
+        if stmt.startswith("Information") or stmt == _NA:
+            out.append(
+                normalize_question(
+                    {
+                        "question": f"Provide evidence for assumption: {name}",
+                        "required_records": f"Support for {name} on this perimeter",
+                        "decision_effect": "Addressable / obtainable sizing not READY",
+                        "priority": "signing_condition",
+                        "owner": "market diligence lead",
+                        "timing": "per deal timetable",
+                        "closure_test": f"{name} stated with formula inputs and locator",
+                        "interim_treatment": "Do not invent penetration or capacity",
+                    }
+                )
+            )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": "No material market-definition inputs are missing for the stated perimeter",
+                    "required_records": "N/A — current pack sufficient for four-axis export",
+                    "decision_effect": "None — perimeter publishable for Volume / Pricing / Share",
+                    "priority": "residual_uncertainty",
+                    "owner": "market diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if operating footprint or geography changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
 
 
 def _approval_gate(*, perimeter: dict[str, str], untested: int) -> dict[str, Any]:
@@ -546,6 +766,11 @@ def _llm_market_definition_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -553,12 +778,21 @@ def _llm_market_definition_spec(
     if not gemini_configured() or not corpus.strip():
         return None
 
-    system = compose_system(
-        "market_definition",
-        sector=sector,
-        geography=geography,
-        materiality=materiality,
-    )
+    try:
+        system = compose_system(
+            "market_definition",
+            sector=sector,
+            geography=geography,
+            materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
+        )
+    except KeyError:
+        return None
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
         f"Target company / deal name: {company}\n\n"
@@ -569,17 +803,22 @@ def _llm_market_definition_spec(
         "perimeter: {service, customer_types, geography, value_chain_stage, footprint_basis},\n"
         "double_count_streams: [{stream, risk, treatment}],\n"
         "exclusions: [{exclusion, kind, why}] — kind is strategic|capability|unclassified,\n"
-        "addressable_market: {label, value, basis, source},\n"
-        "obtainable_market: {label, value, basis, source},\n"
+        "addressable_market: {label, value, basis, formula, source},\n"
+        "obtainable_market: {label, value, basis, formula, source},\n"
         "assumptions: [{assumption, statement}],\n"
-        "published_figures: [{figure, published_perimeter, matches_ours, use, source}],\n"
+        "published_figures: [{figure, published_perimeter, as_of_date, unit, "
+        "matches_ours, use, source}],\n"
+        "right_to_win_deferred: true,\n"
         "industry_context_note (string — broader industry figures are context, not the market),\n"
         "approval_gate: {status, blocks_downstream_market_agents, axes_evidenced, note},\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "quality_verdict (PASS|REWORK),\n"
         "reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
         "Use operating footprint, not an industry label. "
         "If a published figure's perimeter does not match yours, it is context only. "
+        "Right-to-win is deferred — do not score competitive advantage here. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -593,12 +832,18 @@ def _heuristic_market_definition_spec(
     sources: list[str],
     prior_spec: dict[str, Any] | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    as_of_date: str | None = None,
 ) -> dict[str, Any]:
     perimeter = _perimeter(corpus, prior_spec)
     streams = _double_count(corpus)
     exclusions = _exclusions(corpus)
     addressable, obtainable, assumptions = _markets(corpus)
     published = _published_figures(corpus)
+    export = _perimeter_export(perimeter, as_of_date=as_of_date)
+    consistency = _perimeter_consistency_qa(
+        perimeter_export=export,
+        published=published,
+    )
 
     untested = sum(
         1
@@ -618,12 +863,20 @@ def _heuristic_market_definition_spec(
         published_as_context=True,
         untested=untested,
     )
+    if any(c.get("status") == "REWORK" for c in consistency):
+        if reliance == "READY":
+            reliance = "LIMITED"
+        qr = (
+            f"{qr} Published figure(s) lack confirmed perimeter/date/unit match — "
+            "held as context only."
+        )
 
     insight = (
         f"Market Definition for {company}: perimeter on service, customer type, "
         f"geography and value-chain stage from operating footprint ({axes}/4 axes evidenced). "
         f"Downstream market agents blocked until perimeter approved "
-        f"(gate={gate['status']}). Broader industry figures are context, not the market."
+        f"(gate={gate['status']}). Right-to-win deferred. "
+        f"Broader industry figures are context, not the market."
     )
 
     # Preserve legacy DD-02 fields for report consumers — but never keep polluted
@@ -655,15 +908,18 @@ def _heuristic_market_definition_spec(
         geos.append(_clean(s, 220))
     if not geos and geo_perim and not geo_perim.startswith("Information"):
         geos = [_clean(geo_perim, 220)]
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "perimeter": perimeter,
+        "perimeter_export": export,
         "double_count_streams": streams,
         "exclusions": exclusions,
         "addressable_market": addressable,
         "obtainable_market": obtainable,
         "assumptions": assumptions,
         "published_figures": published,
+        "perimeter_consistency_qa": consistency,
+        "right_to_win_deferred": True,
         "industry_context_note": (
             "Broader industry figures are context, not the market. "
             "A published figure whose perimeter does not match ours cannot be used as the addressable market."
@@ -683,6 +939,8 @@ def _heuristic_market_definition_spec(
         "policy_context": legacy.get("policy_context") or [],
         "geographies": geos,
     }
+    out["questions"] = _questions_from_md_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -690,6 +948,7 @@ def _normalise_llm_spec(
     *,
     sources: list[str],
     legacy_spec: dict[str, Any] | None,
+    as_of_date: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(llm.get("perimeter"), dict):
         llm["perimeter"] = {
@@ -729,14 +988,30 @@ def _normalise_llm_spec(
     for key in ("double_count_streams", "exclusions", "assumptions", "published_figures"):
         if not isinstance(llm.get(key), list):
             llm[key] = []
+    for row in llm.get("published_figures") or []:
+        if isinstance(row, dict):
+            row.setdefault("as_of_date", _info_request("as-of date"))
+            row.setdefault("unit", "currency (as stated in source)")
     for key in ("addressable_market", "obtainable_market"):
         if not isinstance(llm.get(key), dict):
             llm[key] = {
                 "label": key.replace("_", " ").title(),
                 "value": _info_request(key),
                 "basis": _NA,
+                "formula": _info_request(f"formula for {key}"),
                 "source": _NA,
             }
+        else:
+            llm[key].setdefault("formula", _info_request(f"formula for {key}"))
+    llm["perimeter_export"] = _perimeter_export(
+        llm["perimeter"],
+        as_of_date=as_of_date,
+    )
+    llm["perimeter_consistency_qa"] = _perimeter_consistency_qa(
+        perimeter_export=llm["perimeter_export"],
+        published=llm.get("published_figures") or [],
+    )
+    llm["right_to_win_deferred"] = True
     if not isinstance(llm.get("approval_gate"), dict):
         llm["approval_gate"] = _approval_gate(
             perimeter=llm["perimeter"],
@@ -770,11 +1045,29 @@ def _normalise_llm_spec(
         llm["reliance_verdict"] = "LIMITED"
     else:
         llm["reliance_verdict"] = rv
+    if any(
+        isinstance(c, dict) and c.get("status") == "REWORK"
+        for c in (llm.get("perimeter_consistency_qa") or [])
+    ):
+        if llm["reliance_verdict"] == "READY":
+            llm["reliance_verdict"] = "LIMITED"
 
     if not llm.get("industry_context_note"):
         llm["industry_context_note"] = (
             "Broader industry figures are context, not the market."
         )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_md_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            q = normalize_question(raw)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_md_gaps(llm)
 
     for dead in ("recommendation", "confidence", "key_conditions"):
         llm.pop(dead, None)
@@ -827,8 +1120,8 @@ def build_market_definition_spec(
                     sources.append(name)
         corpus = "\n".join(bits)
 
+    vars_ = prompt_vars_from_deal(deal)
     if not prefer_heuristic:
-        vars_ = prompt_vars_from_deal(deal)
         llm = _llm_market_definition_spec(
             company=target,
             corpus=corpus,
@@ -836,17 +1129,32 @@ def build_market_definition_spec(
             sector=vars_.get("sector"),
             geography=vars_.get("geography"),
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(llm, sources=sources, legacy_spec=legacy_spec)
+            out = _normalise_llm_spec(
+                llm,
+                sources=sources,
+                legacy_spec=legacy_spec,
+                as_of_date=vars_.get("as_of_date"),
+            )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_market_definition_spec(
+    heur = _heuristic_market_definition_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         prior_spec=prior_spec,
         legacy_spec=legacy_spec,
+        as_of_date=vars_.get("as_of_date"),
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_market_definition_markdown(
@@ -856,12 +1164,23 @@ def render_market_definition_markdown(
     sources: list[str] | None = None,
 ) -> str:
     perimeter = spec.get("perimeter") if isinstance(spec.get("perimeter"), dict) else {}
+    export = (
+        spec.get("perimeter_export")
+        if isinstance(spec.get("perimeter_export"), dict)
+        else {}
+    )
     streams = spec.get("double_count_streams") if isinstance(spec.get("double_count_streams"), list) else []
     exclusions = spec.get("exclusions") if isinstance(spec.get("exclusions"), list) else []
     addressable = spec.get("addressable_market") if isinstance(spec.get("addressable_market"), dict) else {}
     obtainable = spec.get("obtainable_market") if isinstance(spec.get("obtainable_market"), dict) else {}
     assumptions = spec.get("assumptions") if isinstance(spec.get("assumptions"), list) else []
     published = spec.get("published_figures") if isinstance(spec.get("published_figures"), list) else []
+    consistency = (
+        spec.get("perimeter_consistency_qa")
+        if isinstance(spec.get("perimeter_consistency_qa"), list)
+        else []
+    )
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     gate = spec.get("approval_gate") if isinstance(spec.get("approval_gate"), dict) else {}
     srcs = sources or spec.get("primary_sources") or []
 
@@ -870,7 +1189,8 @@ def render_market_definition_markdown(
     parts.append("## 1. Perimeter — Four Axes\n\n")
     parts.append(
         "Drawn from the company's **operating footprint**, not an industry label. "
-        "Axes: service · customer type · geography · value-chain stage.\n\n"
+        "Axes: service · customer type · geography · value-chain stage. "
+        "Exported as the shared fact for Volume / Pricing / Share.\n\n"
     )
     parts.append(_table(
         ["Axis", "Definition"],
@@ -883,6 +1203,21 @@ def render_market_definition_markdown(
     ))
     if perimeter.get("footprint_basis"):
         parts.append(f"*{_clean(perimeter.get('footprint_basis'), 280)}*\n\n")
+    if export:
+        parts.append("### Perimeter export (downstream shared fact)\n\n")
+        parts.append(_table(
+            ["Field", "Value"],
+            [
+                ["As-of date", _clean(export.get("as_of_date"), 80)],
+                ["Unit", _clean(export.get("unit"), 80)],
+                ["Complete", str(bool(export.get("complete")))],
+                ["Right-to-win", _clean(export.get("right_to_win") or "deferred", 40)],
+                [
+                    "Consumers",
+                    ", ".join(str(x) for x in (export.get("export_for") or [])[:6]) or "—",
+                ],
+            ],
+        ))
     parts.append("---\n\n")
 
     parts.append("## 2. Revenue Streams — Avoid Double Count\n\n")
@@ -923,24 +1258,31 @@ def render_market_definition_markdown(
         parts.append(f"{_info_request('strategic and capability exclusions')}\n\n")
     parts.append("---\n\n")
 
-    parts.append("## 4. Addressable & Obtainable Market\n\n")
+    parts.append("## 4. Addressable & Obtainable Market (TAM / SAM / SOM)\n\n")
     parts.append(
-        "Sized from **this** perimeter. Name every assumption: serviceable geography, "
-        "regulation, route or delivery radius, capacity, realistic penetration.\n\n"
+        "Sized from **this** perimeter. Name every assumption and formula: serviceable "
+        "geography, regulation, route or delivery radius, capacity, realistic penetration. "
+        "Right-to-win is **deferred** — not scored here.\n\n"
     )
+    if spec.get("right_to_win_deferred", True):
+        parts.append(
+            "**Right-to-win:** deferred to Competitive Differentiation / Market Share Strategy.\n\n"
+        )
     parts.append(_table(
-        ["Market", "Value", "Basis", "Source"],
+        ["Market", "Value", "Basis", "Formula", "Source"],
         [
             [
-                _clean(addressable.get("label") or "Addressable", 40),
+                _clean(addressable.get("label") or "Addressable / SAM", 48),
                 _clean(addressable.get("value"), 80),
-                _clean(addressable.get("basis"), 160),
+                _clean(addressable.get("basis"), 120),
+                _clean(addressable.get("formula"), 120),
                 _clean(addressable.get("source"), 40),
             ],
             [
-                _clean(obtainable.get("label") or "Obtainable", 40),
+                _clean(obtainable.get("label") or "Obtainable / SOM", 48),
                 _clean(obtainable.get("value"), 80),
-                _clean(obtainable.get("basis"), 160),
+                _clean(obtainable.get("basis"), 120),
+                _clean(obtainable.get("formula"), 120),
                 _clean(obtainable.get("source"), 40),
             ],
         ],
@@ -958,21 +1300,38 @@ def render_market_definition_markdown(
 
     parts.append("## 5. Published Figures — Match or Context Only\n\n")
     parts.append(
-        "State each published figure's perimeter and whether it matches ours. "
-        "If it does not, it is **context only** and cannot be used as the addressable market.\n\n"
+        "State each published figure's perimeter, as-of date and unit, and whether it "
+        "matches ours. If it does not, it is **context only** and cannot be used as the "
+        "addressable market. Downstream comparisons must use the same perimeter, date and unit.\n\n"
     )
     if published:
         parts.append(_table(
-            ["Figure", "Published Perimeter", "Matches Ours?", "Use", "Source"],
+            ["Figure", "Published Perimeter", "As-of", "Unit", "Matches Ours?", "Use", "Source"],
             [
                 [
-                    _clean(r.get("figure"), 60),
-                    _clean(r.get("published_perimeter"), 100),
-                    _clean(r.get("matches_ours"), 60),
-                    _clean(r.get("use"), 120),
+                    _clean(r.get("figure"), 48),
+                    _clean(r.get("published_perimeter"), 80),
+                    _clean(r.get("as_of_date"), 40),
+                    _clean(r.get("unit"), 40),
+                    _clean(r.get("matches_ours"), 48),
+                    _clean(r.get("use"), 100),
                     _clean(r.get("source"), 40),
                 ]
                 for r in published if isinstance(r, dict)
+            ],
+        ))
+    if consistency:
+        parts.append("### Perimeter / date / unit QA\n\n")
+        parts.append(_table(
+            ["Check", "Figure", "Status", "Note"],
+            [
+                [
+                    _clean(r.get("check"), 40),
+                    _clean(r.get("figure"), 48),
+                    _clean(r.get("status"), 16),
+                    _clean(r.get("note"), 160),
+                ]
+                for r in consistency if isinstance(r, dict)
             ],
         ))
     if spec.get("industry_context_note"):
@@ -994,7 +1353,27 @@ def render_market_definition_markdown(
     )
     parts.append("---\n\n")
 
-    parts.append("## 7. Quality & Reliance\n\n")
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material perimeter gaps')}\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(
         f"**Quality:** {_clean(spec.get('quality_verdict') or 'PASS', 20)} — "
         f"is the work accurate and honest about limits?\n\n"

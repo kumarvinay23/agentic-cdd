@@ -25,6 +25,13 @@ documents that evidence them. Missing corporate records become requests.
 4. Describe the operating model in plain language: what has to happen for one
 unit of revenue to be delivered, and which parts are in-house.
 
+5. Include Questions and inputs required for every material gap (missing
+service/customer/geo split that cannot be reconciled, sites/capacity,
+ownership/legal entities). Each question needs required records, decision
+effect, priority, owner, timing, closure test and interim treatment. Mark
+genuinely inapplicable fields omitted with a reason — never treat missing
+evidence as not applicable.
+
 Return ONLY JSON matching the schema requested in the user message.
 Use citation tags exactly as '(DOC: data room financials)', '(COMPUTED FACTS)',
 or '(DOC: [n])' where n indexes the numbered Sources list.

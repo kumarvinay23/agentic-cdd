@@ -1,10 +1,11 @@
 """Compose DiligenceIQ Market Risk — external risks sized to company numbers.
 
 Competitor moves, customer losses, regulatory change, demand cycles.
-Each risk: mechanism, revenue/margin exposed, time horizon. Likelihood
-argued from evidence (not arbitrary scores). Downside quantified where
-bounded. Early-warning indicators. Price vs structure protections.
-Unsized risks still reported with what would size them.
+Each risk row: trigger, population, timing, mechanism, mitigation.
+Likelihood argued from evidence (not arbitrary scores). Downside
+quantified where bounded. Early-warning indicators. Price vs structure.
+Non-overlap with Internal Risk. Reject unnamed threats. Unsized risks
+still reported with what would size them.
 
 Dual-writes legacy DD-20 fields (market_risk_items / regulatory_items /
 litigation_exposures / risk_flags / risk_notes).
@@ -61,6 +62,30 @@ _STRUCT_RULE = (
 )
 _UNSIZED_RULE = (
     "Risks that cannot be sized are still reported, with what would size them."
+)
+_ROW_RULE = (
+    "Each external risk row states trigger, population exposed, timing, "
+    "mechanism, and mitigation (or what would mitigate)."
+)
+_INTERNAL_CROSS_RULE = (
+    "Market Risk stays external. Key-person, controls, cash/covenant strain "
+    "and governance belong in Internal Risk — cross-check and do not restate."
+)
+_UNNAMED_RULE = (
+    "Reject unnamed or generic threats (e.g. 'market risk', 'macro headwinds') "
+    "that lack a named trigger and population."
+)
+_INTERNAL_FAMILY_RE = re.compile(
+    r"(?i)\b(key[- ]?person|succession|founder\s+depart|"
+    r"governance|board\s+weakness|control\s+fail|"
+    r"reconcil(?:iation)?\s+not|approval\s+missing|"
+    r"covenant\s+breach|liquidity\s+strain|cash\s+strain|"
+    r"internal\s+control|erp\s+failure|systems?\s+outage\s+internal)\b"
+)
+_UNNAMED_RE = re.compile(
+    r"(?i)^(market\s+risks?|external\s+risks?|macro(?:\s+headwinds?)?|"
+    r"headwinds?|threats?|risks?|various\s+risks?|"
+    r"general\s+(?:market\s+)?risks?|uncertainty)$"
 )
 
 _SUBSIDY_RE = re.compile(
@@ -119,6 +144,16 @@ def _soften_invest(text: Any) -> str:
 
 def _info_request(need: str) -> str:
     return f"Information request: {need}"
+
+
+def _is_info(val: Any) -> bool:
+    s = str(val or "").strip()
+    return (
+        (not s)
+        or s.startswith("Information")
+        or s.startswith("N/A")
+        or s.lower() == "n/a"
+    )
 
 
 def _is_filled(v: Any) -> bool:
@@ -298,6 +333,88 @@ def _classify_family(name: str) -> str:
     if _REG_RE.search(low) or "litigation" in low or "compliance" in low:
         return "Regulatory / litigation"
     return "External market"
+
+
+def _looks_internal(name: str, window: str = "") -> bool:
+    blob = f"{name} {window}"
+    return bool(_INTERNAL_FAMILY_RE.search(blob))
+
+
+def _is_unnamed_threat(name: str) -> bool:
+    raw = str(name or "").strip()
+    if not raw or raw.startswith("Information"):
+        return True
+    return bool(_UNNAMED_RE.match(raw))
+
+
+def _trigger_for(name: str, family: str, window: str) -> str:
+    low = name.lower()
+    win = window.lower()
+    if "subsidy" in low or "fame" in low or "pli" in low:
+        if "recovery" in win or "under review" in win:
+            return "Subsidy claim recovery notice / policy review decision"
+        return "Policy / incentive change or delay notice"
+    if "oem" in low or "competitor" in low or "counter" in low:
+        return "Peer pricing cut, share push, or new model launch in core geography"
+    if "customer" in low or "churn" in low or "contract" in low or "concentration" in low:
+        return "Contract non-renewal, churn event, or top-account loss"
+    if "cycle" in low or "downturn" in low:
+        return "Demand cycle trough / industry volume decline"
+    if "battery" in low or "china" in low or "supply" in low:
+        return "Import / input-cost spike or supply disruption"
+    if "litigation" in low or "complaint" in low or "ccpa" in low:
+        return "Adverse ruling, reserve step-up, or new complaint class"
+    tm = _TIME_RE.search(window)
+    if tm:
+        return f"Timed event ({tm.group(1)}) cited in pack"
+    return _info_request(f"named trigger for '{name}'")
+
+
+def _population_for(name: str, family: str, window: str) -> str:
+    low = name.lower()
+    if "subsidy" in low or "fame" in low:
+        return "Subsidy-dependent volume / ASP in the addressable mix"
+    if "oem" in low or "competitor" in low:
+        return "Share and mix in the company's core geography / segment"
+    if "customer" in low or "concentration" in low or "contract" in low:
+        pct = _PCT_RE.search(window)
+        if pct:
+            return f"Customer / contract population (~{pct.group(1)}% concentration cue)"
+        return "Top customers / renewing contract base"
+    if "cycle" in low or "downturn" in low:
+        return "Cyclical volume across the served market"
+    if "battery" in low or "supply" in low or "china" in low:
+        return "Units / margin exposed to cell or import inputs"
+    if family.startswith("Regulatory"):
+        return "Geographies / SKUs under the cited rule or claim"
+    return _info_request(f"population exposed for '{name}'")
+
+
+def _mitigation_for(
+    name: str,
+    family: str,
+    window: str,
+    *,
+    protection: str | None = None,
+) -> str:
+    if protection and not _is_info(protection):
+        return f"Structural / deal protection: {protection}"
+    low = name.lower()
+    if "subsidy" in low or "fame" in low:
+        return "Diversify away from incentive-dependent mix; indemnity / CP on recovery"
+    if "oem" in low or "competitor" in low:
+        return "Defend share via product / pricing response; underwrite case at lower share"
+    if "customer" in low or "contract" in low:
+        return "Renewal pipeline discipline; concentration caps; earn-out if delivery-tied"
+    if "cycle" in low or "downturn" in low:
+        return "Stress case at last-trough volume; working-capital / cost flexibility"
+    if "supply" in low or "battery" in low or "china" in low:
+        return "Dual-source / alternate geography; pass-through clauses where available"
+    if family.startswith("Regulatory"):
+        return "Counsel track + specific indemnity / CP for claim exposure"
+    if _STRUCT_CUE.search(window):
+        return "Use pack-cited escrow / earn-out / indemnity / CP"
+    return _info_request(f"mitigation (or what would mitigate) for '{name}'")
 
 
 def _mechanism_for(name: str, family: str, window: str) -> str:
@@ -545,7 +662,7 @@ def _build_external_risks(
     corpus: str,
     legacy: dict[str, Any],
     revenue_usd_m: float | None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     text = _prose(corpus)
     seeds = _seed_from_legacy(legacy)
     seen: set[str] = {str(s.get("risk") or "").lower() for s in seeds}
@@ -595,12 +712,20 @@ def _build_external_risks(
         seen.add(area.lower())
 
     rows: list[dict[str, Any]] = []
-    for seed in seeds[:12]:
+    rejected_unnamed: list[str] = []
+    handed_to_internal: list[str] = []
+    for seed in seeds[:14]:
         name = str(seed.get("risk") or "")
-        family = _classify_family(name)
+        if _is_unnamed_threat(name):
+            rejected_unnamed.append(name or "(blank)")
+            continue
         # Find a context window
         idx = text.lower().find(name.lower().split("/")[0].strip()[:20])
         window = _window(text, idx, radius=200) if idx >= 0 else text[:400]
+        if _looks_internal(name, window):
+            handed_to_internal.append(name)
+            continue
+        family = _classify_family(name)
         mech = _mechanism_for(name, family, window)
         exp = _exposure_from_context(
             name=name,
@@ -616,16 +741,26 @@ def _build_external_risks(
         )
         warn = _early_warning(name, family, window)
         pvs = _price_vs_structure(name, window, family)
+        timing = _time_horizon(window, family)
+        trigger = _trigger_for(name, family, window)
+        population = _population_for(name, family, window)
+        mitigation = _mitigation_for(
+            name, family, window, protection=str(pvs.get("protection") or "")
+        )
         rows.append(
             {
                 "risk": name,
                 "family": family,
+                "trigger": trigger,
+                "population": population,
+                "timing": timing,
                 "mechanism": mech,
+                "mitigation": mitigation,
                 "exposure": exp["exposure"],
                 "exposure_usd_m": exp.get("exposure_usd_m"),
                 "sized": exp["sized"],
                 "size_request": exp.get("size_request"),
-                "time_horizon": _time_horizon(window, family),
+                "time_horizon": timing,
                 "likelihood_argument": like["likelihood_argument"],
                 "numeric_probability": None,
                 "legacy_probability_tag": like.get("legacy_probability_tag"),
@@ -634,15 +769,21 @@ def _build_external_risks(
                 "suggested_protection": pvs["protection"],
                 "structure_rationale": pvs["rationale"],
                 "source": seed.get("source") or _DOC_CITE,
-                "notes": _IDENTIFY_RULE,
+                "notes": _ROW_RULE,
             }
         )
+        if len(rows) >= 12:
+            break
     if not rows:
         rows.append(
             {
                 "risk": _info_request("external risk for this business / geography"),
                 "family": "External market",
+                "trigger": _info_request("named trigger"),
+                "population": _info_request("population exposed"),
+                "timing": _info_request("timing"),
                 "mechanism": _info_request("mechanism"),
+                "mitigation": _info_request("mitigation"),
                 "exposure": _info_request("revenue or margin exposed"),
                 "sized": False,
                 "size_request": _info_request("what would size this risk"),
@@ -653,10 +794,15 @@ def _build_external_risks(
                 "price_vs_structure": _info_request("price vs structure"),
                 "suggested_protection": _NA,
                 "source": _NA,
-                "notes": _IDENTIFY_RULE,
+                "notes": _ROW_RULE,
             }
         )
-    return rows
+    meta = {
+        "rejected_unnamed": rejected_unnamed[:8],
+        "handed_to_internal": handed_to_internal[:8],
+        "notes": _UNNAMED_RULE,
+    }
+    return rows, meta
 
 
 def _build_downsides(
@@ -851,10 +997,388 @@ def _legacy_dual_write(
     return items[:12], regulatory[:16], litigation[:12], flags[:8], notes[:8]
 
 
+def _mr_internal_risk_cross_check(
+    *,
+    risks: list[dict[str, Any]],
+    build_meta: dict[str, Any],
+    internal_risk_spec: dict[str, Any] | None,
+) -> dict[str, Any]:
+    present = isinstance(internal_risk_spec, dict) and bool(internal_risk_spec)
+    overlap: list[str] = []
+    conflicts: list[str] = []
+    aligned: list[str] = []
+    handed = list(build_meta.get("handed_to_internal") or [])
+
+    internal_like = [
+        r for r in risks
+        if isinstance(r, dict)
+        and not _is_info(r.get("risk"))
+        and _looks_internal(
+            str(r.get("risk") or ""),
+            f"{r.get('mechanism')} {r.get('trigger')}",
+        )
+    ]
+    for r in internal_like:
+        conflicts.append(
+            f"Market Risk row '{_clean(r.get('risk'), 60)}' looks internal — "
+            f"move to Internal Risk"
+        )
+
+    if handed:
+        aligned.append(
+            f"Handed {len(handed)} internal-looking item(s) off Market Risk: "
+            + "; ".join(_clean(h, 40) for h in handed[:4])
+        )
+
+    if present:
+        ir_names: list[str] = []
+        for key in (
+            "key_person_exposure",
+            "financial_strain",
+            "control_governance",
+            "ranked_effects",
+            "internal_risks",
+        ):
+            for row in internal_risk_spec.get(key) or []:
+                if not isinstance(row, dict):
+                    continue
+                label = (
+                    row.get("person")
+                    or row.get("issue")
+                    or row.get("weakness")
+                    or row.get("risk")
+                    or row.get("control")
+                )
+                if label:
+                    ir_names.append(str(label))
+        for r in risks:
+            if not isinstance(r, dict) or _is_info(r.get("risk")):
+                continue
+            name = str(r.get("risk") or "")
+            hit = next(
+                (
+                    ir for ir in ir_names
+                    if name.lower()[:18] in ir.lower() or ir.lower()[:18] in name.lower()
+                ),
+                None,
+            )
+            if hit:
+                overlap.append(f"{_clean(name, 50)} ↔ Internal '{_clean(hit, 50)}'")
+        if overlap:
+            conflicts.append(
+                f"{len(overlap)} Market Risk row(s) duplicate Internal Risk topics"
+            )
+        elif not conflicts:
+            aligned.append("Internal Risk prior present; no duplicate restatement detected")
+    else:
+        if not conflicts and not handed:
+            conflicts.append("Internal Risk prior not available for cross-check")
+        elif not conflicts:
+            aligned.append("Internal-looking items filtered; Internal prior absent")
+
+    return {
+        "internal_prior_present": present,
+        "overlap": overlap[:6],
+        "aligned": aligned,
+        "conflicts": conflicts,
+        "handed_to_internal": handed[:8],
+        "notes": _INTERNAL_CROSS_RULE,
+    }
+
+
+def _mr_evidence_qa(
+    *,
+    risks: list[dict[str, Any]],
+    downsides: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+    price_struct: list[dict[str, Any]],
+    build_meta: dict[str, Any],
+    ir_cross: dict[str, Any],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    real = [
+        r for r in risks
+        if isinstance(r, dict)
+        and r.get("risk")
+        and not _is_info(r.get("risk"))
+    ]
+
+    schema_ok = all(
+        not _is_info(r.get("trigger"))
+        and not _is_info(r.get("population"))
+        and not _is_info(r.get("timing") or r.get("time_horizon"))
+        and not _is_info(r.get("mechanism"))
+        and not _is_info(r.get("mitigation"))
+        for r in real
+    ) if real else False
+    rows.append({
+        "check": "risk_row_schema",
+        "status": "PASS" if real and schema_ok else "FAIL",
+        "finding": (
+            f"{len(real)} risk row(s) with trigger/population/timing/mechanism/mitigation"
+            if real and schema_ok
+            else _info_request(
+                "external risk rows with trigger, population, timing, mechanism, mitigation"
+            )
+        ),
+        "action": _ROW_RULE,
+    })
+
+    sized_n = sum(1 for r in real if r.get("sized"))
+    downside_n = sum(1 for d in downsides if isinstance(d, dict) and d.get("bounded"))
+    unsized_ok = all(
+        r.get("sized") or not _is_info(r.get("size_request"))
+        for r in real
+    ) if real else False
+    exposure_ok = real and (sized_n >= 1 or downside_n >= 1 or unsized_ok)
+    rows.append({
+        "check": "dollar_exposure",
+        "status": "PASS" if exposure_ok else "FAIL",
+        "finding": (
+            f"{sized_n} sized · {downside_n} bounded downside; unsized carry sizing asks"
+            if exposure_ok
+            else _info_request("dollar exposure or what would size each risk")
+        ),
+        "action": _DOWNSIDE_RULE,
+    })
+
+    argued = sum(
+        1 for r in real
+        if not _is_info(r.get("likelihood_argument"))
+    )
+    numeric_abuse = sum(1 for r in real if r.get("numeric_probability") is not None)
+    # Affirmative invented % only — strip advisory "do not assign…" sentences
+    like_blob = " ".join(str(r.get("likelihood_argument") or "") for r in real)
+    scrubbed = re.sub(
+        r"(?i)[^.!?\n]*(?:"
+        r"do\s+not\s+assign|"
+        r"not\s+assigned|"
+        r"without\s+a\s+basis|"
+        r"no\s+evidenced\s+basis"
+        r")[^.!?\n]*[.!?]?",
+        " ",
+        like_blob,
+    )
+    invent_pct = bool(re.search(r"(?i)\bprobability\s*[:=]\s*\d+\s*%", scrubbed))
+    like_ok = (
+        real
+        and argued >= max(1, len(real) // 2)
+        and numeric_abuse == 0
+        and not invent_pct
+    )
+    rows.append({
+        "check": "evidence_based_likelihood",
+        "status": "PASS" if like_ok else "FAIL",
+        "finding": (
+            f"{argued}/{len(real)} likelihood argument(s); no invented numeric probability"
+            if like_ok
+            else (
+                "Invented numeric probability — remove"
+                if invent_pct or numeric_abuse
+                else _info_request("evidence-based likelihood (no invented probabilities)")
+            )
+        ),
+        "action": _LIKELIHOOD_RULE,
+    })
+
+    warn_real = [
+        w for w in warnings
+        if isinstance(w, dict)
+        and not _is_info(w.get("risk"))
+        and not _is_info(w.get("early_warning"))
+    ]
+    rows.append({
+        "check": "early_warning_indicators",
+        "status": "PASS" if warn_real else "FAIL",
+        "finding": (
+            f"{len(warn_real)} early-warning indicator(s)"
+            if warn_real
+            else _info_request("monthly early-warning indicators")
+        ),
+        "action": _WARN_RULE,
+    })
+
+    pvs_real = [
+        p for p in price_struct
+        if isinstance(p, dict)
+        and not _is_info(p.get("risk"))
+        and (
+            "price" in str(p.get("classification") or "").lower()
+            or "structure" in str(p.get("classification") or "").lower()
+        )
+    ]
+    rows.append({
+        "check": "price_vs_structure",
+        "status": "PASS" if pvs_real else "FAIL",
+        "finding": (
+            f"{len(pvs_real)} price/structure classification(s)"
+            if pvs_real
+            else _info_request("price vs structure classification")
+        ),
+        "action": _STRUCT_RULE,
+    })
+
+    hard_ir = any(
+        "looks internal" in str(c).lower() or "duplicate" in str(c).lower()
+        for c in (ir_cross.get("conflicts") or [])
+    )
+    ir_ok = (not hard_ir) and (
+        bool(ir_cross.get("internal_prior_present"))
+        or bool(ir_cross.get("handed_to_internal"))
+        or any("no duplicate" in str(a).lower() for a in (ir_cross.get("aligned") or []))
+    )
+    # Soft: prior missing alone is FAIL only when no handoff evidence
+    prior_missing = any(
+        "not available" in str(c).lower() for c in (ir_cross.get("conflicts") or [])
+    )
+    if prior_missing and not hard_ir and not ir_cross.get("handed_to_internal"):
+        ir_ok = False
+    elif prior_missing and not hard_ir:
+        ir_ok = True
+    rows.append({
+        "check": "non_overlap_internal_risk",
+        "status": "PASS" if ir_ok else "FAIL",
+        "finding": (
+            "; ".join(ir_cross.get("aligned") or [])
+            or "Internal Risk boundary respected"
+            if ir_ok
+            else (
+                "; ".join(ir_cross.get("conflicts") or [])
+                or _info_request("Internal Risk prior for non-overlap cross-check")
+            )
+        ),
+        "action": _INTERNAL_CROSS_RULE,
+    })
+
+    rejected = list(build_meta.get("rejected_unnamed") or [])
+    unnamed_in_rows = [
+        r for r in risks
+        if isinstance(r, dict)
+        and not _is_info(r.get("risk"))
+        and _is_unnamed_threat(str(r.get("risk") or ""))
+    ]
+    unnamed_ok = not unnamed_in_rows
+    rows.append({
+        "check": "reject_unnamed_threats",
+        "status": "PASS" if unnamed_ok else "FAIL",
+        "finding": (
+            (
+                f"Unnamed threats rejected ({len(rejected)})"
+                if rejected
+                else "No unnamed / generic threats in register"
+            )
+            if unnamed_ok
+            else f"Unnamed threats still present: "
+            + "; ".join(_clean(r.get("risk"), 40) for r in unnamed_in_rows[:4])
+        ),
+        "action": _UNNAMED_RULE,
+    })
+    return rows
+
+
+def _questions_from_mr_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("mr_evidence_qa")
+        if isinstance(spec.get("mr_evidence_qa"), list) else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("risk_row_schema"):
+        out.append(normalize_question({
+            "question": (
+                "Complete external risk rows with trigger, population, timing, "
+                "mechanism and mitigation"
+            ),
+            "required_records": "Market / legal / commercial packs with named external risks",
+            "decision_effect": "Incomplete rows leave exposure and timing unusable for IC",
+            "priority": "mandatory_pre_decision",
+            "owner": "Market diligence lead",
+            "timing": "before IC",
+            "closure_test": "risk_row_schema QA PASS",
+            "interim_treatment": "LIMITED — do not underwrite unnamed / incomplete risks",
+        }))
+    if _qa_fail("dollar_exposure"):
+        out.append(normalize_question({
+            "question": "Size dollar revenue/margin exposure (or state what would size it)",
+            "required_records": "Contract values, subsidy share, volume × margin bridges",
+            "decision_effect": "Unsized external risks cannot set price or structure",
+            "priority": "signing_condition",
+            "owner": "Market diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "dollar_exposure QA PASS",
+            "interim_treatment": "LIMITED — keep unsized risks on the open register",
+        }))
+    if _qa_fail("evidence_based_likelihood"):
+        out.append(normalize_question({
+            "question": "Argue likelihood from evidence; remove invented numeric probabilities",
+            "required_records": "Renewal dates, policy timetables, competitor behaviour, cycle history",
+            "decision_effect": "Arbitrary probabilities mis-rank diligence priority",
+            "priority": "mandatory_pre_decision",
+            "owner": "Market diligence lead",
+            "timing": "before IC",
+            "closure_test": "evidence_based_likelihood QA PASS",
+            "interim_treatment": "LIMITED — treat likelihood as open",
+        }))
+    if _qa_fail("early_warning_indicators"):
+        out.append(normalize_question({
+            "question": "State monthly early-warning indicators for each material external risk",
+            "required_records": "KPI / monitoring plan post-completion",
+            "decision_effect": "No watch list leaves buyer blind after close",
+            "priority": "post_close_action",
+            "owner": "Portfolio ops",
+            "timing": "at signing / first 100 days",
+            "closure_test": "early_warning_indicators QA PASS",
+            "interim_treatment": "LIMITED — flag monitoring gap",
+        }))
+    if _qa_fail("price_vs_structure"):
+        out.append(normalize_question({
+            "question": "Classify each material risk as price vs structure with protection",
+            "required_records": "SPA term sheet cues (escrow, earn-out, indemnity, CP)",
+            "decision_effect": "Misclassified risks leave wrong protection on the table",
+            "priority": "signing_condition",
+            "owner": "Deal counsel + market lead",
+            "timing": "before SPA",
+            "closure_test": "price_vs_structure QA PASS",
+            "interim_treatment": "LIMITED — do not assume price chip alone",
+        }))
+    if _qa_fail("non_overlap_internal_risk"):
+        out.append(normalize_question({
+            "question": "Reconcile Market Risk with Internal Risk — remove internal duplicates",
+            "required_records": "Internal Risk register (key-person, controls, cash/covenant)",
+            "decision_effect": "Double-counting blurs external vs inherited operating risk",
+            "priority": "mandatory_pre_decision",
+            "owner": "Market + ops diligence leads",
+            "timing": "before IC",
+            "closure_test": "non_overlap_internal_risk QA PASS",
+            "interim_treatment": "LIMITED until Internal Risk cross-check complete",
+        }))
+    if _qa_fail("reject_unnamed_threats"):
+        out.append(normalize_question({
+            "question": "Replace unnamed / generic threats with named trigger and population",
+            "required_records": "Named competitor, customer, policy, or cycle events",
+            "decision_effect": "Generic headwinds are not diligence findings",
+            "priority": "mandatory_pre_decision",
+            "owner": "Market diligence lead",
+            "timing": "before IC",
+            "closure_test": "reject_unnamed_threats QA PASS",
+            "interim_treatment": "LIMITED — strip generic threats from the register",
+        }))
+    return out
+
+
 def _quality_reliance(
     *,
     risks: list[dict[str, Any]],
     downsides: list[dict[str, Any]],
+    qa_fail: bool = False,
 ) -> tuple[str, str, str]:
     real = [
         r for r in risks
@@ -876,8 +1400,21 @@ def _quality_reliance(
     downside_n = sum(1 for d in downsides if isinstance(d, dict) and d.get("bounded"))
     # No numeric probabilities invented
     numeric_abuse = sum(1 for r in real if r.get("numeric_probability") is not None)
+    schema_n = sum(
+        1 for r in real
+        if not _is_info(r.get("trigger"))
+        and not _is_info(r.get("population"))
+        and not _is_info(r.get("mechanism"))
+        and not _is_info(r.get("mitigation"))
+    )
 
-    if real and argued >= max(1, len(real) // 2) and warn_n >= 1 and numeric_abuse == 0:
+    if (
+        real
+        and argued >= max(1, len(real) // 2)
+        and warn_n >= 1
+        and numeric_abuse == 0
+        and schema_n >= max(1, len(real) // 2)
+    ):
         quality = "PASS"
     else:
         quality = "REWORK"
@@ -889,12 +1426,19 @@ def _quality_reliance(
     else:
         reliance = "BLOCKED"
 
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+
     bits = [
         f"Quality {quality}: {len(real)} external risk(s); "
-        f"{argued} with evidence-based likelihood; {sized_n} sized.",
+        f"{argued} with evidence-based likelihood; {sized_n} sized; "
+        f"{schema_n} with full row schema.",
         f"Reliance {reliance}.",
         _LIKELIHOOD_RULE,
+        _ROW_RULE,
     ]
+    if qa_fail:
+        bits.append("Open Market Risk QA FAILs cap READY → LIMITED")
     if numeric_abuse:
         bits.append("Numeric probabilities found without basis — remove.")
     if sized_n == 0:
@@ -942,10 +1486,13 @@ def _heuristic_market_risk_spec(
     legacy_spec: dict[str, Any] | None = None,
     valuation_spec: dict[str, Any] | None = None,
     historical_performance: dict[str, Any] | None = None,
+    internal_risk_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
     revenue = _declared_revenue_usd_m(valuation_spec, historical_performance, corpus)
-    risks = _build_external_risks(corpus=corpus, legacy=legacy, revenue_usd_m=revenue)
+    risks, build_meta = _build_external_risks(
+        corpus=corpus, legacy=legacy, revenue_usd_m=revenue
+    )
     downsides = _build_downsides(
         risks=risks,
         corpus=corpus,
@@ -976,23 +1523,49 @@ def _heuristic_market_risk_spec(
         if isinstance(r, dict) and not str(r.get("risk") or "").startswith("Information")
     ]
     items, regulatory, litigation, flags, notes = _legacy_dual_write(risks=risks, legacy=legacy)
-    quality, reliance, rationale = _quality_reliance(risks=risks, downsides=downsides)
+    ir_cross = _mr_internal_risk_cross_check(
+        risks=risks,
+        build_meta=build_meta,
+        internal_risk_spec=internal_risk_spec,
+    )
+    mr_qa = _mr_evidence_qa(
+        risks=risks,
+        downsides=downsides,
+        warnings=warnings,
+        price_struct=price_struct,
+        build_meta=build_meta,
+        ir_cross=ir_cross,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in mr_qa)
+    quality, reliance, rationale = _quality_reliance(
+        risks=risks, downsides=downsides, qa_fail=qa_fail
+    )
 
-    bits = [f"Market Risk for {company}", f"{len(risks)} external risk(s)"]
+    real_n = sum(
+        1 for r in risks
+        if isinstance(r, dict) and not _is_info(r.get("risk"))
+    )
+    bits = [f"Market Risk for {company}", f"{real_n} external risk(s)"]
     sized_n = sum(1 for r in risks if r.get("sized"))
     if sized_n:
         bits.append(f"{sized_n} sized")
     struct_n = sum(1 for p in price_struct if "structure" in str(p.get("classification") or "").lower())
     if struct_n:
         bits.append(f"{struct_n} structure protection(s)")
+    bits.append(
+        f"Internal prior={'yes' if ir_cross.get('internal_prior_present') else 'no'}"
+    )
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "external_risks": risks,
         "downside_cases": downsides,
         "early_warnings": warnings,
         "price_vs_structure": price_struct,
         "unsized_risks": unsized,
+        "internal_risk_cross_check": ir_cross,
+        "rejected_unnamed": list(build_meta.get("rejected_unnamed") or []),
+        "mr_evidence_qa": mr_qa,
         # Legacy dual-write
         "market_risk_items": items,
         "regulatory_items": regulatory,
@@ -1008,9 +1581,11 @@ def _heuristic_market_risk_spec(
         "dd_code": legacy.get("dd_code") or _DD_CODE,
         "slug": _AGENT_KEY,
         "track": legacy.get("track") or "E",
-        "empty": not risks,
+        "empty": real_n == 0,
         "declared_revenue_usd_m": revenue,
     }
+    out["questions"] = _questions_from_mr_gaps(out)
+    return out
 
 
 def _llm_market_risk_spec(
@@ -1040,14 +1615,15 @@ def _llm_market_risk_spec(
             f"Corpus:\n{corpus[:32000]}\n\n"
             "Return JSON with keys:\n"
             "insight_snapshot,\n"
-            "external_risks: [{risk, family, mechanism, exposure, time_horizon, "
-            "likelihood_argument, early_warning, price_vs_structure, suggested_protection, "
-            "sized (bool), size_request, source}],\n"
+            "external_risks: [{risk, family, trigger, population, timing, mechanism, "
+            "mitigation, exposure, time_horizon, likelihood_argument, early_warning, "
+            "price_vs_structure, suggested_protection, sized (bool), size_request, source}],\n"
             "downside_cases: [{scenario, bound, ebitda_impact, bounded, source}],\n"
             "early_warnings: [{risk, early_warning, source}],\n"
             "price_vs_structure: [{risk, classification, protection, rationale, source}],\n"
             "unsized_risks: [{risk, why_unsized, what_would_size, source}],\n"
             "quality_verdict, reliance_verdict, quality_reliance_rationale.\n"
+            "Reject unnamed/generic threats. Do not restate Internal Risk items. "
             "Do NOT invent numeric probabilities. No invest or pass."
         )
         return generate_json(system=system, user=user, temperature=0.15)
@@ -1055,7 +1631,12 @@ def _llm_market_risk_spec(
         return None
 
 
-def _normalise_llm_spec(llm: dict[str, Any], *, heur: dict[str, Any]) -> dict[str, Any]:
+def _normalise_llm_spec(
+    llm: dict[str, Any],
+    *,
+    heur: dict[str, Any],
+    internal_risk_spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     out = dict(heur)
     for key in (
         "insight_snapshot",
@@ -1070,10 +1651,82 @@ def _normalise_llm_spec(llm: dict[str, Any], *, heur: dict[str, Any]) -> dict[st
     ):
         if key in llm and llm[key]:
             out[key] = llm[key]
-    # Strip any invented numeric probabilities
+    # Strip invented numeric probabilities; fill schema aliases; drop unnamed
+    cleaned: list[dict[str, Any]] = []
+    rejected = list(out.get("rejected_unnamed") or [])
     for r in out.get("external_risks") or []:
-        if isinstance(r, dict):
-            r["numeric_probability"] = None
+        if not isinstance(r, dict):
+            continue
+        r["numeric_probability"] = None
+        name = str(r.get("risk") or "")
+        if _is_unnamed_threat(name):
+            rejected.append(name or "(blank)")
+            continue
+        if not r.get("timing") and r.get("time_horizon"):
+            r["timing"] = r.get("time_horizon")
+        if not r.get("time_horizon") and r.get("timing"):
+            r["time_horizon"] = r.get("timing")
+        cleaned.append(r)
+    out["external_risks"] = cleaned
+    out["rejected_unnamed"] = rejected[:8]
+    build_meta = {
+        "rejected_unnamed": rejected,
+        "handed_to_internal": list(
+            (out.get("internal_risk_cross_check") or {}).get("handed_to_internal") or []
+        ),
+    }
+    ir_cross = _mr_internal_risk_cross_check(
+        risks=cleaned,
+        build_meta=build_meta,
+        internal_risk_spec=internal_risk_spec,
+    )
+    out["internal_risk_cross_check"] = ir_cross
+    warnings = out.get("early_warnings") if isinstance(out.get("early_warnings"), list) else []
+    price_struct = (
+        out.get("price_vs_structure")
+        if isinstance(out.get("price_vs_structure"), list) else []
+    )
+    downsides = (
+        out.get("downside_cases") if isinstance(out.get("downside_cases"), list) else []
+    )
+    mr_qa = _mr_evidence_qa(
+        risks=cleaned,
+        downsides=downsides,
+        warnings=warnings,
+        price_struct=price_struct,
+        build_meta=build_meta,
+        ir_cross=ir_cross,
+    )
+    out["mr_evidence_qa"] = mr_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in mr_qa)
+    qv = out.get("quality_verdict")
+    rv = out.get("reliance_verdict")
+    if qv not in {"PASS", "REWORK"} or rv not in {"READY", "LIMITED", "BLOCKED"}:
+        qv, rv, rationale = _quality_reliance(
+            risks=cleaned, downsides=downsides, qa_fail=qa_fail
+        )
+        out["quality_verdict"] = qv
+        out["reliance_verdict"] = rv
+        out["quality_reliance_rationale"] = rationale
+    else:
+        if qa_fail and rv == "READY":
+            out["reliance_verdict"] = "LIMITED"
+            out["quality_reliance_rationale"] = (
+                str(out.get("quality_reliance_rationale") or "")
+                + " Open Market Risk QA FAILs cap READY → LIMITED."
+            ).strip()
+    llm_questions = llm.get("questions") if isinstance(llm.get("questions"), list) else None
+    if llm_questions:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q = []
+        for raw_q in llm_questions:
+            q = normalize_question(raw_q)
+            if q:
+                filled_q.append(q)
+        out["questions"] = filled_q or _questions_from_mr_gaps(out)
+    else:
+        out["questions"] = _questions_from_mr_gaps(out)
     out["composer"] = "llm_v1"
     return out
 
@@ -1084,6 +1737,7 @@ def build_market_risk_spec(
     index: dict[str, Any] | None = None,
     company: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    internal_risk_spec: dict[str, Any] | None = None,
     corpus: str | None = None,
     sources: list[str] | None = None,
     prefer_heuristic: bool = False,
@@ -1107,6 +1761,7 @@ def build_market_risk_spec(
 
     valuation = _load("valuation_modeling")
     historical = _load("historical_performance")
+    ir_spec = internal_risk_spec if isinstance(internal_risk_spec, dict) else _load("internal_risk")
 
     gathered_sources: list[str] = []
     if corpus is None:
@@ -1138,7 +1793,9 @@ def build_market_risk_spec(
         legacy_spec=legacy,
         valuation_spec=valuation,
         historical_performance=historical,
+        internal_risk_spec=ir_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
     if prefer_heuristic:
         return heur
 
@@ -1152,7 +1809,9 @@ def build_market_risk_spec(
     )
     if not llm_raw:
         return heur
-    return _normalise_llm_spec(llm_raw, heur=heur)
+    out = _normalise_llm_spec(llm_raw, heur=heur, internal_risk_spec=ir_spec)
+    out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return out
 
 
 def render_market_risk_markdown(
@@ -1175,22 +1834,31 @@ def render_market_risk_markdown(
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
+    parts.append(f"{_ROW_RULE}\n\n")
     parts.append(f"{_LIKELIHOOD_RULE}\n\n")
+    parts.append(f"{_UNNAMED_RULE}\n\n")
 
     # 1
-    parts.append("## 1. External Risks (mechanism · exposure · time)\n\n")
+    parts.append("## 1. External Risks (trigger · population · timing · mechanism · mitigation)\n\n")
     parts.append(f"{_IDENTIFY_RULE}\n\n")
+    parts.append(f"{_ROW_RULE}\n\n")
     if risks:
         parts.append(_table(
-            ["Risk", "Family", "Mechanism", "Exposure", "Time horizon", "Source"],
+            [
+                "Risk", "Family", "Trigger", "Population", "Timing",
+                "Mechanism", "Mitigation", "Exposure", "Source",
+            ],
             [
                 [
-                    _clean(r.get("risk"), 40),
-                    _clean(r.get("family"), 24),
-                    _clean(r.get("mechanism"), 80),
-                    _clean(r.get("exposure"), 60),
-                    _clean(r.get("time_horizon"), 40),
-                    _clean(r.get("source") or _NA, 40),
+                    _clean(r.get("risk"), 36),
+                    _clean(r.get("family"), 20),
+                    _clean(r.get("trigger"), 50),
+                    _clean(r.get("population"), 50),
+                    _clean(r.get("timing") or r.get("time_horizon"), 36),
+                    _clean(r.get("mechanism"), 60),
+                    _clean(r.get("mitigation"), 50),
+                    _clean(r.get("exposure"), 50),
+                    _clean(r.get("source") or _NA, 36),
                 ]
                 for r in risks if isinstance(r, dict)
             ],
@@ -1284,6 +1952,45 @@ def render_market_risk_markdown(
         ))
     parts.append("---\n\n")
 
+    # 6 — Internal Risk boundary
+    ir_cross = (
+        spec.get("internal_risk_cross_check")
+        if isinstance(spec.get("internal_risk_cross_check"), dict) else {}
+    )
+    parts.append("## 6. Internal Risk Boundary\n\n")
+    parts.append(f"{_INTERNAL_CROSS_RULE}\n\n")
+    parts.append(_table(
+        ["Field", "Value"],
+        [
+            [
+                "Internal prior present",
+                "Yes" if ir_cross.get("internal_prior_present") else "No",
+            ],
+            [
+                "Handed to Internal Risk",
+                _clean("; ".join(ir_cross.get("handed_to_internal") or []) or _NA, 200),
+            ],
+            [
+                "Overlap",
+                _clean("; ".join(ir_cross.get("overlap") or []) or _NA, 200),
+            ],
+            [
+                "Aligned",
+                _clean("; ".join(ir_cross.get("aligned") or []) or _NA, 200),
+            ],
+            [
+                "Conflicts",
+                _clean("; ".join(ir_cross.get("conflicts") or []) or "None", 200),
+            ],
+        ],
+    ))
+    rejected = spec.get("rejected_unnamed") if isinstance(spec.get("rejected_unnamed"), list) else []
+    if rejected:
+        parts.append(
+            f"\nRejected unnamed threats: {_clean('; '.join(str(x) for x in rejected[:6]), 200)}\n\n"
+        )
+    parts.append("---\n\n")
+
     # Supporting registers (legacy dual-write)
     if regulatory:
         parts.append("## Supporting — Regulatory Register\n\n")
@@ -1305,16 +2012,79 @@ def render_market_risk_markdown(
             parts.append(f"- {_soften_invest(_clean(lit, 160))}\n")
         parts.append("\n---\n\n")
 
-    # 6 Quality
-    parts.append("## 6. Quality & Reliance\n\n")
+    # 7 QA
+    mr_qa = (
+        spec.get("mr_evidence_qa")
+        if isinstance(spec.get("mr_evidence_qa"), list) else []
+    )
+    parts.append("## 7. Market Risk Evidence QA\n\n")
+    parts.append(
+        "QA enforces row schema (trigger/population/timing/mechanism/mitigation), "
+        "dollar exposure (or sizing ask), evidence-based likelihood, early warnings, "
+        "price vs structure, Internal Risk non-overlap, and unnamed-threat rejection.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in mr_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"**{_info_request('Market Risk evidence QA rows')}**\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 8 Questions
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material Market Risk gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    # 9 Quality
+    parts.append("## 9. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
     rationale = spec.get("quality_reliance_rationale") or _NA
-    parts.append(f"**Quality:** {qv}  \n")
-    parts.append(f"**Reliance:** {rv}  \n\n")
-    parts.append(f"{_soften_invest(_clean(rationale, 600))}\n\n")
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _clean(rationale, 460)],
+        ],
+    ))
+    parts.append(f"**Quality:** {_clean(qv, 20)} — is the work accurate and honest about limits?\n\n")
+    parts.append(f"**Reliance:** {_clean(rv, 20)} — can a decision rest on this Market Risk assessment?\n\n")
     parts.append(
         "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open Market Risk QA FAILs cap READY → LIMITED. "
+        f"{_UNNAMED_RULE} {_INTERNAL_CROSS_RULE} "
         "This agent does not issue an invest or pass recommendation.*\n\n"
     )
     parts.append("---\n\n")

@@ -10,7 +10,12 @@ from agetic_cdd_api.agent_document_competitor_identification import (
     render_competitor_identification_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -27,8 +32,10 @@ def _comp_corpus() -> str:
         "with ~20% share; TVS Motor iQube overlapping scooter service; "
         "Bajaj Auto Chetak is a direct rival. "
         "Lost bid notes show customers shortlisted Ather Energy and TVS in CRM. "
+        "Win/loss: Test3 lost RFP-2024-17 to Ather Energy on fleet tender. "
         "Substitute: customers doing nothing or in-housing fleet maintenance. "
         "Potential entrant: a national Chinese OEM without India dealer density is context only. "
+        "Ather Energy claims proprietary OTA software capability (unverified in pack). "
         "Barriers: dealer network density, manufacturing capacity, FAME permit lead times, "
         "contracted volumes with fleets, and capital required for a plant. "
         "Competitor A and Peer 1 are placeholders and must be ignored."
@@ -39,9 +46,12 @@ def test_competitor_identification_prompt_book_listed() -> None:
     system = compose_system("competitor_identification", sector="EV", geography="India")
     assert "competitor_identification" in listed_agents()
     assert "placeholder" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("competitor_identification")
     assert "Ola" not in body and "SoftBank" not in body
     assert "doing nothing" in body.lower() or "in-housing" in body.lower()
+    assert "uncertainty" in body.lower() or "unverified" in body.lower()
 
 
 def test_competitor_identification_not_company_hardcoded() -> None:
@@ -87,7 +97,10 @@ def test_competitor_identification_markdown_follows_prompt_book() -> None:
     assert "## 3. Classification" in md
     assert "## 4. Customer Choice" in md
     assert "## 5. Barriers" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Entity / Geography QA" in md
+    assert "## 7. Capability Uncertainty" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     names = [
         str(r.get("name") or "")
@@ -107,6 +120,16 @@ def test_competitor_identification_markdown_follows_prompt_book() -> None:
     assert not any(_is_target_name(n, "Test3") for n in legacy_names)
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert heur.get("entity_geography_qa")
+    assert heur.get("capability_uncertainty")
+    choice = heur.get("customer_choice") or []
+    assert any(
+        isinstance(c, dict) and c.get("evidence_type") == "actual_customer_choice"
+        for c in choice
+    )
+    assert any(isinstance(c, dict) and c.get("win_loss_outcome") for c in choice)
 
 
 def test_placeholder_dropped_in_normalise() -> None:
@@ -142,6 +165,9 @@ def test_placeholder_dropped_in_normalise() -> None:
     # competitors key is report-shaped
     for row in llm["competitors"]:
         assert "market_share_pct" in row or "name" in row
+    assert llm.get("questions")
+    assert questions_complete(llm["questions"])
+    assert llm.get("entity_geography_qa")
 
 
 def test_render_agent_document_competitor_identification() -> None:
@@ -153,7 +179,7 @@ def test_render_agent_document_competitor_identification() -> None:
             "# Competitor Identification\n\n"
             "## 1. Target Reference (Not a Competitor)\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 9. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -183,5 +209,27 @@ def test_build_competitor_identification_from_corpus() -> None:
     md = render_competitor_identification_markdown("Competitor Identification", spec)
     assert "## 2. Named Competitive Set" in md
     assert "## 5. Barriers" in md
+    assert "## 6. Entity / Geography QA" in md
+    assert "## 8. Questions" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+    assert spec.get("deal_slots")
+
+
+def test_thin_corpus_emits_competitor_questions() -> None:
+    heur = _heuristic_competitor_identification_spec(
+        company="Test3",
+        corpus="General market commentary with no named peers.",
+        sources=["empty.pdf"],
+        geography="India",
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert any(
+        "named competitor" in q.get("question", "").lower()
+        or "competitor" in q.get("question", "").lower()
+        for q in heur["questions"]
+    )
+    assert heur.get("reliance_verdict") == "BLOCKED"

@@ -1,7 +1,8 @@
 """Compose DiligenceIQ Competitor Identification — named peers in-geography (prompt book).
 
-Named competitors with geography/overlap/scale; classification; target as separate
-reference; customer-choice evidence; barriers as buy/build. No invest/pass.
+Named competitors with geography/overlap/scale; role taxonomy; target as separate
+reference; win/loss / tender evidence; barriers as buy/build; entity/geography QA
+(reject anonymous); uncertainty for unverified capabilities. No invest/pass.
 No OEM allowlist — extract names from the corpus only. Preserve competitors_legacy.
 """
 
@@ -155,6 +156,24 @@ _BARRIER_KEYS = (
     ("processing_capacity", ("processing capacity", "throughput", "plant capacity", "treatment capacity")),
     ("contracted_volumes", ("contracted volume", "contracted tonnes", "committed volume", "take-or-pay")),
     ("capital", ("capital required", "capex", "capital intensity", "upfront capital", "investment required")),
+)
+
+_CAPABILITY_CLAIM = re.compile(
+    r"\b(claims?\s+to|claimed|reportedly|allegedly|said\s+to|"
+    r"purports?\s+to|unverified|not\s+verified|"
+    r"capability|capabilities|feature\s+set|OTA|software\s+stack|"
+    r"moat|differentiator|proprietary)\b",
+    re.IGNORECASE,
+)
+_WIN_LOSS = re.compile(
+    r"\b(won|win(?:ning)?|lost|loss|awarded|shortlisted|selected|"
+    r"beat(?:en)?|defeated)\b",
+    re.IGNORECASE,
+)
+_TENDER_REF = re.compile(
+    r"\b((?:RFP|RFQ|RFT|tender|bid)\s*(?:#|no\.?|number|id)?\s*[\w\-/\.]{2,24}|"
+    r"CRM\s+(?:opp(?:ortunity)?|deal)\s*[\w\-/\.]{2,24})\b",
+    re.IGNORECASE,
 )
 
 _UNNAMED_TOKENS = frozenset({
@@ -539,6 +558,27 @@ def _target_reference(
     }
 
 
+def _win_loss_from_sent(sent: str) -> str:
+    m = _WIN_LOSS.search(sent or "")
+    if not m:
+        return _NA
+    token = m.group(1).lower()
+    if token.startswith("win") or token in {"won", "awarded", "selected", "shortlisted"}:
+        return f"win / shortlist {_DOC_CITE}"
+    if token.startswith("lost") or token in {"loss", "beaten", "defeated"}:
+        return f"loss {_DOC_CITE}"
+    return f"{token} {_DOC_CITE}"
+
+
+def _tender_ref_from_sent(sent: str) -> str:
+    m = _TENDER_REF.search(sent or "")
+    if m:
+        return _clean(m.group(1), 60) + f" {_DOC_CITE}"
+    if _CUSTOMER_CHOICE_CUE.search(sent or ""):
+        return _info_request("tender / RFP / CRM opportunity id")
+    return _NA
+
+
 def _customer_choice_rows(
     competitive_set: list[dict[str, Any]],
     corpus: str,
@@ -561,6 +601,8 @@ def _customer_choice_rows(
         name = str(r.get("name") or "")
         if not name or name.startswith("Information"):
             continue
+        if _norm_name(name) == _norm_name(_SUBSTITUTE_INHOUSE):
+            continue
         hit = next(
             (h for h in evidence_hits if _norm_name(name).split()[0] in h.lower()),
             None,
@@ -570,6 +612,8 @@ def _customer_choice_rows(
                 "competitor": name,
                 "evidence_type": "actual_customer_choice",
                 "evidence": _clean(hit, 200) + f" {_DOC_CITE}",
+                "win_loss_outcome": _win_loss_from_sent(hit),
+                "tender_ref": _tender_ref_from_sent(hit),
                 "notes": "Tender / lost-bid / CRM / interview evidence present",
             })
         else:
@@ -583,6 +627,8 @@ def _customer_choice_rows(
                         "or customer interviews"
                     )
                 ),
+                "win_loss_outcome": _info_request(f"win/loss outcome vs {name}"),
+                "tender_ref": _info_request("tender / RFP / CRM opportunity id"),
                 "notes": "Request primary customer-choice evidence",
             })
         if len(rows) >= 8:
@@ -594,9 +640,343 @@ def _customer_choice_rows(
             "evidence": _info_request(
                 "tender records, lost-bid notes, CRM competitor fields, or customer interviews"
             ),
+            "win_loss_outcome": _info_request("win/loss outcome"),
+            "tender_ref": _info_request("tender / RFP / CRM opportunity id"),
             "notes": "No customer-choice evidence in opened packs",
         })
     return rows
+
+
+def _entity_geography_qa(
+    competitive_set: list[dict[str, Any]],
+    *,
+    geography: str | None,
+) -> list[dict[str, str]]:
+    """Reject anonymous columns; flag missing / out-of-scope geography."""
+    rows: list[dict[str, str]] = []
+    named_in_scope = 0
+    for r in competitive_set:
+        if not isinstance(r, dict):
+            continue
+        name = str(r.get("name") or "").strip()
+        if not name:
+            continue
+        if _is_placeholder_name(name):
+            rows.append({
+                "check": "anonymous_column",
+                "entity": name,
+                "geography": str(r.get("geography") or _NA),
+                "status": "REJECTED",
+                "action": "Drop placeholder / anonymous competitor label",
+            })
+            continue
+        if _norm_name(name) == _norm_name(_SUBSTITUTE_INHOUSE):
+            rows.append({
+                "check": "substitute_row",
+                "entity": name,
+                "geography": str(r.get("geography") or "any"),
+                "status": "PASS",
+                "action": "Substitute retained (customer doing nothing / in-housing)",
+            })
+            continue
+        geo = str(r.get("geography") or "")
+        if r.get("context_only") or _OUT_OF_GEO.search(geo):
+            rows.append({
+                "check": "out_of_geography",
+                "entity": name,
+                "geography": geo or _info_request("geography served"),
+                "status": "CONTEXT_ONLY",
+                "action": (
+                    f"Treat as context — not an in-market competitor"
+                    + (f" vs {geography}" if geography else "")
+                ),
+            })
+            continue
+        if not geo or geo.startswith("Information") or geo == _NA:
+            rows.append({
+                "check": "missing_geography",
+                "entity": name,
+                "geography": _info_request("geography served"),
+                "status": "FAIL",
+                "action": "Request operating geography before counting as peer",
+            })
+            continue
+        named_in_scope += 1
+        rows.append({
+            "check": "named_in_geography",
+            "entity": name,
+            "geography": geo,
+            "status": "PASS",
+            "action": "Named entity with in-scope geography",
+        })
+    if not rows:
+        rows.append({
+            "check": "empty_set",
+            "entity": _info_request("named competitor"),
+            "geography": geography or _info_request("geography"),
+            "status": "FAIL",
+            "action": "No named competitive set to QA",
+        })
+    elif named_in_scope == 0 and not any(
+        r.get("status") == "PASS" and r.get("check") == "substitute_row" for r in rows
+    ):
+        rows.append({
+            "check": "no_in_scope_peers",
+            "entity": _NA,
+            "geography": geography or _NA,
+            "status": "FAIL",
+            "action": "No named in-geography peers after entity/geography QA",
+        })
+    return rows[:16]
+
+
+def _capability_uncertainty(
+    competitive_set: list[dict[str, Any]],
+    corpus: str,
+) -> list[dict[str, str]]:
+    """Mark claimed but unverified capabilities as uncertainty — do not invent."""
+    sents = _sentences(corpus)
+    claim_hits = [
+        s for s in _pick_sentences(
+            sents,
+            keywords=(
+                "claim", "capability", "reportedly", "unverified",
+                "OTA", "software", "moat", "proprietary", "feature",
+            ),
+            limit=10,
+        )
+        if _CAPABILITY_CLAIM.search(s)
+    ]
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for r in competitive_set:
+        if not isinstance(r, dict) or r.get("context_only"):
+            continue
+        name = str(r.get("name") or "").strip()
+        if not name or name.startswith("Information"):
+            continue
+        if _norm_name(name) == _norm_name(_SUBSTITUTE_INHOUSE):
+            continue
+        blob = " ".join(
+            str(r.get(k) or "")
+            for k in ("service_overlap", "scale", "notes", "software", "trading_status")
+        )
+        hit = next(
+            (h for h in claim_hits if _norm_name(name).split()[0] in h.lower()),
+            None,
+        )
+        soft = r.get("software")
+        unverified = bool(
+            hit
+            or (soft and str(soft).strip() and soft not in (_NA, None))
+            or re.search(r"(?i)claim|reportedly|unverified|alleged", blob)
+        )
+        if not unverified:
+            continue
+        key = _norm_name(name)
+        if key in seen:
+            continue
+        seen.add(key)
+        evidence = (
+            _clean(hit, 160) + f" {_DOC_CITE}"
+            if hit
+            else (
+                f"Software/capability field present ({soft}) without primary verification"
+                if soft
+                else _clean(blob, 160)
+            )
+        )
+        rows.append({
+            "entity": name,
+            "claimed_capability": (
+                _clean(hit, 100) if hit
+                else (str(soft) if soft else "Capability claimed in landscape language")
+            ),
+            "verification_status": "unverified",
+            "uncertainty": (
+                "Do not treat as demonstrated capability until primary evidence "
+                "(demo, contract annex, product teardown, or customer confirmation)"
+            ),
+            "interim_treatment": "Exclude from moat / differentiation conclusions",
+            "evidence": evidence,
+        })
+        if len(rows) >= 8:
+            break
+    if not rows and claim_hits:
+        rows.append({
+            "entity": _info_request("named peer with claimed capability"),
+            "claimed_capability": _clean(claim_hits[0], 100),
+            "verification_status": "unverified",
+            "uncertainty": "Capability language present without a named peer binding",
+            "interim_treatment": "Do not invent peer capabilities",
+            "evidence": _clean(claim_hits[0], 160) + f" {_DOC_CITE}",
+        })
+    if not rows:
+        rows.append({
+            "entity": _NA,
+            "claimed_capability": _NA,
+            "verification_status": "none_flagged",
+            "uncertainty": "No unverified capability claims flagged in opened packs",
+            "interim_treatment": "None — do not invent peer capabilities",
+            "evidence": _NA,
+        })
+    return rows
+
+
+def _questions_from_ci_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    peers = spec.get("competitive_set") if isinstance(spec.get("competitive_set"), list) else []
+    named = [
+        r for r in peers
+        if isinstance(r, dict)
+        and r.get("name")
+        and not str(r["name"]).startswith("Information")
+        and not _is_placeholder_name(str(r["name"]))
+        and _norm_name(str(r["name"])) != _norm_name(_SUBSTITUTE_INHOUSE)
+        and not r.get("context_only")
+    ]
+    if not named:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Identify named competitors operating in the deal geography",
+                    "required_records": (
+                        "Competitive landscape pack with legal/trading names, "
+                        "geography served, and service overlap"
+                    ),
+                    "decision_effect": "Without named peers, competitive set cannot support diligence",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 named in-geography peer (not placeholder / not target)",
+                    "interim_treatment": "Do not invent OEM peer lists or anonymous columns",
+                }
+            )
+        )
+
+    choice = spec.get("customer_choice") if isinstance(spec.get("customer_choice"), list) else []
+    actual = sum(
+        1 for c in choice
+        if isinstance(c, dict) and c.get("evidence_type") == "actual_customer_choice"
+    )
+    if named and actual == 0:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide win/loss, tender, CRM, or interview evidence of customer choice",
+                    "required_records": (
+                        "Tender awards, lost-bid notes, CRM competitor fields, "
+                        "or customer interview notes"
+                    ),
+                    "decision_effect": "Inferred peers may not be who the business actually loses to",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 actual_customer_choice row with win/loss or tender ref",
+                    "interim_treatment": "Mark competitive set inferred; LIMITED reliance",
+                }
+            )
+        )
+
+    barriers = spec.get("barriers") if isinstance(spec.get("barriers"), list) else []
+    barriers_ok = sum(
+        1 for b in barriers
+        if isinstance(b, dict)
+        and b.get("detail")
+        and not str(b["detail"]).startswith("Information")
+        and b["detail"] != _NA
+    )
+    if barriers_ok < 2:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Document barriers to entry with buy-or-build implications",
+                    "required_records": (
+                        "Ops / strategy notes on route density, permits lead time, "
+                        "processing capacity, contracted volumes, capital"
+                    ),
+                    "decision_effect": "Entry barriers drive durability of competitive position",
+                    "priority": "signing_condition",
+                    "owner": "market / ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥2 barriers with evidenced detail and buy/build framing",
+                    "interim_treatment": "Treat barrier strength as untested",
+                }
+            )
+        )
+
+    qa = spec.get("entity_geography_qa") if isinstance(spec.get("entity_geography_qa"), list) else []
+    if any(isinstance(r, dict) and r.get("status") in {"FAIL", "REJECTED"} for r in qa):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Resolve entity/geography QA failures (anonymous or missing geo)",
+                    "required_records": "Named legal/trading entities with operating geography",
+                    "decision_effect": "Anonymous or out-of-scope rows cannot define the competitive set",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "All in-set peers PASS named_in_geography (or CONTEXT_ONLY)",
+                    "interim_treatment": "Drop REJECTED rows; exclude FAIL until geography confirmed",
+                }
+            )
+        )
+
+    unc = (
+        spec.get("capability_uncertainty")
+        if isinstance(spec.get("capability_uncertainty"), list)
+        else []
+    )
+    if any(
+        isinstance(r, dict) and r.get("verification_status") == "unverified"
+        for r in unc
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Verify claimed peer capabilities before treating as demonstrated",
+                    "required_records": (
+                        "Product demo, contract annex, teardown, or customer confirmation"
+                    ),
+                    "decision_effect": "Unverified capabilities inflate differentiation / moat claims",
+                    "priority": "residual_uncertainty",
+                    "owner": "product / commercial lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "Capability marked verified with primary evidence or dropped",
+                    "interim_treatment": "Keep as uncertainty; exclude from moat conclusions",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material competitor-identification inputs are missing "
+                        "for the stated geography"
+                    ),
+                    "required_records": "N/A — current pack sufficient for named competitive set",
+                    "decision_effect": "None — competitive set publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "market diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if geography or competitive perimeter changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
 
 
 def _barriers_rows(corpus: str) -> list[dict[str, str]]:
@@ -723,21 +1103,34 @@ def _quality_reliance(
     named_count: int,
     actual_choice: int,
     barriers_evidenced: int,
+    qa_failures: int = 0,
+    unverified_capabilities: int = 0,
 ) -> tuple[str, str, str]:
-    if named_count >= 1 and actual_choice >= 1:
+    if named_count >= 1 and actual_choice >= 1 and qa_failures == 0:
+        reliance = "READY" if barriers_evidenced >= 2 and unverified_capabilities == 0 else "LIMITED"
         return (
             "PASS",
-            "READY" if barriers_evidenced >= 2 else "LIMITED",
+            reliance,
             (
                 f"{named_count} named competitor(s); {actual_choice} with actual "
-                f"customer-choice evidence; {barriers_evidenced} barrier(s) evidenced."
+                f"customer-choice evidence; {barriers_evidenced} barrier(s) evidenced"
+                + (
+                    f"; {unverified_capabilities} unverified capability claim(s)"
+                    if unverified_capabilities
+                    else ""
+                )
+                + "."
             ),
         )
     if named_count >= 1:
         return (
             "PASS",
             "LIMITED",
-            "Named peers present but customer-choice evidence is mostly inferred.",
+            (
+                "Named peers present but customer-choice evidence is mostly inferred"
+                + (f"; {qa_failures} entity/geography QA failure(s)" if qa_failures else "")
+                + "."
+            ),
         )
     return "PASS", "BLOCKED", "No named in-geography competitors evidenced in the data room."
 
@@ -750,6 +1143,11 @@ def _llm_competitor_identification_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -763,6 +1161,12 @@ def _llm_competitor_identification_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -784,11 +1188,18 @@ def _llm_competitor_identification_spec(
         "named legal/trading names only (no Competitor A / Peer 1 / TBD / industry average); "
         "always include substitute 'Customer doing nothing / in-housing' if missing; "
         "out-of-geography names are context not competitors; national scale ≠ local threat,\n"
-        "customer_choice: [{competitor, evidence_type, evidence, notes}] "
+        "customer_choice: [{competitor, evidence_type, evidence, win_loss_outcome, tender_ref, notes}] "
         "— evidence_type actual_customer_choice|inferred; "
         "when inferred request tender/CRM/lost-bid evidence,\n"
         "barriers: [{barrier, buy_or_build, detail, evidence}] "
         "— cover route density, permits/lead time, processing capacity, contracted volumes, capital,\n"
+        "entity_geography_qa: [{check, entity, geography, status, action}] "
+        "— REJECT anonymous columns; CONTEXT_ONLY for out-of-geography; FAIL if geography missing,\n"
+        "capability_uncertainty: [{entity, claimed_capability, verification_status, "
+        "uncertainty, interim_treatment, evidence}] "
+        "— mark unverified capabilities; do not invent,\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "positioning_notes: [string],\n"
         "competitors_legacy: [{name, market_share_pct, units_000s, flagship_price_inr, trend, nps, software}],\n"
         "quality_verdict (PASS|REWORK),\n"
@@ -833,6 +1244,8 @@ def _heuristic_competitor_identification_spec(
     target_ref = _target_reference(company=company, corpus=corpus_full, geography=geography)
     choice = _customer_choice_rows(competitive_set, corpus_full)
     barriers = _barriers_rows(corpus_full)
+    entity_qa = _entity_geography_qa(competitive_set, geography=geography)
+    capability_unc = _capability_uncertainty(competitive_set, corpus_full)
     notes = _positioning_notes(corpus_full, legacy)
     legacy_rows = _legacy_from_rows(competitive_set, legacy)
 
@@ -855,26 +1268,39 @@ def _heuristic_competitor_identification_spec(
         and not str(b["detail"]).startswith("Information")
         and b["detail"] != _NA
     )
+    qa_failures = sum(
+        1 for r in entity_qa
+        if isinstance(r, dict) and r.get("status") in {"FAIL", "REJECTED"}
+    )
+    unverified = sum(
+        1 for r in capability_unc
+        if isinstance(r, dict) and r.get("verification_status") == "unverified"
+    )
     quality, reliance, qr = _quality_reliance(
         named_count=named,
         actual_choice=actual,
         barriers_evidenced=barriers_ok,
+        qa_failures=qa_failures,
+        unverified_capabilities=unverified,
     )
 
     insight = (
         f"Competitor Identification for {company}: {named} named peer(s) in/near "
         f"{geography or 'stated geography'}; target held as a separate reference row; "
         f"classifications applied; customer-choice "
-        f"{'evidenced' if actual else 'mostly inferred'}; barriers framed as buy or build."
+        f"{'evidenced' if actual else 'mostly inferred'}; barriers framed as buy or build; "
+        f"entity/geography QA and capability uncertainty logged."
     )
 
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "target_reference": target_ref,
         "competitive_set": competitive_set,
         "competitors": legacy_rows,  # CompetitorRow-shaped for report consumers
         "customer_choice": choice,
         "barriers": barriers,
+        "entity_geography_qa": entity_qa,
+        "capability_uncertainty": capability_unc,
         "positioning_notes": notes,
         "competitors_legacy": legacy_rows,
         "quality_verdict": quality,
@@ -886,6 +1312,8 @@ def _heuristic_competitor_identification_spec(
         "dd_code": legacy.get("dd_code") or "DD-04",
         "empty": named == 0 and not legacy_rows,
     }
+    out["questions"] = _questions_from_ci_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -895,8 +1323,13 @@ def _normalise_llm_spec(
     sources: list[str],
     geography: str | None,
     legacy_spec: dict[str, Any] | None,
+    corpus: str = "",
 ) -> dict[str, Any]:
-    for key in ("competitors", "customer_choice", "barriers", "positioning_notes", "competitors_legacy"):
+    for key in (
+        "competitors", "customer_choice", "barriers", "positioning_notes",
+        "competitors_legacy", "entity_geography_qa", "capability_uncertainty",
+        "questions",
+    ):
         if key == "positioning_notes":
             if not isinstance(llm.get(key), list):
                 llm[key] = []
@@ -905,7 +1338,7 @@ def _normalise_llm_spec(
 
     if not isinstance(llm.get("target_reference"), dict):
         llm["target_reference"] = _target_reference(
-            company=company, corpus="", geography=geography,
+            company=company, corpus=corpus, geography=geography,
         )
     else:
         llm["target_reference"]["name"] = company
@@ -974,12 +1407,19 @@ def _normalise_llm_spec(
                     "or customer interviews"
                 )
             )
+        row.setdefault("win_loss_outcome", _info_request("win/loss outcome"))
+        row.setdefault("tender_ref", _info_request("tender / RFP / CRM opportunity id"))
 
     if not llm.get("customer_choice"):
-        llm["customer_choice"] = _customer_choice_rows(cleaned, "")
+        llm["customer_choice"] = _customer_choice_rows(cleaned, corpus)
 
     if not llm.get("barriers"):
-        llm["barriers"] = _barriers_rows("")
+        llm["barriers"] = _barriers_rows(corpus)
+
+    if not llm.get("entity_geography_qa"):
+        llm["entity_geography_qa"] = _entity_geography_qa(cleaned, geography=geography)
+    if not llm.get("capability_uncertainty"):
+        llm["capability_uncertainty"] = _capability_uncertainty(cleaned, corpus)
 
     if not llm.get("competitors_legacy"):
         llm["competitors_legacy"] = _legacy_from_rows(cleaned, legacy_spec)
@@ -1019,6 +1459,18 @@ def _normalise_llm_spec(
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else "PASS"
     llm["reliance_verdict"] = rv if rv in {"READY", "LIMITED", "BLOCKED"} else "LIMITED"
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_ci_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            q = normalize_question(raw)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_ci_gaps(llm)
 
     for dead in ("recommendation", "confidence", "key_conditions"):
         llm.pop(dead, None)
@@ -1084,23 +1536,33 @@ def build_competitor_identification_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 company=target,
                 sources=sources,
                 geography=geography,
                 legacy_spec=legacy_spec,
+                corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_competitor_identification_spec(
+    heur = _heuristic_competitor_identification_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_competitor_identification_markdown(
@@ -1151,6 +1613,17 @@ def render_competitor_identification_markdown(
         else []
     )
     barriers = spec.get("barriers") if isinstance(spec.get("barriers"), list) else []
+    entity_qa = (
+        spec.get("entity_geography_qa")
+        if isinstance(spec.get("entity_geography_qa"), list)
+        else []
+    )
+    capability_unc = (
+        spec.get("capability_uncertainty")
+        if isinstance(spec.get("capability_uncertainty"), list)
+        else []
+    )
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
@@ -1231,20 +1704,25 @@ def render_competitor_identification_markdown(
         ))
     parts.append("---\n\n")
 
-    parts.append("## 4. Customer Choice Evidence\n\n")
+    parts.append("## 4. Customer Choice Evidence (Win/Loss & Tender)\n\n")
     parts.append(
         "Prefer tender records, lost-bid notes, CRM competitor fields, customer interviews. "
         "**Mark inferred where that evidence is absent and request it.**\n\n"
     )
     if choice:
         parts.append(_table(
-            ["Competitor", "Evidence Type", "Evidence", "Notes"],
+            [
+                "Competitor", "Evidence Type", "Win/Loss", "Tender / CRM Ref",
+                "Evidence", "Notes",
+            ],
             [
                 [
                     _clean(r.get("competitor"), 40),
                     _clean(r.get("evidence_type"), 40).replace("_", " "),
-                    _clean(r.get("evidence"), 140),
-                    _clean(r.get("notes"), 80),
+                    _clean(r.get("win_loss_outcome"), 40),
+                    _clean(r.get("tender_ref"), 50),
+                    _clean(r.get("evidence"), 120),
+                    _clean(r.get("notes"), 60),
                 ]
                 for r in choice if isinstance(r, dict)
             ],
@@ -1269,6 +1747,51 @@ def render_competitor_identification_markdown(
                 for r in barriers if isinstance(r, dict)
             ],
         ))
+    parts.append("---\n\n")
+
+    parts.append("## 6. Entity / Geography QA\n\n")
+    parts.append(
+        "Reject anonymous columns. Out-of-geography peers are context only. "
+        "National scale ≠ local threat.\n\n"
+    )
+    if entity_qa:
+        parts.append(_table(
+            ["Check", "Entity", "Geography", "Status", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 40).replace("_", " "),
+                    _clean(r.get("entity"), 40),
+                    _clean(r.get("geography"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("action"), 100),
+                ]
+                for r in entity_qa if isinstance(r, dict)
+            ],
+        ))
+    parts.append("---\n\n")
+
+    parts.append("## 7. Capability Uncertainty\n\n")
+    parts.append(
+        "Mark claimed but unverified capabilities as uncertainty — do not invent them "
+        "or treat them as demonstrated moat.\n\n"
+    )
+    if capability_unc:
+        parts.append(_table(
+            [
+                "Entity", "Claimed Capability", "Status", "Uncertainty",
+                "Interim Treatment",
+            ],
+            [
+                [
+                    _clean(r.get("entity"), 40),
+                    _clean(r.get("claimed_capability"), 80),
+                    _clean(r.get("verification_status"), 30),
+                    _clean(r.get("uncertainty"), 100),
+                    _clean(r.get("interim_treatment"), 80),
+                ]
+                for r in capability_unc if isinstance(r, dict)
+            ],
+        ))
     parts.append(
         "*This section does not recommend invest or pass. "
         "It establishes who the business actually loses deals to — named companies "
@@ -1276,7 +1799,27 @@ def render_competitor_identification_markdown(
     )
     parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material competitor-identification gaps')}\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 9. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

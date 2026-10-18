@@ -295,6 +295,7 @@ sequenceDiagram
 |-------|---------|
 | `Dockerfile.api` / `Dockerfile.web` | Production images |
 | `cloudbuild.yaml` | Remote build + push to AR |
+| `scripts/deploy-local-docker.sh` | Rebuild from working tree + local redeploy + smoke tests |
 | `scripts/deploy-artifact-registry.sh` | Local or `--cloud` push helper |
 | `docker-compose.yml` | Local / VM orchestration |
 | `.env.docker.example` | Env template |

@@ -19,6 +19,12 @@ class _FakeDeal:
     company = "Test3"
     sector = "Electric Two-Wheelers"
     geography = "India"
+    metadata = {
+        "deal_perimeter": "standalone ops",
+        "transaction_type": "majority buyout",
+        "as_of_date": "2024-12-31",
+        "decision_stage": "IC",
+    }
 
 
 def _cap_corpus() -> str:
@@ -34,7 +40,12 @@ def _cap_corpus() -> str:
         "Lender consent required for the transaction. "
         "Freely available cash USD 40M. Restricted cash USD 12M in escrow. "
         "Operating minimum cash floor USD 15M. "
-        "Declared unpaid dividend USD 5M. Overdue trade creditors beyond normal terms USD 8M."
+        "Declared unpaid dividend USD 5M. Overdue trade creditors beyond normal terms USD 8M. "
+        "Acquisition facility of USD 50M new money for the transaction; "
+        "existing Term Loan A is refinancing / take-out. "
+        "Cap table fully diluted: Founder HoldCo — 42% fully diluted; "
+        "Sponsor Fund IV — 38% fully diluted; Options pool — 20% fully diluted. "
+        "Approved EBITDA USD 55M."
     )
 
 
@@ -72,13 +83,25 @@ def _complete_legacy() -> dict:
 
 
 def test_capital_structure_prompt_book_listed() -> None:
-    system = compose_system("capital_structure", sector="EV", geography="India")
+    system = compose_system(
+        "capital_structure",
+        sector="EV",
+        geography="India",
+        deal_perimeter="standalone ops",
+        transaction_type="majority buyout",
+        as_of_date="2024-12-31",
+        decision_stage="IC",
+    )
     assert "capital_structure" in listed_agents()
     assert "facility" in system.lower() or "net debt" in system.lower()
     body = agent_prompt("capital_structure")
     assert "Ola" not in body and "SoftBank" not in body
     assert "incomplete" in body.lower()
     assert "freely available" in body.lower()
+    assert "questions" in body.lower()
+    assert "fully diluted" in body.lower() or "cap table" in body.lower()
+    assert "approved" in body.lower() and "ebitda" in body.lower()
+    assert "standalone ops" in system.lower() or "deal perimeter" in system.lower()
 
 
 def test_capital_structure_not_company_hardcoded() -> None:
@@ -120,7 +143,8 @@ def test_complete_schedule_builds_net_debt() -> None:
         corpus=(
             "Freely available cash USD 40M. Restricted cash USD 12M in escrow. "
             "Operating minimum cash floor USD 15M. "
-            "Change-of-control triggers mandatory prepayment. Lender consent required."
+            "Change-of-control triggers mandatory prepayment. Lender consent required. "
+            "Approved EBITDA USD 55M."
         ),
         sources=["05_Financial_Due_Diligence.pdf"],
         legacy_spec=_complete_legacy(),
@@ -146,8 +170,10 @@ def test_complete_schedule_builds_net_debt() -> None:
     assert closing is not None
     assert isinstance(closing.get("amount"), (int, float))
     leverage = heur.get("leverage_ratios") or {}
-    assert "leverage_withheld" not in leverage
-    assert leverage.get("net_debt_revenue") == 0.49
+    disc = heur.get("leverage_discipline") or {}
+    assert disc.get("ebitda_approved") is True
+    assert disc.get("status") == "computed_on_approved_ebitda"
+    assert "net_debt_ebitda" in leverage or leverage.get("net_debt_revenue") == 0.49
 
 
 def test_cash_split_and_debt_like() -> None:
@@ -171,6 +197,67 @@ def test_cash_split_and_debt_like() -> None:
     )
 
 
+def test_cap_table_financing_and_qa() -> None:
+    heur = _heuristic_capital_structure_spec(
+        company="Test3",
+        corpus=_cap_corpus(),
+        sources=["05_Financial_Due_Diligence.pdf"],
+        legacy_spec=_complete_legacy(),
+    )
+    cap = heur.get("cap_table") or []
+    assert any(
+        isinstance(r, dict)
+        and isinstance(r.get("fully_diluted_pct"), (int, float))
+        for r in cap
+    )
+    fin = heur.get("financing_vs_acquisition") or []
+    classes = {
+        str(r.get("classification") or "")
+        for r in fin if isinstance(r, dict)
+    }
+    assert any("acquisition" in c or "existing" in c or "refinanc" in c for c in classes)
+    qa = heur.get("cap_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "facility_schedule_complete",
+        "debt_like_catalogue",
+        "cash_split_free_restricted_minimum",
+        "change_of_control_consents",
+        "net_debt_bridge_sourced",
+        "cap_table_fully_diluted",
+        "approved_ebitda_leverage",
+        "financing_vs_acquisition",
+    ):
+        assert need in checks
+    questions = heur.get("questions") or []
+    assert isinstance(questions, list)
+    # Incomplete facilities from corpus-only lines still leave schedule gaps → LIMITED
+    assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
+
+
+def test_negative_ebitda_uses_alt_metrics() -> None:
+    heur = _heuristic_capital_structure_spec(
+        company="Test3",
+        corpus=(
+            "Freely available cash USD 40M. Restricted cash USD 5M. "
+            "Operating minimum cash floor USD 10M. "
+            "Approved EBITDA USD -12M. "
+            "Change-of-control consent required."
+        ),
+        sources=["a.pdf"],
+        legacy_spec={
+            **_complete_legacy(),
+            "leverage_ratios": {"net_debt_revenue": 0.55, "interest_cover": 0.2},
+        },
+    )
+    disc = heur.get("leverage_discipline") or {}
+    assert disc.get("status") == "alt_metrics_negative_ebitda"
+    leverage = heur.get("leverage_ratios") or {}
+    assert "leverage_withheld" in leverage
+    assert "net_debt_ebitda" not in leverage
+    assert leverage.get("net_debt_revenue") == 0.55
+
+
 def test_render_no_invest() -> None:
     heur = _heuristic_capital_structure_spec(
         company="Test3",
@@ -184,7 +271,9 @@ def test_render_no_invest() -> None:
     assert "## 3. Cash Split" in md
     assert "## 4. Change of Control" in md
     assert "## 5. Net Debt Bridge" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Capital Structure Evidence QA" in md
+    assert "## 7. Questions and Inputs Required" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
     assert "incomplete" in md.lower() or "withheld" in md.lower()
@@ -210,11 +299,11 @@ def test_render_agent_document_dispatch() -> None:
         ),
     }
     md = render_agent_document("capital_structure", output)
-    assert "## 6. Quality & Reliance" in md
+    assert "## 8. Quality & Reliance" in md or "## 6. Capital Structure Evidence QA" in md
     assert "Senior Term Loan A" in md
 
 
-def test_build_prefers_heuristic_when_flagged() -> None:
+def test_deal_slots_on_build() -> None:
     deal = _FakeDeal()
     spec = build_capital_structure_spec(
         deal,  # type: ignore[arg-type]
@@ -227,3 +316,7 @@ def test_build_prefers_heuristic_when_flagged() -> None:
     )
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-24"
+    slots = spec.get("deal_slots") or {}
+    assert slots.get("deal_perimeter") == "standalone ops"
+    assert slots.get("decision_stage") == "IC"
+    assert spec.get("cap_evidence_qa")

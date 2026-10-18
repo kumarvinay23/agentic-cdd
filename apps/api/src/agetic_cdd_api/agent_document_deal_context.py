@@ -73,6 +73,213 @@ _RISK_LINE = re.compile(
 _DOC_CITE = "(DOC: data room financials)"
 _COMPUTED = "(COMPUTED FACTS)"
 
+# Prefer contract / homes expansion sentences that already carry figures.
+_CONTRACT_EXPANSION = re.compile(
+    r"(?i)(?:municipal\s+contract|D\.?C\.?\s+municipal|anchor\s+contract|"
+    r"homes?\s+(?:today|currently|from)|from\s+~?[\d,]+\s+homes?)",
+)
+_CIM_MARKETING = re.compile(
+    r"(?i)closed-loop\s+\w+\s+leader|path to a \$\d+\s*million|"
+    r"\$\d+\s*million business by \d{4}",
+)
+
+
+def _homes_dollar_pairs_from_corpus(corpus: str) -> dict[int, float]:
+    """Map home/location counts → case dollars evidenced near each other in the pack.
+
+    Used to keep 30k↔$10.4M and 60k↔$22.2M (etc.) from crossing when a sentence
+    lists multiple targets. Never invents dollars absent from the corpus.
+    """
+    out: dict[int, float] = {}
+    blob = corpus[:120_000] if corpus else ""
+    patterns = (
+        r"(?i)([\d,]+)\s*(?:homes?|locations?|units?)"
+        r".{0,100}?\$\s*([\d,.]+)\s*[Mm]\b",
+        r"(?i)\$\s*([\d,.]+)\s*[Mm]\b.{0,100}?"
+        r"([\d,]+)\s*(?:homes?|locations?|units?)",
+    )
+    for idx, pat in enumerate(patterns):
+        for m in re.finditer(pat, blob):
+            try:
+                if idx == 0:
+                    homes = int(m.group(1).replace(",", ""))
+                    dollars = float(m.group(2).replace(",", ""))
+                else:
+                    dollars = float(m.group(1).replace(",", ""))
+                    homes = int(m.group(2).replace(",", ""))
+            except ValueError:
+                continue
+            if homes < 100 or dollars <= 0:
+                continue
+            # Keep the first evidenced pairing for each home count.
+            out.setdefault(homes, dollars)
+    return out
+
+
+def _align_homes_dollars(text: str, corpus: str) -> str:
+    """Rewrite crossed home↔$ pairings using corpus-evidenced associations."""
+    pairs = _homes_dollar_pairs_from_corpus(corpus)
+    if len(pairs) < 2:
+        return text
+    t = text
+    # Already carries both case dollars in ascending order — leave alone.
+    case_vals = sorted({round(v, 2) for v in pairs.values()})
+    if len(case_vals) >= 2:
+        low, high = case_vals[0], case_vals[-1]
+        low_s = f"{low:.2f}".rstrip("0").rstrip(".")
+        high_s = f"{high:.2f}".rstrip("0").rstrip(".")
+        if re.search(
+            rf"(?i)\$\s*{re.escape(low_s)}\s*[Mm].{{0,60}}\$\s*{re.escape(high_s)}\s*[Mm]",
+            t,
+        ):
+            return t
+    # After each evidenced home count, if a nearby $ matches a *different*
+    # case's dollars (e.g. 60k next to $10.4M), rewrite to this case's $.
+    for homes, dollars in sorted(pairs.items(), key=lambda kv: -kv[0]):
+        # Skip counts that only appear inside a range (30,000–60,000 homes).
+        if re.search(
+            rf"(?i)[\d,]+\s*[-–—]\s*({homes:,}|{homes})\b"
+            rf"|({homes:,}|{homes})\s*[-–—]\s*[\d,]+",
+            t,
+        ) and not re.search(
+            rf"(?i)(?<![-–—\d])({homes:,}|{homes})\s+(?:targeted\s+)?"
+            rf"(?:homes?|locations?|units?)\b",
+            t,
+        ):
+            continue
+        hm = re.search(
+            rf"(?i)(?<![-–—\d])({homes:,}|{homes})\s+(?:targeted\s+)?"
+            rf"(?:homes?|locations?|units?)\b",
+            t,
+        )
+        if not hm:
+            continue
+        window = t[hm.end() : hm.end() + 180]
+        replaced = False
+        for dm in re.finditer(r"(\$\s*)([\d,.]+)(\s*[Mm]\b)", window):
+            try:
+                cur = float(dm.group(2).replace(",", ""))
+            except ValueError:
+                continue
+            if abs(cur - dollars) / max(dollars, 1e-9) < 0.03:
+                break  # already correct
+            # Only sibling expansion cases (e.g. 30k↔60k), not a smaller baseline
+            # like 12k→$3M sitting earlier in the same sentence.
+            other_vals = [
+                v
+                for h, v in pairs.items()
+                if h != homes and max(h, homes) / max(min(h, homes), 1) <= 3.0
+            ]
+            if not any(abs(cur - v) / max(v, 1e-9) < 0.03 for v in other_vals):
+                continue  # baseline / other non-case dollar — leave
+            fmt = f"{dollars:.2f}".rstrip("0").rstrip(".")
+            abs_start = hm.end() + dm.start()
+            abs_end = hm.end() + dm.end()
+            t = t[:abs_start] + f"{dm.group(1)}{fmt}{dm.group(3)}" + t[abs_end:]
+            replaced = True
+            break
+        if replaced:
+            continue
+    return t
+
+
+def _evidenced_contract_driver(
+    corpus: str,
+    sents: list[str],
+) -> dict[str, str] | None:
+    """Pick a contract/homes expansion sentence that already has $ and home counts.
+
+    Returns None when the data room does not evidence the expansion — never
+    invents baseline / case dollars from another deal.
+    """
+    scored: list[tuple[float, str]] = []
+    for sent in sents:
+        if _CIM_MARKETING.search(sent):
+            continue
+        if not _CONTRACT_EXPANSION.search(sent) and not re.search(
+            r"(?i)[\d,]+\s+homes?.{0,80}\$|municipal",
+            sent,
+        ):
+            continue
+        homes = len(re.findall(r"(?i)[\d,]+\s*(?:[-–—]\s*[\d,]+)?\s*homes?", sent))
+        dollars = re.findall(r"\$\s*[\d,.]+(?:\s*[MmBb])?", sent)
+        if homes < 1 or len(dollars) < 1:
+            continue
+        score = float(homes) + float(len(dollars))
+        if re.search(r"(?i)municipal|D\.?C\.?", sent):
+            score += 2.0
+        # Prefer actual / FY{n}A baselines over unlabeled plan dollars.
+        if re.search(r"(?i)FY\d{4}A|FY\d{4}\s+actual|baseline", sent):
+            score += 2.0
+        elif re.search(r"(?i)FY\d{4}", sent):
+            score += 0.5
+        # Prefer sentences that already carry two case dollars (30k/60k bridge).
+        if len(dollars) >= 2 and homes >= 2:
+            score += 1.5
+        # Penalize plan / projected dollars used as if they were the current baseline.
+        if re.search(r"(?i)FY\d{4}P|FY\d{4}\s*\(plan\)|projected|plan\s+bridge", sent):
+            score -= 0.5
+        scored.append((score, sent))
+    if not scored:
+        # Fall back to a corpus window that already carries homes + $ (keep long
+        # enough to finish the 2030 case — do not ellipsize mid-sentence).
+        for m in re.finditer(
+            r"(?i)[^.!?\n]{0,40}(?:municipal\s+contract|[\d,]+\s+homes?)"
+            r"[^.!?\n]{10,360}",
+            corpus[:80_000],
+        ):
+            chunk = _clean(m.group(0), 720)
+            if _CIM_MARKETING.search(chunk):
+                continue
+            if not re.search(r"\$\s*[\d,.]+", chunk):
+                continue
+            if not re.search(r"(?i)homes?", chunk):
+                continue
+            scored.append((2.0, chunk))
+    if not scored:
+        return None
+    scored.sort(key=lambda r: (-r[0], -len(r[1])))
+    text = scored[0][1]
+    text = _align_homes_dollars(text, corpus)
+    # If the chosen sentence uses an unlabeled "$XM revenue" beside homes, but
+    # the corpus already states an FY…A actual for the same contract, prefer that
+    # labeled actual (still from this deal's pack — not a fixed dollar).
+    if not re.search(r"(?i)FY\d{4}A", text):
+        actual = re.search(
+            r"(?i)(\$[\d.]+M)\s*(?:\(?\s*)?(FY\d{4}A)(?:\s+municipal\s+revenue)?",
+            corpus[:100_000],
+        )
+        if actual and re.search(r"(?i)~?\$[\d.]+M\s+revenue|\$[\d.]+M\s*\([^)]*revenue", text):
+            labeled = actual.group(0).strip()
+            if "municipal" not in labeled.lower():
+                labeled = f"{labeled} municipal revenue"
+            text = re.sub(
+                r"(?i)\(~?\$[\d.]+M\s+revenue\)",
+                f"({labeled})",
+                text,
+                count=1,
+            )
+            text = re.sub(
+                r"(?i)~?\$[\d.]+M\s+revenue\b",
+                labeled,
+                text,
+                count=1,
+            )
+    figs = re.findall(r"\$\s*[\d,.]+(?:\s*[MmBb])?", text)
+    # De-dupe while preserving order
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for f in figs:
+        key = re.sub(r"\s+", "", f.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(re.sub(r"\s+", "", f))
+    figure = " → ".join(uniq[:3]) if uniq else None
+    if not figure:
+        return None
+    return {"text": text, "figure": figure}
+
 
 def _clean(text: Any, max_chars: int = 420) -> str:
     t = _JUNK.sub(" ", str(text or ""))
@@ -116,6 +323,16 @@ def _fmt_num(raw: str, unit: str | None = None) -> str:
 
 def _first_match(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
     return pattern.search(text or "")
+
+
+def _first_captured_group(match: re.Match[str] | None) -> str | None:
+    """Return the first non-empty capturing group, or None (never StopIteration)."""
+    if match is None:
+        return None
+    for group in match.groups():
+        if group:
+            return str(group)
+    return None
 
 
 def _pick_sentences(
@@ -198,6 +415,13 @@ def _llm_deal_context_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
+    products_and_services: str | None = None,
+    customer_types: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -210,6 +434,14 @@ def _llm_deal_context_spec(
         sector=sector,
         geography=geography,
         materiality=materiality,
+        target_company=company,
+        products_and_services=products_and_services,
+        customer_types=customer_types,
+        deal_perimeter=deal_perimeter,
+        transaction_type=transaction_type,
+        as_of_date=as_of_date,
+        review_periods=review_periods,
+        decision_stage=decision_stage,
     )
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
@@ -219,23 +451,30 @@ def _llm_deal_context_spec(
         "Return JSON with keys:\n"
         "insight_snapshot (string),\n"
         "overview: {target_company, legal_entity, perimeter, buyer_context, "
-        "acquirer_context, industry, transaction_type, deal_rationale},\n"
+        "acquirer_context, industry, transaction_type, deal_rationale, "
+        "as_of_date, decision_stage},\n"
         "drivers: [{label, text, figure, source, is_hypothesis}] (exactly 3; "
         "is_hypothesis true when figure is missing),\n"
         "thesis_read (string),\n"
         "hypotheses_insight (string),\n"
         "hypotheses: [{hypothesis, threshold, fail_test, tested_by_agent, "
-        "evidence, risk_level}] (3 to 6),\n"
+        "evidence, risk_level}] (3 to 6; tested_by_agent is a prompt-book "
+        "agent slug),\n"
         "hypotheses_read (string),\n"
         "risks_insight (string),\n"
         "risk_bullets: [{level, text, size}] (High/Medium/Low),\n"
         "risk_table: [{risk, impact, evidence, mitigation}] (up to 4),\n"
         "risks_read (string),\n"
         "questions_insight (string),\n"
-        "questions: [{priority, question, why, unlocking_document}] (3 to 6),\n"
+        "questions: [{question, required_records, unlocking_document, "
+        "decision_effect, why, priority, owner, timing, closure_test, "
+        "interim_treatment}] (3 to 6; priority is "
+        "mandatory_pre_decision|signing_condition|closing_condition|"
+        "residual_uncertainty),\n"
         "questions_read (string),\n"
         "fact_ledger: [{fact, value, unit, period, basis, source_locator}] "
-        "(15 to 25 rows; basis is actual|LTM|forecast|budget),\n"
+        "(15 to 25 rows; basis is actual|LTM|forecast|budget; "
+        "source_locator is file + sheet/cell, page, or slide),\n"
         "metrics_insight (string),\n"
         "metrics: [{metric, value, source, commentary}] (optional high-signal subset),\n"
         "metrics_read (string),\n"
@@ -247,6 +486,84 @@ def _llm_deal_context_spec(
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
     return parsed if isinstance(parsed, dict) else None
+
+
+def _normalize_deal_context_questions(rows: Any) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, str]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        # Preserve legacy why / unlocking_document aliases into shared schema.
+        loose = dict(row)
+        if loose.get("why") and not loose.get("decision_effect"):
+            loose["decision_effect"] = loose["why"]
+        if loose.get("unlocking_document") and not loose.get("required_records"):
+            loose["required_records"] = loose["unlocking_document"]
+        normalized = normalize_question(loose)
+        # Keep legacy keys for older renderers / consumers.
+        normalized["why"] = normalized["decision_effect"]
+        normalized["unlocking_document"] = normalized["required_records"]
+        if not normalized.get("closure_test"):
+            doc = normalized["required_records"] or "named source record"
+            normalized["closure_test"] = (
+                f"Receive {doc} covering the stated period/population and "
+                "reconcile to the fact ledger"
+            )
+        if not normalized.get("timing"):
+            normalized["timing"] = (
+                "before IC"
+                if normalized["priority"] == "mandatory_pre_decision"
+                else "per deal timetable"
+            )
+        out.append(normalized)
+    return out
+
+
+def _ensure_perimeter_questions(
+    questions: list[dict[str, str]],
+    *,
+    overview: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Add Questions rows for unevidenced perimeter slots."""
+    existing_q = " ".join(q.get("question", "").lower() for q in questions)
+    gaps = []
+    perimeter = str(overview.get("perimeter") or "")
+    if perimeter.startswith("N/A") or "information request" in perimeter.lower():
+        if "perimeter" not in existing_q:
+            gaps.append(
+                {
+                    "question": "What legal entities and operations are inside the acquisition perimeter?",
+                    "required_records": "SPA draft / perimeter schedule / carve-out map",
+                    "decision_effect": "Defines what is valued and diligence-covered",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "deal lead",
+                    "timing": "before IC",
+                    "closure_test": "Named entities + % ownership reconcile to SPA schedule",
+                    "interim_treatment": "Frame LIMITED; do not treat group totals as perimeter",
+                }
+            )
+    txn = str(overview.get("transaction_type") or "")
+    if txn.startswith("N/A") or "information request" in txn.lower() or not txn.strip():
+        if "transaction" not in existing_q:
+            gaps.append(
+                {
+                    "question": "What is the transaction type (share / asset / merger)?",
+                    "required_records": "Teaser / SPA / engagement letter",
+                    "decision_effect": "Changes diligence scope and structure conditions",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "deal lead",
+                    "timing": "before IC",
+                    "closure_test": "Transaction type stated in executed or draft SPA",
+                    "interim_treatment": "Assume unknown; avoid structure-specific conclusions",
+                }
+            )
+    if not gaps:
+        return questions
+    return _normalize_deal_context_questions(list(questions) + gaps)[:8]
 
 
 _FY_REVENUE_SERIES = re.compile(
@@ -347,15 +664,8 @@ def _heuristic_deal_context_spec(
     txn_m = _first_match(_TRANSACTION, corpus)
     transaction = _clean(txn_m.group(0), 40).title() if txn_m else "Acquisition"
 
-    share_m = _first_match(_SHARE, corpus)
-    share = None
-    if share_m:
-        share = next(g for g in share_m.groups() if g)
-
-    cagr_m = _first_match(_CAGR, corpus)
-    cagr = None
-    if cagr_m:
-        cagr = next(g for g in cagr_m.groups() if g)
+    share = _first_captured_group(_first_match(_SHARE, corpus))
+    cagr = _first_captured_group(_first_match(_CAGR, corpus))
 
     rev_m = _first_match(_REVENUE, corpus)
     revenue = _fmt_num(rev_m.group(1), rev_m.group(2)) if rev_m else None
@@ -372,8 +682,12 @@ def _heuristic_deal_context_spec(
     growth_sents = _pick_sentences(
         sents,
         keywords=("growth", "demand", "incentive", "sustainability", "tailwind", "cagr"),
-        limit=2,
+        limit=4,
     )
+    # Prefer evidenced contract expansion over figure-less CIM marketing.
+    growth_sents = [g for g in growth_sents if not _CIM_MARKETING.search(g)]
+    contract_driver = _evidenced_contract_driver(corpus, sents)
+
     share_sents = _pick_sentences(
         sents,
         keywords=("market share", "share", "leading", "position"),
@@ -388,7 +702,14 @@ def _heuristic_deal_context_spec(
     )
 
     drivers: list[dict[str, Any]] = []
-    if cagr or growth_sents or industry != "N/A (data room did not provide it)":
+    if contract_driver:
+        drivers.append(_driver_row(
+            label="Driver 1",
+            text=contract_driver["text"],
+            figure=contract_driver.get("figure"),
+            source=_DOC_CITE,
+        ))
+    elif cagr or growth_sents or industry != "N/A (data room did not provide it)":
         drivers.append(_driver_row(
             label="Driver 1",
             text=(
@@ -541,26 +862,40 @@ def _heuristic_deal_context_spec(
         },
     ]
 
-    questions = [
-        {
-            "priority": "High",
-            "question": f"Will {company} hold share amid rising competition?",
-            "why": "Share underpins the growth driver",
-            "unlocking_document": "Market / competition pack with share by segment and period",
-        },
-        {
-            "priority": "Medium",
-            "question": f"What policy changes would move demand for {industry.lower()}?",
-            "why": "Incentive exposure can reprice the thesis",
-            "unlocking_document": "Regulatory / FAME (or local equivalent) policy note",
-        },
-        {
-            "priority": "High",
-            "question": f"What is the accounting path to positive EBITDA for {company}?",
-            "why": "Earnings inflection is a must-be-true hypothesis",
-            "unlocking_document": "Audited P&L + management forecast workbook (sheet + cells)",
-        },
-    ]
+    questions = _normalize_deal_context_questions(
+        [
+            {
+                "priority": "mandatory_pre_decision",
+                "question": f"Will {company} hold share amid rising competition?",
+                "why": "Share underpins the growth driver; could change price/structure",
+                "unlocking_document": "Market / competition pack with share by segment and period",
+                "owner": "market lead",
+                "timing": "before IC",
+                "closure_test": "Share by segment×period on matched Market Definition perimeter",
+                "interim_treatment": "Growth driver labelled hypothesis; Reliance LIMITED",
+            },
+            {
+                "priority": "signing_condition",
+                "question": f"What policy changes would move demand for {industry.lower()}?",
+                "why": "Incentive exposure can reprice the thesis",
+                "unlocking_document": "Regulatory / FAME (or local equivalent) policy note",
+                "owner": "regulatory lead",
+                "timing": "per deal timetable",
+                "closure_test": "Dated policy note with jurisdiction and effective dates",
+                "interim_treatment": "Demand-driver sensitivity held as untested",
+            },
+            {
+                "priority": "mandatory_pre_decision",
+                "question": f"What is the accounting path to positive EBITDA for {company}?",
+                "why": "Earnings inflection is a must-be-true hypothesis",
+                "unlocking_document": "Audited P&L + management forecast workbook (sheet + cells)",
+                "owner": "financials lead",
+                "timing": "before IC",
+                "closure_test": "Bridge from latest actual EBITDA to plan with formula+inputs",
+                "interim_treatment": "Exclude earnings inflection from READY reliance",
+            },
+        ]
+    )
 
     fact_ledger: list[dict[str, str]] = []
     src0 = sources[0] if sources else "data room"
@@ -831,25 +1166,45 @@ def build_deal_context_spec(
         sector=vars_.get("sector"),
         geography=vars_.get("geography"),
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
+        products_and_services=vars_.get("products_and_services"),
+        customer_types=vars_.get("customer_types"),
     )
     if llm:
         llm.setdefault("overview", {})
         if isinstance(llm["overview"], dict):
-            llm["overview"].setdefault("target_company", target)
-            llm["overview"].setdefault(
+            ov = llm["overview"]
+            ov.setdefault("target_company", target)
+            ov.setdefault(
                 "legal_entity",
-                llm["overview"].get("target_company") or target,
+                ov.get("target_company") or target,
             )
-            llm["overview"].setdefault(
-                "perimeter",
-                _info_request("acquisition perimeter / carve-out boundaries"),
-            )
-            llm["overview"].setdefault(
+            if vars_.get("deal_perimeter"):
+                ov.setdefault("perimeter", vars_["deal_perimeter"])
+            else:
+                ov.setdefault(
+                    "perimeter",
+                    _info_request("acquisition perimeter / carve-out boundaries"),
+                )
+            if vars_.get("transaction_type"):
+                ov.setdefault("transaction_type", vars_["transaction_type"])
+            if vars_.get("as_of_date"):
+                ov.setdefault("as_of_date", vars_["as_of_date"])
+            if vars_.get("decision_stage"):
+                ov.setdefault("decision_stage", vars_["decision_stage"])
+            ov.setdefault(
                 "buyer_context",
-                llm["overview"].get("acquirer_context")
+                ov.get("acquirer_context")
                 or _info_request("buyer / sponsor context"),
             )
         # Normalise drivers: flag missing figures as hypotheses.
+        # Prefer an evidenced contract/homes sentence from this deal's corpus
+        # over figure-less CIM marketing — never paste another deal's numbers.
+        contract_driver = _evidenced_contract_driver(corpus, _sentences(corpus))
         drivers = llm.get("drivers") if isinstance(llm.get("drivers"), list) else []
         normalised: list[dict[str, Any]] = []
         for i, d in enumerate(drivers[:3], start=1):
@@ -859,13 +1214,47 @@ def build_deal_context_spec(
             has_fig = bool(fig) and "N/A" not in str(fig)
             row = dict(d)
             row.setdefault("label", f"Driver {i}")
+            text = str(row.get("text") or "")
+            if contract_driver and (
+                _CIM_MARKETING.search(text)
+                or (i == 1 and not re.search(r"(?i)homes?|\$\s*[\d,.]+", text))
+            ):
+                if i == 1 or _CIM_MARKETING.search(text):
+                    row["text"] = contract_driver["text"]
+                    row["figure"] = contract_driver.get("figure")
+                    row["source"] = _DOC_CITE
+                    row["is_hypothesis"] = False
+                    normalised.append(row)
+                    continue
             row["is_hypothesis"] = bool(d.get("is_hypothesis")) or not has_fig
             if row["is_hypothesis"] and not str(row.get("text", "")).startswith("[Hypothesis]"):
                 row["text"] = f"[Hypothesis] {_clean(row.get('text'), 400)}"
             normalised.append(row)
+        if contract_driver and normalised:
+            d0 = normalised[0]
+            if _CIM_MARKETING.search(str(d0.get("text") or "")) or not re.search(
+                r"(?i)homes?|\$\s*[\d,.]+", str(d0.get("text") or "")
+            ):
+                normalised[0] = _driver_row(
+                    label="Driver 1",
+                    text=contract_driver["text"],
+                    figure=contract_driver.get("figure"),
+                    source=_DOC_CITE,
+                )
         if normalised:
             llm["drivers"] = normalised
+        # Hypotheses must name a testing agent.
+        hyps = llm.get("hypotheses") if isinstance(llm.get("hypotheses"), list) else []
+        for h in hyps:
+            if isinstance(h, dict) and not h.get("tested_by_agent"):
+                h["tested_by_agent"] = "historical_performance"
+        llm["questions"] = _ensure_perimeter_questions(
+            _normalize_deal_context_questions(llm.get("questions")),
+            overview=llm["overview"] if isinstance(llm.get("overview"), dict) else {},
+        )
         ledger = llm.get("fact_ledger") if isinstance(llm.get("fact_ledger"), list) else []
+        from agetic_cdd_api.prompt_book import normalize_verdicts
+
         if not llm.get("quality_verdict") or not llm.get("reliance_verdict"):
             evidenced = sum(
                 1
@@ -884,19 +1273,44 @@ def build_deal_context_spec(
             llm.setdefault("quality_verdict", q)
             llm.setdefault("reliance_verdict", rel)
             llm.setdefault("quality_reliance_rationale", rationale)
+        qv, rv = normalize_verdicts(
+            quality=llm.get("quality_verdict"),
+            reliance=llm.get("reliance_verdict"),
+            default_quality="PASS",
+            default_reliance="LIMITED",
+        )
+        llm["quality_verdict"] = qv
+        llm["reliance_verdict"] = rv
         # Strip investment-verdict fields if a model still emits them.
         for key in ("recommendation", "confidence", "verdict_insight", "key_conditions"):
             llm.pop(key, None)
         llm["primary_sources"] = sources[:12]
+        llm["deal_slots"] = {k: v for k, v in vars_.items() if v}
         llm["composer"] = "gemini_v1"
         return llm
 
-    return _heuristic_deal_context_spec(
+    heur = _heuristic_deal_context_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         document_count=int(index.get("document_count") or 0),
     )
+    if isinstance(heur.get("overview"), dict):
+        ov = heur["overview"]
+        if vars_.get("deal_perimeter"):
+            ov["perimeter"] = vars_["deal_perimeter"]
+        if vars_.get("transaction_type"):
+            ov["transaction_type"] = vars_["transaction_type"]
+        if vars_.get("as_of_date"):
+            ov["as_of_date"] = vars_["as_of_date"]
+        if vars_.get("decision_stage"):
+            ov["decision_stage"] = vars_["decision_stage"]
+    heur["questions"] = _ensure_perimeter_questions(
+        _normalize_deal_context_questions(heur.get("questions")),
+        overview=heur["overview"] if isinstance(heur.get("overview"), dict) else {},
+    )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_deal_context_markdown(title: str, spec: dict[str, Any], *, sources: list[str] | None = None) -> str:
@@ -949,6 +1363,8 @@ def render_deal_context_markdown(title: str, spec: dict[str, Any], *, sources: l
             ],
             ["Industry", str(overview.get("industry") or "—")],
             ["Transaction Type", str(overview.get("transaction_type") or "—")],
+            ["As-of Date", str(overview.get("as_of_date") or "—")],
+            ["Decision Stage", str(overview.get("decision_stage") or "—")],
             ["Deal Rationale", str(overview.get("deal_rationale") or "—")],
         ],
     ))
@@ -1019,19 +1435,40 @@ def render_deal_context_markdown(title: str, spec: dict[str, Any], *, sources: l
         parts.append(f"**Read:** {_clean(spec.get('risks_read'), 420)}\n\n")
     parts.append("---\n\n")
 
-    parts.append("## 4. Critical Open Questions\n\n")
+    parts.append("## 4. Questions and Inputs Required\n\n")
     parts.append(insight(spec.get("questions_insight")))
     q_rows = []
-    for row in questions[:6]:
+    for row in questions[:8]:
         if not isinstance(row, dict):
             continue
         q_rows.append([
-            str(row.get("priority") or "Medium"),
-            _clean(row.get("question"), 200),
-            _clean(row.get("why"), 120),
-            _clean(row.get("unlocking_document") or "—", 160),
+            str(row.get("priority") or "residual_uncertainty"),
+            _clean(row.get("question"), 160),
+            _clean(row.get("decision_effect") or row.get("why"), 100),
+            _clean(
+                row.get("required_records") or row.get("unlocking_document") or "—",
+                120,
+            ),
+            _clean(row.get("owner") or "unassigned", 40),
+            _clean(row.get("timing") or "—", 40),
+            _clean(row.get("closure_test") or "—", 100),
+            _clean(row.get("interim_treatment") or "—", 80),
         ])
-    parts.append(table(["Priority", "Question", "Why It Matters", "Unlocking Document"], q_rows))
+    parts.append(
+        table(
+            [
+                "Priority",
+                "Question",
+                "Decision Effect",
+                "Required Records",
+                "Owner",
+                "Timing",
+                "Closure Test",
+                "Interim",
+            ],
+            q_rows,
+        )
+    )
     if spec.get("questions_read"):
         parts.append(f"**Read:** {_clean(spec.get('questions_read'), 320)}\n\n")
     parts.append("---\n\n")

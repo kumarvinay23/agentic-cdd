@@ -95,6 +95,9 @@ def test_growth_opportunities_prompt_book_listed() -> None:
     assert "hypothesis" in body.lower()
     assert "double" in body.lower() or "additional" in body.lower()
     assert "probabilities" in body.lower() or "probability" in body.lower()
+    assert "payback" in body.lower() or "feasibility" in body.lower()
+    assert "synerg" in body.lower()
+    assert "deal perimeter" in system.lower() or "as-of" in system.lower()
 
 
 def test_growth_opportunities_not_company_hardcoded() -> None:
@@ -115,6 +118,8 @@ def test_options_fit_operating_model() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": [{"initiative": "Export push"}]},
+        synergies_spec={"cost_synergies": []},
     )
     opts = [
         o for o in (heur.get("options") or [])
@@ -141,6 +146,8 @@ def test_options_sized_with_calculation_and_assumptions() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     opts = [
         o for o in (heur.get("options") or [])
@@ -168,6 +175,8 @@ def test_requirements_and_timing_present() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     opts = [
         o for o in (heur.get("options") or [])
@@ -176,10 +185,12 @@ def test_requirements_and_timing_present() -> None:
     assert opts
     for o in opts:
         assert "capital" in o
+        assert "opex" in o
+        assert "working_capital" in o
         assert "hiring" in o
         assert "capacity_needed" in o
-        assert "permits" in o
-        assert "systems" in o
+        assert "addressability" in o
+        assert "permits" in o or "regulatory_deps" in o
         assert o.get("time_to_contribute")
 
 
@@ -191,6 +202,8 @@ def test_evidence_or_hypothesis_labelled() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     opts = [
         o for o in (heur.get("options") or [])
@@ -212,6 +225,8 @@ def test_base_vs_upside_separated() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     opts = [
         o for o in (heur.get("options") or [])
@@ -220,6 +235,9 @@ def test_base_vs_upside_separated() -> None:
     statuses = " ".join(str(o.get("plan_status") or "") for o in opts)
     assert "Inside plan" in statuses or "Additional" in statuses
     assert any(o.get("buyer_funding") for o in opts)
+    assert any(o.get("net_value") for o in opts)
+    assert any(o.get("payback") for o in opts)
+    assert any(o.get("feasibility") for o in opts)
 
 
 def test_ranked_by_evidence_and_size() -> None:
@@ -230,6 +248,8 @@ def test_ranked_by_evidence_and_size() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     opts = [
         o for o in (heur.get("options") or [])
@@ -237,6 +257,47 @@ def test_ranked_by_evidence_and_size() -> None:
     ]
     ranks = [o.get("rank") for o in opts]
     assert ranks == list(range(1, len(opts) + 1))
+
+
+def test_go_qa_and_overlap() -> None:
+    heur = _heuristic_growth_opportunities_spec(
+        company="Test3",
+        corpus=_go_corpus(),
+        sources=["03_Investment_Thesis.pdf"],
+        sector="Electric Two-Wheelers",
+        geography="India",
+        legacy_spec=_legacy(),
+        strategy_spec={
+            "initiatives": [{"initiative": "Capacity expansion Phase 2"}],
+            "insight_snapshot": "Strategy opened",
+        },
+        synergies_spec={
+            "cost_synergies": [{"lever": "Shared distribution"}],
+            "insight_snapshot": "Synergies opened",
+        },
+    )
+    assert (heur.get("overlap_cross_check") or {}).get("strategy_prior_present") is True
+    assert (heur.get("overlap_cross_check") or {}).get("synergies_prior_present") is True
+    qa = heur.get("go_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "initiative_inventory_fit",
+        "incremental_economics",
+        "capex_opex_wc_timing",
+        "addressability_capacity_regulatory",
+        "evidence_vs_hypothesis",
+        "rank_net_value_payback_feasibility",
+        "anti_overlap_synergies_strategy",
+        "no_arbitrary_success_probability",
+    ):
+        assert need in checks
+    prob_qa = next(r for r in qa if r.get("check") == "no_arbitrary_success_probability")
+    assert prob_qa.get("status") == "PASS"
+    fit_qa = next(r for r in qa if r.get("check") == "initiative_inventory_fit")
+    assert fit_qa.get("status") == "PASS"
+    assert isinstance(heur.get("questions"), list)
+    if any(isinstance(r, dict) and r.get("status") == "FAIL" for r in qa):
+        assert heur.get("reliance_verdict") != "READY" or heur.get("questions")
 
 
 def test_legacy_dual_write() -> None:
@@ -247,6 +308,8 @@ def test_legacy_dual_write() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     assert heur.get("growth_levers")
     assert heur.get("market_growth") is not None
@@ -265,6 +328,8 @@ def test_render_no_invest() -> None:
         sector="Electric Two-Wheelers",
         geography="India",
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     md = render_growth_opportunities_markdown("Growth Opportunities", heur)
     assert "## 1. Available Options" in md
@@ -272,10 +337,14 @@ def test_render_no_invest() -> None:
     assert "## 3. Requirements & Timing" in md
     assert "## 4. Achievability Evidence" in md
     assert "## 5. Base Case vs Upside" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Synergies / Strategy Boundary" in md
+    assert "## 7. Growth Opportunities Evidence QA" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
     assert "Not assigned — no evidenced basis" in md
+    assert "Capex" in md or "Opex" in md
 
 
 def test_render_agent_document_dispatch() -> None:
@@ -292,10 +361,12 @@ def test_render_agent_document_dispatch() -> None:
             sector="Electric Two-Wheelers",
             geography="India",
             legacy_spec=_legacy(),
+            strategy_spec={"initiatives": []},
+            synergies_spec={"cost_synergies": []},
         ),
     }
     md = render_agent_document("growth_opportunities", output)
-    assert "## 6. Quality & Reliance" in md
+    assert "## 9. Quality & Reliance" in md or "## 6. Synergies" in md
     assert "Option" in md or "option" in md.lower()
 
 
@@ -309,6 +380,10 @@ def test_build_prefers_heuristic_when_flagged() -> None:
         sources=["03_Investment_Thesis.pdf"],
         prefer_heuristic=True,
         legacy_spec=_legacy(),
+        strategy_spec={"initiatives": []},
+        synergies_spec={"cost_synergies": []},
     )
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-01b"
+    assert isinstance(spec.get("deal_slots"), dict)
+    assert spec.get("go_evidence_qa")

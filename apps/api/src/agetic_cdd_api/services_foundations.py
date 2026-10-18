@@ -273,13 +273,33 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
             build_strategic_direction_spec,
             render_strategic_direction_markdown,
         )
+        from agetic_cdd_api.settings import settings
 
         f01 = payload["spec"]
+        cash_flow_spec = capital_structure_spec = None
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            for key, attr in (
+                ("cash_flow", "cash_flow_spec"),
+                ("capital_structure", "capital_structure_spec"),
+            ):
+                disk = read_agent_output_file(deal, agent_key=key) or {}
+                if isinstance(disk.get("spec"), dict):
+                    if attr == "cash_flow_spec":
+                        cash_flow_spec = disk["spec"]
+                    else:
+                        capital_structure_spec = disk["spec"]
+        except Exception:
+            pass
         sd_spec = build_strategic_direction_spec(
             deal,
             index=index,
             company=target,
             f01_spec=f01,
+            cash_flow_spec=cash_flow_spec,
+            capital_structure_spec=capital_structure_spec,
+            prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
         payload["spec"] = {**f01, **sd_spec}
         extra_sources = [
@@ -320,13 +340,37 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
             build_management_quality_spec,
             render_management_quality_markdown,
         )
+        from agetic_cdd_api.settings import settings
 
         f06 = payload["spec"]
+        strategy_spec = ic_spec = esg_spec = None
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            for key, attr in (
+                ("strategic_direction", "strategy_spec"),
+                ("ic_synthesis", "ic_spec"),
+                ("esg_and_sustainability", "esg_spec"),
+            ):
+                disk = read_agent_output_file(deal, agent_key=key) or {}
+                if isinstance(disk.get("spec"), dict):
+                    if attr == "strategy_spec":
+                        strategy_spec = disk["spec"]
+                    elif attr == "ic_spec":
+                        ic_spec = disk["spec"]
+                    else:
+                        esg_spec = disk["spec"]
+        except Exception:
+            pass
         mq_spec = build_management_quality_spec(
             deal,
             index=index,
             company=target,
             f06_spec=f06,
+            strategy_spec=strategy_spec,
+            ic_spec=ic_spec,
+            esg_spec=esg_spec,
+            prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
         payload["spec"] = {**f06, **mq_spec}
         extra_sources = [
@@ -350,6 +394,13 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
         for row in (mq_spec.get("key_persons") or [])[:2]:
             if isinstance(row, dict) and row.get("person"):
                 mq_findings.append(f"Key-person: {row['person']}")
+        qa = mq_spec.get("mq_evidence_qa") or []
+        qa_fail = sum(
+            1 for r in qa
+            if isinstance(r, dict) and r.get("status") == "FAIL"
+        )
+        if qa:
+            mq_findings.append(f"Management QA {len(qa) - qa_fail}/{len(qa)} PASS")
         qv = mq_spec.get("quality_verdict")
         rv = mq_spec.get("reliance_verdict")
         if qv or rv:
@@ -428,11 +479,21 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
         from agetic_cdd_api.settings import settings
 
         f04 = payload["spec"]
+        ip_spec = None
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            disk = read_agent_output_file(deal, agent_key="ip_and_technology") or {}
+            if isinstance(disk.get("spec"), dict):
+                ip_spec = disk["spec"]
+        except Exception:
+            pass
         rc_spec = build_regulatory_compliance_spec(
             deal,
             index=index,
             company=target,
             legacy_spec=f04,
+            ip_spec=ip_spec,
             sources=list(sources or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
@@ -497,11 +558,21 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
         from agetic_cdd_api.settings import settings
 
         fesg = payload["spec"]
+        regulatory_spec = None
+        try:
+            from agetic_cdd_api.services_pipeline import read_agent_output_file
+
+            disk = read_agent_output_file(deal, agent_key="regulatory_compliance") or {}
+            if isinstance(disk.get("spec"), dict):
+                regulatory_spec = disk["spec"]
+        except Exception:
+            pass
         esg_spec = build_esg_and_sustainability_spec(
             deal,
             index=index,
             company=target,
             legacy_spec=fesg,
+            regulatory_spec=regulatory_spec,
             sources=list(sources or []),
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )

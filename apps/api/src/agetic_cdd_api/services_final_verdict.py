@@ -1004,6 +1004,65 @@ def _build_stage_c_output(
             findings_list.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
         if findings_list:
             payload["findings"] = findings_list[:8]
+        return payload
+
+    if role.slug == "appendices":
+        from agetic_cdd_api.agent_document_appendices import (
+            build_appendices_spec,
+            render_appendices_markdown,
+        )
+        from agetic_cdd_api.settings import settings
+
+        legacy = payload.get("spec") if isinstance(payload.get("spec"), dict) else {}
+        ap_spec = build_appendices_spec(
+            deal,
+            index=index,
+            company=str(payload.get("target_company") or deal.company or deal.name),
+            legacy_spec=legacy,
+            prior=prior,
+            foundation=foundation if isinstance(foundation, dict) else None,
+            findings_store=findings if isinstance(findings, dict) else None,
+            sources=list(payload.get("sources") or []),
+            prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
+        )
+        merged = {**legacy, **ap_spec}
+        payload["spec"] = merged
+        sources = list(payload.get("sources") or [])
+        for s in (ap_spec.get("primary_sources") or []):
+            if isinstance(s, str) and s and s not in sources:
+                sources.append(s)
+        payload["sources"] = sources
+        document = render_appendices_markdown(
+            str(payload.get("agentName") or "Appendices"),
+            merged,
+            sources=sources,
+        )
+        payload["document"] = document
+        payload["summary"] = str(
+            ap_spec.get("insight_snapshot") or payload.get("summary") or ""
+        )[:600]
+        findings_list = []
+        metrics = ap_spec.get("metrics") if isinstance(ap_spec.get("metrics"), dict) else {}
+        if metrics.get("claim_count"):
+            findings_list.append(f"Claims: {metrics['claim_count']}")
+        if metrics.get("source_count"):
+            findings_list.append(f"Sources: {metrics['source_count']}")
+        cite = (
+            ap_spec.get("citation_check")
+            if isinstance(ap_spec.get("citation_check"), dict)
+            else {}
+        )
+        summary = cite.get("summary") if isinstance(cite.get("summary"), dict) else {}
+        if summary:
+            findings_list.append(
+                f"Citation: supports={summary.get('supports', 0)} "
+                f"unverified={summary.get('unverified', 0)}"
+            )
+        qv, rv = ap_spec.get("quality_verdict"), ap_spec.get("reliance_verdict")
+        if qv or rv:
+            findings_list.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
+        if findings_list:
+            payload["findings"] = findings_list[:8]
     return payload
 
 
@@ -1035,16 +1094,25 @@ def _build_stage_b_output(
         legacy = payload.get("spec") if isinstance(payload.get("spec"), dict) else {}
         trading = _prior_verdict_spec(prior, "trading_comps")
         precedent = _prior_verdict_spec(prior, "precedent_transactions")
-        # Soft-load historical from deep-dive prior if available
+        # Soft-load historical / cash flow / capital from deep-dive priors
         historical = None
+        cash_flow = None
+        capital = None
         try:
             from agetic_cdd_api.services_pipeline import read_agent_output_file
 
-            disk = read_agent_output_file(deal, agent_key="historical_performance") or {}
-            if isinstance(disk.get("spec"), dict):
-                historical = disk["spec"]
+            for key in ("historical_performance", "cash_flow", "capital_structure"):
+                disk = read_agent_output_file(deal, agent_key=key) or {}
+                if not isinstance(disk.get("spec"), dict):
+                    continue
+                if key == "historical_performance":
+                    historical = disk["spec"]
+                elif key == "cash_flow":
+                    cash_flow = disk["spec"]
+                else:
+                    capital = disk["spec"]
         except Exception:
-            historical = None
+            pass
 
         vm_spec = build_valuation_modeling_spec(
             deal,
@@ -1055,6 +1123,8 @@ def _build_stage_b_output(
             trading_comps=trading,
             precedent_transactions=precedent,
             historical_performance=historical,
+            cash_flow_spec=cash_flow,
+            capital_structure=capital,
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
         merged = {**legacy, **vm_spec}

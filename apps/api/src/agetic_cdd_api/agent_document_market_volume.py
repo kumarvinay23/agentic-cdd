@@ -1,7 +1,9 @@
 """Compose DiligenceIQ Market Volume & Growth — size + growth split (prompt book).
 
-Bottom-up units × capture × price; top-down perimeter match; market vs company
-growth; plan multiple. Compute company growth from accounts when present.
+Binds series to Market Definition perimeter. Separates volume vs value.
+Bottom-up units × capture × price; top-down perimeter match; endpoint CAGR
+reperform; organic / share / M&A bridge; scenario sensitivity; vintage labels.
+Compute company growth from accounts when present. No invest/pass.
 """
 
 from __future__ import annotations
@@ -335,15 +337,237 @@ def _top_down(corpus: str, perimeter: dict[str, Any] | None) -> dict[str, str]:
     }
 
 
-def _market_series(corpus: str, legacy: dict[str, Any] | None) -> tuple[list[dict[str, str]], str]:
+def _vintage_label(period: str) -> str:
+    p = (period or "").upper()
+    if not p or p.startswith("INFORMATION") or p == _NA.upper():
+        return "unavailable"
+    if "E" in p.replace("FY", ""):
+        return "forecast"
+    if re.search(r"20\d{2}", p):
+        return "actual"
+    return "stated"
+
+
+def _measure_kind(currency_units: str, value: str = "") -> str:
+    blob = f"{currency_units} {value}".lower()
+    if re.search(r"\b(unit|vehicle|scooter|household|premise|site|tonne|ton)\b", blob):
+        return "volume"
+    if re.search(r"\b(usd|inr|eur|gbp|₹|\$|cr|crore|billion|million|bn)\b", blob):
+        return "value"
+    return "unspecified"
+
+
+def _perimeter_binding(perimeter: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(perimeter, dict):
+        return {
+            "bound": False,
+            "service": _info_request("Market Definition service axis"),
+            "customer_types": _info_request("Market Definition customer axis"),
+            "geography": _info_request("Market Definition geography axis"),
+            "value_chain_stage": _info_request("Market Definition value-chain axis"),
+            "as_of_date": _info_request("perimeter as-of date"),
+            "unit": _info_request("perimeter unit"),
+            "note": "Series not yet bound to an approved Market Definition perimeter.",
+        }
+    axes = {
+        k: perimeter.get(k)
+        for k in ("service", "customer_types", "geography", "value_chain_stage")
+    }
+    complete = sum(
+        1
+        for v in axes.values()
+        if v and not str(v).startswith("Information") and v != _NA
+    )
+    return {
+        "bound": complete >= 2,
+        "service": axes.get("service") or _info_request("service axis"),
+        "customer_types": axes.get("customer_types") or _info_request("customer axis"),
+        "geography": axes.get("geography") or _info_request("geography axis"),
+        "value_chain_stage": axes.get("value_chain_stage") or _info_request("value-chain axis"),
+        "as_of_date": perimeter.get("as_of_date") or _info_request("perimeter as-of date"),
+        "unit": perimeter.get("unit") or "value (currency) unless volume stated",
+        "note": (
+            f"Series bound to Market Definition perimeter ({complete}/4 axes)."
+            if complete >= 2
+            else "Perimeter thin — treat sizing as provisional until Market Definition approved."
+        ),
+    }
+
+
+def _endpoint_cagr_reperform(
+    series: list[dict[str, str]],
+    stated_note: str,
+) -> dict[str, Any]:
+    """Reperform CAGR from numeric endpoints when two actual/stated points exist."""
+    numeric: list[tuple[str, float, str]] = []
+    for row in series:
+        if not isinstance(row, dict):
+            continue
+        vintage = str(row.get("vintage") or "")
+        if vintage == "unavailable":
+            continue
+        period = str(row.get("period") or "")
+        raw = str(row.get("value") or "")
+        m = re.search(r"([\d,]+(?:\.\d+)?)", raw.replace(",", ""))
+        if not m:
+            continue
+        try:
+            val = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if val <= 0:
+            continue
+        y_m = re.search(r"(20\d{2})", period)
+        if not y_m:
+            continue
+        numeric.append((y_m.group(1), val, str(row.get("measure") or "unspecified")))
+    if len(numeric) < 2:
+        return {
+            "ok": False,
+            "stated": stated_note,
+            "computed": _info_request("endpoint CAGR from series"),
+            "years": _NA,
+            "measure": "unspecified",
+            "note": "Need ≥2 positive endpoint values on the same measure to reperform CAGR.",
+        }
+    # Prefer same measure
+    by_measure: dict[str, list[tuple[str, float, str]]] = {}
+    for item in numeric:
+        by_measure.setdefault(item[2], []).append(item)
+    chosen = max(by_measure.values(), key=len)
+    chosen = sorted(chosen, key=lambda t: t[0])
+    y0, v0, measure = chosen[0]
+    y1, v1, _ = chosen[-1]
+    years = abs(int(y1) - int(y0))
+    if years <= 0:
+        return {
+            "ok": False,
+            "stated": stated_note,
+            "computed": f"{v0:g} → {v1:g} same-year endpoints {_COMPUTED}",
+            "years": "0",
+            "measure": measure,
+            "note": "Zero-year span — not a multi-year CAGR.",
+        }
+    rate = _cagr(v0, v1, years)
+    if not rate:
+        return {
+            "ok": False,
+            "stated": stated_note,
+            "computed": _NA,
+            "years": str(years),
+            "measure": measure,
+            "note": "CAGR undefined from endpoints.",
+        }
+    stated_pct = None
+    for m in re.finditer(r"(\d{1,3}(?:\.\d+)?)\s*%", stated_note or ""):
+        try:
+            stated_pct = float(m.group(1))
+            break
+        except ValueError:
+            pass
+    computed_pct = None
+    cm = re.search(r"([\d.]+)\s*%", rate)
+    if cm:
+        try:
+            computed_pct = float(cm.group(1))
+        except ValueError:
+            pass
+    ok = True
+    note = f"Reperformed {rate} over {years} year(s) on {measure} series {_COMPUTED}."
+    if stated_pct is not None and computed_pct is not None and years > 1:
+        if abs(stated_pct - computed_pct) > 3.0:
+            ok = False
+            note = (
+                f"Stated ~{stated_pct:g}% diverges from recomputed {computed_pct:g}% "
+                f"over {years} years — investigate perimeter / vintage mix."
+            )
+    return {
+        "ok": ok,
+        "stated": stated_note,
+        "computed": f"{rate} over {years} year(s) ({y0}→{y1}) {_COMPUTED}",
+        "years": str(years),
+        "measure": measure,
+        "note": note,
+    }
+
+
+def _volume_vs_value(series: list[dict[str, str]], bottom: dict[str, str]) -> dict[str, str]:
+    measures = {str(r.get("measure") or "") for r in series if isinstance(r, dict)}
+    has_vol = "volume" in measures or bool(
+        bottom.get("units") and not str(bottom.get("units")).startswith("Information")
+    )
+    has_val = "value" in measures or (
+        "×" in str(bottom.get("arithmetic") or "") and "price" in str(bottom.get("arithmetic") or "").lower()
+    )
+    if has_vol and has_val:
+        status = "separated"
+        note = (
+            "Volume (units) and value (currency) both evidenced — keep growth rates "
+            "on matching measures; bridge via price × units when needed."
+        )
+    elif has_vol:
+        status = "volume_only"
+        note = "Volume evidenced; value growth needs price bridge before currency CAGR."
+    elif has_val:
+        status = "value_only"
+        note = "Value evidenced; unit volume series still required for volume CAGR."
+    else:
+        status = "missing"
+        note = _info_request("separate volume (units) and value (currency) series")
+    return {"status": status, "note": note}
+
+
+def _scenarios(corpus: str, plan: dict[str, str]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    sents = _sentences(corpus)
+    hits = _pick_sentences(
+        sents,
+        keywords=("scenario", "adoption", "sensitivity", "bull", "base", "bear", "penetration"),
+        limit=3,
+    )
+    for h in hits:
+        rows.append({
+            "scenario": _clean(h, 80),
+            "effect_on_multiple": _info_request("quantified effect on plan/market multiple"),
+            "evidence": f"{_DOC_CITE}",
+        })
+    multiple = str(plan.get("multiple") or "")
+    if "×" in multiple or "x" in multiple.lower():
+        rows.append({
+            "scenario": "Base case (stated plan vs market)",
+            "effect_on_multiple": multiple,
+            "evidence": _COMPUTED,
+        })
+    if not rows:
+        rows.append({
+            "scenario": _info_request("adoption / scenario cases"),
+            "effect_on_multiple": _NA,
+            "evidence": "No scenario or adoption sensitivity evidenced in pack",
+        })
+    return rows[:5]
+
+
+def _market_series(
+    corpus: str,
+    legacy: dict[str, Any] | None,
+    *,
+    perimeter: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, str]], str]:
+    binding = _perimeter_binding(perimeter)
     rows: list[dict[str, str]] = []
     for m in _SERIES_POINT.finditer(corpus[:40_000]):
+        period = _clean(m.group(1), 20)
+        value = f"{_fmt_num(m.group(2), m.group(3))} {_DOC_CITE}"
+        units = (m.group(3) or "as stated").lower()
         rows.append({
-            "period": _clean(m.group(1), 20),
-            "value": f"{_fmt_num(m.group(2), m.group(3))} {_DOC_CITE}",
-            "currency_units": (m.group(3) or "as stated").lower(),
-            "source_date": _clean(m.group(1), 20),
+            "period": period,
+            "value": value,
+            "currency_units": units,
+            "source_date": period,
             "kind": "observed_or_stated",
+            "vintage": _vintage_label(period),
+            "measure": _measure_kind(units, value),
+            "perimeter_bound": str(bool(binding.get("bound"))),
         })
         if len(rows) >= 6:
             break
@@ -353,15 +577,21 @@ def _market_series(corpus: str, legacy: dict[str, Any] | None) -> tuple[list[dic
         for key in ("tam", "sam", "som"):
             metric = legacy.get(key)
             if isinstance(metric, dict) and metric.get("value") is not None:
+                period = str(metric.get("as_of") or "as stated")
+                units = f"{metric.get('unit', 'USD')} {metric.get('scale') or ''}".strip()
+                value = (
+                    f"{metric.get('unit', 'USD')} {metric['value']} "
+                    f"{metric.get('scale') or ''} {_DOC_CITE}"
+                ).strip()
                 rows.append({
-                    "period": metric.get("as_of") or "as stated",
-                    "value": (
-                        f"{metric.get('unit', 'USD')} {metric['value']} "
-                        f"{metric.get('scale') or ''} {_DOC_CITE}"
-                    ).strip(),
-                    "currency_units": f"{metric.get('unit', 'USD')} {metric.get('scale') or ''}".strip(),
+                    "period": period,
+                    "value": value,
+                    "currency_units": units,
                     "source_date": metric.get("as_of") or "pack",
                     "kind": key.upper(),
+                    "vintage": _vintage_label(period),
+                    "measure": _measure_kind(units, value),
+                    "perimeter_bound": str(bool(binding.get("bound"))),
                 })
 
     growth_note = _info_request("market growth from series endpoints and years elapsed")
@@ -408,6 +638,9 @@ def _market_series(corpus: str, legacy: dict[str, Any] | None) -> tuple[list[dic
             "currency_units": _NA,
             "source_date": _NA,
             "kind": "missing",
+            "vintage": "unavailable",
+            "measure": "unspecified",
+            "perimeter_bound": str(bool(binding.get("bound"))),
         })
     return rows[:8], growth_note
 
@@ -470,13 +703,14 @@ def _company_growth(corpus: str) -> tuple[dict[str, str], list[dict[str, str]]]:
                 f"{start_rev:g} → {end_rev:g} {_COMPUTED} (not labelled as CAGR)"
             )
 
-    # Decomposition legs — evidence-gated
+    # Decomposition legs — evidence-gated (organic / share / price / mix / M&A)
     lower = corpus.lower()
     for driver, needles in (
+        ("organic", ("organic", "same-store", "like-for-like", "lfl")),
         ("share_gain", ("market share", "share gain", "share of")),
         ("price", ("asp", "price", "average selling")),
         ("mix", ("mix", "software", "attach", "margin")),
-        ("acquisition", ("acquisition", "m&a", "inorganic")),
+        ("m_and_a", ("acquisition", "m&a", "inorganic", "acquired")),
     ):
         if any(n in lower for n in needles):
             decomp.append({
@@ -491,6 +725,147 @@ def _company_growth(corpus: str) -> tuple[dict[str, str], list[dict[str, str]]]:
                 "evidence": f"Omitted — '{driver}' not evidenced as a growth leg",
             })
     return company, decomp
+
+
+def _questions_from_mv_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    binding = spec.get("perimeter_binding") if isinstance(spec.get("perimeter_binding"), dict) else {}
+    if not binding.get("bound"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Bind market series to an approved Market Definition perimeter",
+                    "required_records": "Approved four-axis perimeter export (service/customer/geo/chain)",
+                    "decision_effect": "Wrong perimeter biases every volume and growth figure",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC sizing",
+                    "closure_test": "Series points cite matching perimeter, as-of date and unit",
+                    "interim_treatment": "Sizing LIMITED; do not publish share-gain as READY",
+                }
+            )
+        )
+
+    bottom = spec.get("bottom_up") if isinstance(spec.get("bottom_up"), dict) else {}
+    if str(bottom.get("units") or "").startswith("Information") or str(
+        bottom.get("realised_price") or ""
+    ).startswith("Information"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide countable units and realised price for bottom-up size",
+                    "required_records": "Market model / invoice ASP × addressable unit count",
+                    "decision_effect": "Without bottom-up, top-down alone is context risk",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "Units × capture × price arithmetic reconciles",
+                    "interim_treatment": "Do not invent unit counts or ASP",
+                }
+            )
+        )
+
+    vv = spec.get("volume_vs_value") if isinstance(spec.get("volume_vs_value"), dict) else {}
+    if str(vv.get("status") or "") in {"missing", "volume_only", "value_only"}:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide separate volume (units) and value (currency) series",
+                    "required_records": "Unit sales + ASP or revenue bridge on same perimeter",
+                    "decision_effect": "Mixed measures invalidate CAGR and share-gain splits",
+                    "priority": "signing_condition",
+                    "owner": "market diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "Volume and value growth labelled; price bridge evidenced",
+                    "interim_treatment": "Report only the measure that is evidenced",
+                }
+            )
+        )
+
+    series = spec.get("market_series") if isinstance(spec.get("market_series"), list) else []
+    if any(
+        isinstance(r, dict) and str(r.get("vintage") or "") == "unavailable"
+        for r in series
+    ) or any(
+        isinstance(r, dict) and str(r.get("kind") or "") == "missing" for r in series
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Label market series vintage (actual / forecast / unavailable)",
+                    "required_records": "Dated market history with forecast flag",
+                    "decision_effect": "Mixing forecast into historical CAGR misstates growth",
+                    "priority": "signing_condition",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "Each point tagged actual|forecast|unavailable with source date",
+                    "interim_treatment": "Exclude unavailable points from endpoint CAGR",
+                }
+            )
+        )
+
+    recalc = spec.get("endpoint_cagr") if isinstance(spec.get("endpoint_cagr"), dict) else {}
+    if recalc and recalc.get("ok") is False and not str(recalc.get("computed") or "").startswith(
+        "Information"
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Reconcile stated market CAGR to recomputed endpoint CAGR",
+                    "required_records": "Endpoint series on matching measure and perimeter",
+                    "decision_effect": "Stated growth may overstate multi-year rate",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "Stated vs recomputed within materiality or restated",
+                    "interim_treatment": "Prefer recomputed endpoint CAGR",
+                }
+            )
+        )
+
+    cg = spec.get("company_growth") if isinstance(spec.get("company_growth"), dict) else {}
+    if str(cg.get("historical_growth") or "").startswith("Information"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide company revenue series to compute historical growth",
+                    "required_records": "P&L / accounts by period on matched perimeter",
+                    "decision_effect": "Share gain = company − market cannot be evidenced",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financials lead",
+                    "timing": "before IC",
+                    "closure_test": "Company CAGR computed from accounts (not 'Not available')",
+                    "interim_treatment": "Do not invent company growth",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": "No material market-volume inputs are missing for the stated perimeter",
+                    "required_records": "N/A — current pack sufficient for sizing and growth split",
+                    "decision_effect": "None — volume/growth publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "market diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if perimeter or series vintage changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
 
 
 def _plan_multiple(corpus: str, market_growth: str, company: dict[str, str]) -> dict[str, str]:
@@ -578,6 +953,11 @@ def _llm_market_volume_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
     perimeter_note: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
@@ -586,12 +966,21 @@ def _llm_market_volume_spec(
     if not gemini_configured() or not corpus.strip():
         return None
 
-    system = compose_system(
-        "market_volume_and_growth",
-        sector=sector,
-        geography=geography,
-        materiality=materiality,
-    )
+    try:
+        system = compose_system(
+            "market_volume_and_growth",
+            sector=sector,
+            geography=geography,
+            materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
+        )
+    except KeyError:
+        return None
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
         f"Target company / deal name: {company}\n\n"
@@ -602,15 +991,19 @@ def _llm_market_volume_spec(
         "insight_snapshot (string),\n"
         "bottom_up: {units, capture_share, realised_price, arithmetic, bottom_up_size},\n"
         "top_down: {published_figure, published_perimeter, matches_ours, use, fallback},\n"
-        "market_series: [{period, value, currency_units, source_date, kind}],\n"
+        "market_series: [{period, value, currency_units, source_date, kind, vintage, measure}],\n"
         "market_growth_note (string — endpoints + years; never mislabel 1-year as multi-year),\n"
         "company_growth: {geography_period_align, historical_growth, basis},\n"
         "growth_decomposition: [{driver, contribution, evidence}] "
-        "drivers share_gain|price|mix|acquisition,\n"
+        "drivers organic|share_gain|price|mix|m_and_a,\n"
+        "scenarios: [{scenario, effect_on_multiple, evidence}],\n"
         "plan_vs_market: {plan_rate, market_rate, multiple, plain_english, what_must_be_true},\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "quality_verdict (PASS|REWORK),\n"
         "reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
+        "Separate volume vs value. Bind series to the Market Definition perimeter. "
         "If revenue accounts are present, compute company growth — do not write Not available. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
@@ -671,11 +1064,15 @@ def _heuristic_market_volume_spec(
     perimeter: dict[str, Any] | None = None,
     legacy_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    binding = _perimeter_binding(perimeter)
     bottom = _bottom_up(corpus)
     top = _top_down(corpus, perimeter)
-    series, mkt_growth = _market_series(corpus, legacy_spec)
+    series, mkt_growth = _market_series(corpus, legacy_spec, perimeter=perimeter)
     company_g, decomp = _company_growth(corpus)
     plan = _plan_multiple(corpus, mkt_growth, company_g)
+    scenarios = _scenarios(corpus, plan)
+    vv = _volume_vs_value(series, bottom)
+    endpoint = _endpoint_cagr_reperform(series, mkt_growth)
 
     accounts_present = bool(_FY_ROW.search(corpus) and _REVENUE_ROW.search(corpus))
     has_bottom = "×" in str(bottom.get("arithmetic") or "") or (
@@ -692,25 +1089,39 @@ def _heuristic_market_volume_spec(
         has_company=bool(has_company),
         accounts_present=accounts_present,
     )
+    if not binding.get("bound") and reliance == "READY":
+        reliance = "LIMITED"
+        qr = f"{qr} Perimeter binding incomplete."
+    if endpoint.get("ok") is False and endpoint.get("computed") and not str(
+        endpoint.get("computed")
+    ).startswith("Information"):
+        if "diverges" in str(endpoint.get("note") or "").lower() and reliance == "READY":
+            reliance = "LIMITED"
+            qr = f"{qr} Endpoint CAGR reperform flagged divergence."
 
     insight = (
         f"Market Volume & Growth for {company}: bottom-up "
         f"{_clean(bottom.get('bottom_up_size'), 80)}; "
         f"market growth {_clean(mkt_growth, 100)}; "
         f"company {_clean(company_g.get('historical_growth'), 80)}. "
-        f"Share gain = company growth − market growth on the same perimeter."
+        f"Share gain = company growth − market growth on the same perimeter. "
+        f"Volume/value: {vv.get('status')}."
     )
 
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
     sizing = _prefer_sizing(corpus=corpus, legacy=legacy)
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
+        "perimeter_binding": binding,
         "bottom_up": bottom,
         "top_down": top,
         "market_series": series,
         "market_growth_note": mkt_growth,
+        "endpoint_cagr": endpoint,
+        "volume_vs_value": vv,
         "company_growth": company_g,
         "growth_decomposition": decomp,
+        "scenarios": scenarios,
         "plan_vs_market": plan,
         "quality_verdict": quality,
         "reliance_verdict": reliance,
@@ -727,6 +1138,8 @@ def _heuristic_market_volume_spec(
         "unit_volume_notes": legacy.get("unit_volume_notes") or [],
         "growth_notes": legacy.get("growth_notes") or [mkt_growth],
     }
+    out["questions"] = _questions_from_mv_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -735,11 +1148,12 @@ def _normalise_llm_spec(
     sources: list[str],
     legacy_spec: dict[str, Any] | None,
     corpus: str,
+    perimeter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     for key in ("bottom_up", "top_down", "company_growth", "plan_vs_market"):
         if not isinstance(llm.get(key), dict):
             llm[key] = {}
-    for key in ("market_series", "growth_decomposition"):
+    for key in ("market_series", "growth_decomposition", "scenarios"):
         if not isinstance(llm.get(key), list):
             llm[key] = []
 
@@ -753,8 +1167,7 @@ def _normalise_llm_spec(
         or hist.startswith("Information")
         or hist == _NA
     ):
-        _, revs = _fy_series(corpus)
-        years, _ = _fy_series(corpus)
+        years, revs = _fy_series(corpus)
         if len(revs) >= 2:
             n = max(1, len(revs) - 1)
             rate = _cagr(revs[0], revs[-1], n)
@@ -770,10 +1183,48 @@ def _normalise_llm_spec(
                     or "From accounting records in the data room",
                 }
 
+    # Ensure vintage / measure on series rows
+    for row in llm.get("market_series") or []:
+        if not isinstance(row, dict):
+            continue
+        row.setdefault("vintage", _vintage_label(str(row.get("period") or "")))
+        row.setdefault(
+            "measure",
+            _measure_kind(str(row.get("currency_units") or ""), str(row.get("value") or "")),
+        )
+
+    llm["perimeter_binding"] = _perimeter_binding(perimeter)
+    if not isinstance(llm.get("volume_vs_value"), dict):
+        llm["volume_vs_value"] = _volume_vs_value(
+            llm.get("market_series") or [],
+            llm.get("bottom_up") or {},
+        )
+    if not isinstance(llm.get("endpoint_cagr"), dict):
+        llm["endpoint_cagr"] = _endpoint_cagr_reperform(
+            llm.get("market_series") or [],
+            str(llm.get("market_growth_note") or ""),
+        )
+    if not llm.get("scenarios"):
+        llm["scenarios"] = _scenarios(corpus, llm.get("plan_vs_market") or {})
+
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else "PASS"
     llm["reliance_verdict"] = rv if rv in {"READY", "LIMITED", "BLOCKED"} else "LIMITED"
+    if not llm["perimeter_binding"].get("bound") and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_mv_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            q = normalize_question(raw)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_mv_gaps(llm)
 
     for dead in ("recommendation", "confidence", "key_conditions"):
         llm.pop(dead, None)
@@ -832,8 +1283,8 @@ def build_market_volume_spec(
                     sources.append(name)
         corpus = "\n".join(bits)
 
+    vars_ = prompt_vars_from_deal(deal)
     if not prefer_heuristic:
-        vars_ = prompt_vars_from_deal(deal)
         perim_note = None
         if isinstance(perimeter, dict):
             perim_note = "; ".join(
@@ -848,20 +1299,33 @@ def build_market_volume_spec(
             sector=vars_.get("sector"),
             geography=vars_.get("geography"),
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
             perimeter_note=perim_note,
         )
         if llm:
-            return _normalise_llm_spec(
-                llm, sources=sources, legacy_spec=legacy_spec, corpus=corpus
+            out = _normalise_llm_spec(
+                llm,
+                sources=sources,
+                legacy_spec=legacy_spec,
+                corpus=corpus,
+                perimeter=perimeter,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_market_volume_spec(
+    heur = _heuristic_market_volume_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         perimeter=perimeter,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_market_volume_markdown(
@@ -876,14 +1340,44 @@ def render_market_volume_markdown(
     company = spec.get("company_growth") if isinstance(spec.get("company_growth"), dict) else {}
     decomp = spec.get("growth_decomposition") if isinstance(spec.get("growth_decomposition"), list) else []
     plan = spec.get("plan_vs_market") if isinstance(spec.get("plan_vs_market"), dict) else {}
+    binding = (
+        spec.get("perimeter_binding")
+        if isinstance(spec.get("perimeter_binding"), dict)
+        else {}
+    )
+    vv = spec.get("volume_vs_value") if isinstance(spec.get("volume_vs_value"), dict) else {}
+    endpoint = spec.get("endpoint_cagr") if isinstance(spec.get("endpoint_cagr"), dict) else {}
+    scenarios = spec.get("scenarios") if isinstance(spec.get("scenarios"), list) else []
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
 
-    parts.append("## 1. Bottom-Up Market Size\n\n")
+    parts.append("## 1. Perimeter Binding\n\n")
+    parts.append(
+        "Every series is bound to the Market Definition four-axis perimeter "
+        "(service · customer · geography · value-chain), as-of date and unit.\n\n"
+    )
+    if binding:
+        parts.append(_table(
+            ["Field", "Value"],
+            [
+                ["Bound", str(bool(binding.get("bound")))],
+                ["Service", _clean(binding.get("service"), 160)],
+                ["Customer types", _clean(binding.get("customer_types"), 120)],
+                ["Geography", _clean(binding.get("geography"), 120)],
+                ["Value-chain stage", _clean(binding.get("value_chain_stage"), 120)],
+                ["As-of date", _clean(binding.get("as_of_date"), 60)],
+                ["Unit", _clean(binding.get("unit"), 80)],
+                ["Note", _clean(binding.get("note"), 200)],
+            ],
+        ))
+    parts.append("---\n\n")
+
+    parts.append("## 2. Bottom-Up Market Size\n\n")
     parts.append(
         "Countable units in the served geography × capturable share × realised annual price. "
-        "Show the arithmetic.\n\n"
+        "Show the arithmetic. Separate volume vs value.\n\n"
     )
     parts.append(_table(
         ["Component", "Value"],
@@ -893,11 +1387,13 @@ def render_market_volume_markdown(
             ["Realised price / unit", _clean(bottom.get("realised_price"), 80)],
             ["Arithmetic", _clean(bottom.get("arithmetic"), 280)],
             ["Bottom-up size", _clean(bottom.get("bottom_up_size"), 120)],
+            ["Volume vs value", _clean(vv.get("status"), 40)],
+            ["Volume/value note", _clean(vv.get("note"), 200)],
         ],
     ))
     parts.append("---\n\n")
 
-    parts.append("## 2. Top-Down Cross-Check\n\n")
+    parts.append("## 3. Top-Down Cross-Check\n\n")
     parts.append(
         "Published source only if its perimeter matches. Otherwise say so and rely on bottom-up.\n\n"
     )
@@ -913,32 +1409,47 @@ def render_market_volume_markdown(
     ))
     parts.append("---\n\n")
 
-    parts.append("## 3. Market Series & Growth\n\n")
+    parts.append("## 4. Market Series & Growth\n\n")
     parts.append(
         "Historical and forecast periods with source dates, currency and consistent units. "
-        "Growth from endpoints and years elapsed — never label a one-year rate as multi-year.\n\n"
+        "Label vintage (actual / forecast / unavailable). Growth from endpoints and years "
+        "elapsed — never label a one-year rate as multi-year. Reperform endpoint CAGR.\n\n"
     )
     if series:
         parts.append(_table(
-            ["Period", "Value", "Currency / Units", "Source Date", "Kind"],
+            ["Period", "Value", "Units", "Vintage", "Measure", "Source Date", "Kind"],
             [
                 [
                     _clean(r.get("period"), 20),
                     _clean(r.get("value"), 80),
                     _clean(r.get("currency_units"), 40),
+                    _clean(r.get("vintage"), 20),
+                    _clean(r.get("measure"), 20),
                     _clean(r.get("source_date"), 40),
                     _clean(r.get("kind"), 30),
                 ]
                 for r in series if isinstance(r, dict)
             ],
         ))
-    parts.append(f"**Market growth:** {_clean(spec.get('market_growth_note'), 320)}\n\n")
+    parts.append(f"**Market growth (stated):** {_clean(spec.get('market_growth_note'), 320)}\n\n")
+    if endpoint:
+        parts.append("### Endpoint CAGR reperform\n\n")
+        parts.append(_table(
+            ["Field", "Content"],
+            [
+                ["OK", str(endpoint.get("ok"))],
+                ["Computed", _clean(endpoint.get("computed"), 160)],
+                ["Years", _clean(endpoint.get("years"), 20)],
+                ["Measure", _clean(endpoint.get("measure"), 40)],
+                ["Note", _clean(endpoint.get("note"), 240)],
+            ],
+        ))
     parts.append("---\n\n")
 
-    parts.append("## 4. Company Growth vs Market\n\n")
+    parts.append("## 5. Company Growth vs Market\n\n")
     parts.append(
         "Same geography, segment and period — from accounting records. "
-        "Decompose the difference into share gain, price, mix and acquisition.\n\n"
+        "Decompose into organic, share gain, price, mix and M&A.\n\n"
     )
     parts.append(_table(
         ["Field", "Content"],
@@ -967,10 +1478,10 @@ def render_market_volume_markdown(
     )
     parts.append("---\n\n")
 
-    parts.append("## 5. Plan vs Market Multiple\n\n")
+    parts.append("## 6. Plan vs Market Multiple & Scenarios\n\n")
     parts.append(
         "Compare the plan's implied growth with the market rate and state the multiple. "
-        "If several times faster, say so plainly.\n\n"
+        "State adoption / scenario sensitivities. If several times faster, say so plainly.\n\n"
     )
     parts.append(_table(
         ["Field", "Content"],
@@ -982,13 +1493,46 @@ def render_market_volume_markdown(
             ["What must be true", _clean(plan.get("what_must_be_true"), 280)],
         ],
     ))
+    if scenarios:
+        parts.append("### Scenario / adoption sensitivity\n\n")
+        parts.append(_table(
+            ["Scenario", "Effect on multiple", "Evidence"],
+            [
+                [
+                    _clean(r.get("scenario"), 100),
+                    _clean(r.get("effect_on_multiple"), 120),
+                    _clean(r.get("evidence"), 80),
+                ]
+                for r in scenarios if isinstance(r, dict)
+            ],
+        ))
     parts.append(
         "*This section does not recommend invest or pass. "
         "Share gain = company growth − market growth on the matched perimeter.*\n\n"
     )
     parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material volume/growth gaps')}\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

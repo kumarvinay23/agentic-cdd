@@ -61,6 +61,53 @@ _RECONCILE_RULE = (
     "Every supplier fact is reconciled with the supplier agent — two agents "
     "must not report different terms for the same contract."
 )
+_CHAIN_MAP_RULE = (
+    "The critical path covers physical and digital stages from input to "
+    "delivered service; each SPOF is marked with layer and type."
+)
+_VERIFIED_DEP_RULE = (
+    "Verified dependencies are carried from Supplier Dependence — evidenced "
+    "vs assumed is stated; SCR does not invent new vendor facts."
+)
+_SCENARIO_RULE = (
+    "Disruption scenarios state duration, output impact, cost, cash and "
+    "recovery — or name what is missing."
+)
+_ALT_CAP_RULE = (
+    "Alternate capacity is sized with permissions and transition time — "
+    "naming a backup without time/permission is incomplete."
+)
+_DEDUP_RULE = (
+    "Cost impacts are not double-counted across disruption history and "
+    "plausible-downside / scenario rows."
+)
+_UNKNOWN_RULE = (
+    "Unknown resilience is not low resilience — unexamined continuity stays "
+    "unexamined until evidenced."
+)
+_DIGITAL_CUE = re.compile(
+    r"(?i)\b(ERP|WMS|TMS|OMS|MES|SCADA|SaaS|cloud\s+platform|IT\s+system|"
+    r"digital\s+(?:chain|platform|system)|order\s+management|"
+    r"warehouse\s+management|transport\s+management)\b"
+)
+_ALT_CAP_CUE = re.compile(
+    r"(?i)\b(alternate\s+capacity|alt(?:ernate)?\s+(?:plant|site|line)|"
+    r"spare\s+(?:plant|line|capacity)|backup\s+(?:plant|site|processor)|"
+    r"qualify(?:ing|ication)?\s+(?:alternate|second)|second\s+source\s+capacity|"
+    r"transition\s+time|switch(?:ing)?\s+time|permit(?:s|ted|ting)?|"
+    r"licence|license|regulatory\s+approval)\b"
+)
+_CASH_CUE = re.compile(
+    r"(?i)\b(cash|liquidity|working\s+capital|WC\s+impact|cash\s+burn)\b"
+)
+_RECOVERY_CUE = re.compile(
+    r"(?i)\b(recover(?:y|ed)|restor(?:e|ed|ation)|resume|ramp[- ]back|"
+    r"return\s+to\s+(?:normal|full))\b"
+)
+_OUTPUT_CUE = re.compile(
+    r"(?i)\b(output|throughput|production\s+(?:halt|loss|stop)|units?\s+(?:lost|halted)|"
+    r"volume\s+(?:loss|impact)|%?\s*(?:of\s+)?(?:capacity|volume)\s+(?:lost|down))\b"
+)
 
 _STAGE_CUES = (
     "input", "raw material", "component", "cell", "battery", "assembly",
@@ -896,6 +943,700 @@ def _extract_localization(corpus: str, legacy: dict[str, Any]) -> list[str]:
     return out[:6]
 
 
+def _annotate_chain_layers(
+    chain: list[dict[str, Any]],
+    corpus: str,
+) -> list[dict[str, Any]]:
+    """Tag each critical-path node physical/digital; append digital stage if evidenced."""
+    text = _prose(corpus)
+    out: list[dict[str, Any]] = []
+    for node in chain:
+        row = dict(node) if isinstance(node, dict) else {}
+        blob = " ".join(
+            str(row.get(k) or "")
+            for k in ("stage", "description", "supplier_or_asset", "spof_type")
+        )
+        if _DIGITAL_CUE.search(blob) or _DIGITAL_CUE.search(str(row.get("stage") or "")):
+            row["layer"] = "digital"
+        else:
+            row["layer"] = row.get("layer") or "physical"
+        out.append(row)
+
+    if _DIGITAL_CUE.search(text) and not any(
+        str(n.get("layer") or "") == "digital" for n in out
+    ):
+        dig_sent = next(
+            (s for s in _sentences(text) if _DIGITAL_CUE.search(s)),
+            None,
+        )
+        spof = "Yes" if dig_sent and _SPOF_CUE.search(dig_sent) else "Unknown"
+        out.append({
+            "stage": "digital / systems",
+            "layer": "digital",
+            "description": (
+                _clean(dig_sent, 200)
+                if dig_sent
+                else _info_request("digital chain nodes (ERP / WMS / TMS / order systems)")
+            ),
+            "spof": spof,
+            "spof_type": "single_system" if spof == "Yes" else "none",
+            "supplier_or_asset": (
+                _extract_named_asset(dig_sent or "", spof_type="single_asset_class")
+                if dig_sent and spof == "Yes"
+                else _info_request("critical digital system / platform")
+            ),
+            "source": _DOC_CITE if dig_sent else _NA,
+            "notes": f"{_SPOF_RULE} {_CHAIN_MAP_RULE}",
+        })
+    elif not any(str(n.get("layer") or "") == "digital" for n in out):
+        # Explicit unknown digital layer — unknown ≠ low
+        out.append({
+            "stage": "digital / systems",
+            "layer": "digital",
+            "description": _info_request(
+                "digital chain map (ERP / WMS / TMS / order systems) — unknown, not low resilience"
+            ),
+            "spof": "Unknown",
+            "spof_type": "none",
+            "supplier_or_asset": _NA,
+            "source": _NA,
+            "notes": f"{_CHAIN_MAP_RULE} {_UNKNOWN_RULE}",
+        })
+    return out
+
+
+def _verified_deps_from_supplier(
+    supplier_spec: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Carry verified dependencies from Supplier Dependence without inventing vendors."""
+    if not isinstance(supplier_spec, dict):
+        return [{
+            "supplier": _info_request("Supplier Dependence output"),
+            "role": _NA,
+            "criticality": _NA,
+            "evidence_status": "missing",
+            "source": _NA,
+            "notes": _VERIFIED_DEP_RULE,
+        }]
+    rows: list[dict[str, Any]] = []
+    vendors = supplier_spec.get("vendors") if isinstance(supplier_spec.get("vendors"), list) else []
+    crit = (
+        supplier_spec.get("operational_criticality")
+        if isinstance(supplier_spec.get("operational_criticality"), list)
+        else []
+    )
+    crit_by = {
+        str(c.get("supplier") or "").strip().lower(): c
+        for c in crit if isinstance(c, dict) and c.get("supplier")
+    }
+    roles = (
+        supplier_spec.get("supplier_roles")
+        if isinstance(supplier_spec.get("supplier_roles"), list)
+        else []
+    )
+    role_by = {
+        str(r.get("supplier") or "").strip().lower(): r
+        for r in roles if isinstance(r, dict) and r.get("supplier")
+    }
+    spend = (
+        supplier_spec.get("spend_by_supplier")
+        if isinstance(supplier_spec.get("spend_by_supplier"), list)
+        else []
+    )
+    names: list[str] = []
+    for v in vendors:
+        if isinstance(v, dict) and v.get("name"):
+            names.append(str(v.get("name")))
+    for s in spend:
+        if isinstance(s, dict) and s.get("supplier"):
+            n = str(s.get("supplier"))
+            if n not in names:
+                names.append(n)
+    for name in names[:10]:
+        key = name.lower()
+        c = crit_by.get(key) or {}
+        r = role_by.get(key) or {}
+        v = next(
+            (x for x in vendors if isinstance(x, dict) and str(x.get("name") or "").lower() == key),
+            {},
+        )
+        evidenced = bool(
+            (isinstance(v, dict) and v.get("name"))
+            or (isinstance(c, dict) and c.get("criticality"))
+            or any(
+                isinstance(s, dict)
+                and str(s.get("supplier") or "").lower() == key
+                and s.get("ledger_evidenced")
+                for s in spend
+            )
+        )
+        rows.append({
+            "supplier": _clean(name, 60),
+            "role": _clean(r.get("role") or v.get("component") or _NA, 60),
+            "criticality": _clean(
+                c.get("criticality") or v.get("risk_level") or _NA, 40
+            ),
+            "evidence_status": "evidenced" if evidenced else "assumed",
+            "source": _DOC_CITE,
+            "notes": _VERIFIED_DEP_RULE,
+        })
+    if not rows:
+        rows.append({
+            "supplier": _info_request("verified dependencies from Supplier Dependence"),
+            "role": _NA,
+            "criticality": _NA,
+            "evidence_status": "missing",
+            "source": _NA,
+            "notes": _VERIFIED_DEP_RULE,
+        })
+    return rows
+
+
+def _extract_disruption_scenarios(
+    *,
+    history: list[dict[str, Any]],
+    downsides: list[dict[str, Any]],
+    corpus: str,
+) -> list[dict[str, Any]]:
+    """Build scenario rows with duration / output / cost / cash / recovery."""
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(
+        *,
+        name: str,
+        duration: str,
+        output: str,
+        cost: str,
+        cash: str,
+        recovery: str,
+        source: str,
+    ) -> None:
+        key = name.strip().lower()[:80]
+        if not key or key in seen:
+            return
+        seen.add(key)
+        rows.append({
+            "scenario": _clean(name, 120),
+            "duration": duration,
+            "output_impact": output,
+            "cost_impact": cost,
+            "cash_impact": cash,
+            "recovery": recovery,
+            "source": source,
+            "notes": _SCENARIO_RULE,
+        })
+
+    for h in history:
+        if not isinstance(h, dict):
+            continue
+        incident = str(h.get("incident") or "")
+        if not _is_filled(incident) or incident.startswith("Information"):
+            continue
+        blob = " ".join(str(h.get(k) or "") for k in ("incident", "duration", "impact", "resolution"))
+        _add(
+            name=incident,
+            duration=(
+                _clean(h.get("duration"), 40)
+                if _is_filled(h.get("duration")) and not str(h.get("duration")).startswith("Information")
+                else _info_request("scenario duration")
+            ),
+            output=(
+                _clean(blob, 80) if _OUTPUT_CUE.search(blob) else _info_request("output / volume impact")
+            ),
+            cost=(
+                _clean(h.get("impact"), 80)
+                if _is_filled(h.get("impact")) and not str(h.get("impact")).startswith("Information")
+                else _info_request("cost impact")
+            ),
+            cash=(
+                _clean(next((s for s in _sentences(text) if _CASH_CUE.search(s)), ""), 80)
+                or _info_request("cash / liquidity impact")
+            ),
+            recovery=(
+                _clean(h.get("resolution"), 100)
+                if _is_filled(h.get("resolution")) and not str(h.get("resolution")).startswith("Information")
+                else _info_request("recovery path")
+            ),
+            source=_DOC_CITE,
+        )
+        if len(rows) >= 4:
+            break
+
+    for d in downsides:
+        if not isinstance(d, dict):
+            continue
+        exposure = str(d.get("exposure") or "")
+        if not _is_filled(exposure) or exposure.startswith("Information"):
+            continue
+        key = exposure.strip().lower()[:80]
+        if key in seen:
+            continue
+        cost = (
+            _clean(d.get("plausible_cost"), 80)
+            if _is_filled(d.get("plausible_cost"))
+            and not str(d.get("plausible_cost")).startswith("Information")
+            else _info_request("cost impact")
+        )
+        dur = (
+            _clean(d.get("duration"), 40)
+            if _is_filled(d.get("duration")) and not str(d.get("duration")).startswith("Information")
+            else _info_request("scenario duration")
+        )
+        _add(
+            name=f"SPOF downside — {exposure}",
+            duration=dur,
+            output=_info_request("output / volume impact"),
+            cost=cost,
+            cash=_info_request("cash / liquidity impact"),
+            recovery=_info_request("recovery path"),
+            source=str(d.get("source") or _NA),
+        )
+        if len(rows) >= 6:
+            break
+
+    if not rows:
+        rows.append({
+            "scenario": _info_request("disruption scenario (named SPOF or historical incident)"),
+            "duration": _NA,
+            "output_impact": _NA,
+            "cost_impact": _NA,
+            "cash_impact": _NA,
+            "recovery": _NA,
+            "source": _NA,
+            "notes": _SCENARIO_RULE,
+        })
+    return rows[:6]
+
+
+def _extract_alt_capacity(corpus: str) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    for s in _sentences(text):
+        if not _ALT_CAP_CUE.search(s):
+            continue
+        perm = _NA
+        if re.search(r"(?i)\b(permit|licence|license|approval|authoris|authoriz)\b", s):
+            perm = _clean(s, 100)
+        else:
+            perm = _info_request("permissions / licences for alternate capacity")
+        transition = _NA
+        tm = re.search(r"(?i)(\d+)\s*(days?|weeks?|months?)", s)
+        if tm and re.search(r"(?i)(transition|switch|qualify|ramp)", s):
+            transition = f"{tm.group(1)} {tm.group(2)}"
+        else:
+            transition = _info_request("transition time to alternate capacity")
+        rows.append({
+            "source": _clean(s, 140),
+            "permissions": perm if perm != _NA else _info_request("permissions / licences"),
+            "transition_time": transition,
+            "evidence": _DOC_CITE,
+            "notes": _ALT_CAP_RULE,
+        })
+        if len(rows) >= 4:
+            break
+    if not rows:
+        rows.append({
+            "source": _info_request("alternate capacity (plant / line / processor)"),
+            "permissions": _info_request("permissions / licences"),
+            "transition_time": _info_request("transition time"),
+            "evidence": _NA,
+            "notes": _ALT_CAP_RULE,
+        })
+    return rows
+
+
+def _dedupe_scr_cost_impacts(
+    *,
+    history: list[dict[str, Any]],
+    downsides: list[dict[str, Any]],
+    scenarios: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """Flag overlapping cost impacts; mark secondary rows as duplicate of primary."""
+    flags: list[str] = []
+    hist_costs: list[str] = []
+    for h in history:
+        if not isinstance(h, dict):
+            continue
+        impact = str(h.get("impact") or "")
+        if _is_filled(impact) and not impact.startswith("Information"):
+            digits = re.sub(r"[^\d.]", "", impact)
+            if digits:
+                hist_costs.append(digits)
+
+    out_down: list[dict[str, Any]] = []
+    for d in downsides:
+        row = dict(d) if isinstance(d, dict) else {}
+        cost = str(row.get("plausible_cost") or "")
+        digits = re.sub(r"[^\d.]", "", cost) if cost else ""
+        if digits and digits in hist_costs:
+            row["duplicate_of_history"] = True
+            row["notes"] = f"{_DEDUP_RULE} Same cost digits appear in disruption history."
+            flags.append(
+                f"Downside '{row.get('exposure')}' cost overlaps history impact ({digits})."
+            )
+        else:
+            row["duplicate_of_history"] = False
+        out_down.append(row)
+
+    out_scen: list[dict[str, Any]] = []
+    for s in scenarios:
+        row = dict(s) if isinstance(s, dict) else {}
+        cost = str(row.get("cost_impact") or "")
+        digits = re.sub(r"[^\d.]", "", cost) if cost else ""
+        if digits and digits in hist_costs and "history" not in str(row.get("scenario") or "").lower():
+            # Scenario derived from history is OK; flag only if double-booked as new
+            if str(row.get("scenario") or "").lower().startswith("spof"):
+                row["duplicate_of_history"] = True
+                row["notes"] = f"{_DEDUP_RULE} Cost already counted in history."
+                flags.append(
+                    f"Scenario '{row.get('scenario')}' cost overlaps history ({digits})."
+                )
+            else:
+                row["duplicate_of_history"] = False
+        else:
+            row["duplicate_of_history"] = False
+        out_scen.append(row)
+    return out_down, out_scen, flags[:6]
+
+
+def _scr_evidence_qa(
+    *,
+    chain: list[dict[str, Any]],
+    verified_deps: list[dict[str, Any]],
+    scenarios: list[dict[str, Any]],
+    continuity: list[dict[str, Any]],
+    alt_capacity: list[dict[str, Any]],
+    dedupe_flags: list[str],
+    reconcile: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Explicit PASS/FAIL QA for supply-chain resilience discipline."""
+    rows: list[dict[str, str]] = []
+
+    physical = sum(1 for n in chain if isinstance(n, dict) and str(n.get("layer") or "") == "physical")
+    digital = sum(1 for n in chain if isinstance(n, dict) and str(n.get("layer") or "") == "digital")
+    # Digital may be Unknown — that still counts as mapped (unknown ≠ low)
+    digital_mapped = digital >= 1
+    chain_ok = physical >= 1 and digital_mapped
+    rows.append({
+        "check": "physical_digital_chain_map",
+        "status": "PASS" if chain_ok else "FAIL",
+        "finding": (
+            f"{physical} physical + {digital} digital stage(s) on critical path"
+            if chain_ok
+            else _info_request("physical and digital critical-path map")
+        ),
+        "action": _CHAIN_MAP_RULE,
+    })
+
+    verified = sum(
+        1 for d in verified_deps
+        if isinstance(d, dict)
+        and str(d.get("evidence_status") or "") == "evidenced"
+        and _is_filled(d.get("supplier"))
+        and not str(d.get("supplier")).startswith("Information")
+    )
+    rows.append({
+        "check": "verified_supplier_deps",
+        "status": "PASS" if verified >= 1 else "FAIL",
+        "finding": (
+            f"{verified} verified dependenc{'y' if verified == 1 else 'ies'} from Supplier Dependence"
+            if verified >= 1
+            else _info_request("verified dependencies from Supplier Dependence")
+        ),
+        "action": _VERIFIED_DEP_RULE,
+    })
+
+    scen_ok = sum(
+        1 for s in scenarios
+        if isinstance(s, dict)
+        and _is_filled(s.get("scenario"))
+        and not str(s.get("scenario")).startswith("Information")
+        and _is_filled(s.get("duration"))
+        and not str(s.get("duration")).startswith("Information")
+        and (
+            (
+                _is_filled(s.get("cost_impact"))
+                and not str(s.get("cost_impact")).startswith("Information")
+            )
+            or (
+                _is_filled(s.get("output_impact"))
+                and not str(s.get("output_impact")).startswith("Information")
+            )
+        )
+    )
+    rows.append({
+        "check": "disruption_scenarios",
+        "status": "PASS" if scen_ok >= 1 else "FAIL",
+        "finding": (
+            f"{scen_ok} disruption scenario(s) with duration + cost/output"
+            if scen_ok >= 1
+            else _info_request("disruption scenarios (duration, output, cost, cash, recovery)")
+        ),
+        "action": _SCENARIO_RULE,
+    })
+
+    tested = sum(
+        1 for c in continuity
+        if isinstance(c, dict)
+        and "tested" in str(c.get("tested_or_used") or "").lower()
+        and "untested" not in str(c.get("tested_or_used") or "").lower()
+    )
+    plan_only = sum(
+        1 for c in continuity
+        if isinstance(c, dict)
+        and _is_filled(c.get("arrangement"))
+        and not str(c.get("arrangement")).startswith("Information")
+        and "untested" in str(c.get("tested_or_used") or "").lower()
+    )
+    # PASS if at least one arrangement has explicit tested/used OR plan-vs-tested status stated
+    cont_ok = tested >= 1 or (
+        plan_only >= 1 and any(
+            isinstance(c, dict) and _is_filled(c.get("tested_or_used"))
+            for c in continuity
+        )
+    )
+    # Prefer tested; FAIL only when continuity is empty / all info-requests
+    has_any_cont = any(
+        isinstance(c, dict)
+        and _is_filled(c.get("arrangement"))
+        and not str(c.get("arrangement")).startswith("Information")
+        for c in continuity
+    )
+    rows.append({
+        "check": "contingency_plan_vs_tested",
+        "status": "PASS" if has_any_cont and cont_ok else "FAIL",
+        "finding": (
+            f"{tested} used/tested; {plan_only} plan-only / untested"
+            if has_any_cont
+            else _info_request("contingency arrangements with used/tested status")
+        ),
+        "action": _CONTINUITY_RULE,
+    })
+
+    alt_ok = sum(
+        1 for a in alt_capacity
+        if isinstance(a, dict)
+        and _is_filled(a.get("source"))
+        and not str(a.get("source")).startswith("Information")
+        and _is_filled(a.get("transition_time"))
+        and not str(a.get("transition_time")).startswith("Information")
+    )
+    rows.append({
+        "check": "alt_capacity_permissions_time",
+        "status": "PASS" if alt_ok >= 1 else "FAIL",
+        "finding": (
+            f"{alt_ok} alternate-capacity row(s) with transition time"
+            if alt_ok >= 1
+            else _info_request("alternate capacity with permissions and transition time")
+        ),
+        "action": _ALT_CAP_RULE,
+    })
+
+    rows.append({
+        "check": "cost_impact_non_overlap",
+        "status": "FAIL" if dedupe_flags else "PASS",
+        "finding": (
+            "; ".join(dedupe_flags[:3])
+            if dedupe_flags
+            else _DEDUP_RULE
+        ),
+        "action": _DEDUP_RULE,
+    })
+
+    unknown_spofs = sum(
+        1 for n in chain
+        if isinstance(n, dict) and str(n.get("spof") or "").lower() == "unknown"
+    )
+    # Always PASS the unknown≠low check when we preserve Unknown rather than inventing Low
+    invented_low = any(
+        isinstance(n, dict)
+        and str(n.get("spof") or "").lower() == "unknown"
+        and "low resilience" in str(n.get("description") or "").lower()
+        and "not low" not in str(n.get("description") or "").lower()
+        and "unknown" not in str(n.get("notes") or "").lower()
+        for n in chain
+    )
+    rows.append({
+        "check": "unknown_not_low_resilience",
+        "status": "FAIL" if invented_low else "PASS",
+        "finding": (
+            "Unknown SPOF/resilience mislabelled as low — blocked"
+            if invented_low
+            else (
+                f"{unknown_spofs} Unknown node(s) retained (not treated as low resilience)"
+                if unknown_spofs
+                else _UNKNOWN_RULE
+            )
+        ),
+        "action": _UNKNOWN_RULE,
+    })
+
+    conflicts = len(reconcile.get("conflicts") or []) if isinstance(reconcile, dict) else 0
+    present = bool(reconcile.get("supplier_agent_present")) if isinstance(reconcile, dict) else False
+    rows.append({
+        "check": "supplier_reconcile",
+        "status": "FAIL" if conflicts or not present else "PASS",
+        "finding": (
+            f"{conflicts} supplier-reconcile conflict(s)"
+            if conflicts
+            else (
+                "Supplier facts aligned with Supplier Dependence"
+                if present
+                else _info_request("Supplier Dependence output for reconcile")
+            )
+        ),
+        "action": _RECONCILE_RULE,
+    })
+    return rows
+
+
+def _questions_from_scr_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("scr_evidence_qa")
+        if isinstance(spec.get("scr_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("physical_digital_chain_map"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide the physical and digital critical-path map from input "
+                        "to delivered service with SPOFs marked"
+                    ),
+                    "required_records": "Ops chain map + IT/systems dependency inventory",
+                    "decision_effect": "Break tests cannot be sized without a chain map",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "ops diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "physical_digital_chain_map QA PASS",
+                    "interim_treatment": "BLOCKED — do not invent a chain map",
+                }
+            )
+        )
+    if _qa_fail("verified_supplier_deps"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Supply verified dependencies from Supplier Dependence "
+                        "(evidenced vs assumed)"
+                    ),
+                    "required_records": "Supplier Dependence agent output",
+                    "decision_effect": "SCR must not invent vendor facts the supplier agent lacks",
+                    "priority": "signing_condition",
+                    "owner": "commercial / ops diligence",
+                    "timing": "per deal timetable",
+                    "closure_test": "verified_supplier_deps QA PASS",
+                    "interim_treatment": "LIMITED — withhold unverified dependency claims",
+                }
+            )
+        )
+    if _qa_fail("disruption_scenarios"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Build disruption scenarios with duration, output, cost, cash "
+                        "and recovery for each material SPOF"
+                    ),
+                    "required_records": "Incident history + finance downside cases",
+                    "decision_effect": "Unbounded break tests leave value at risk untested",
+                    "priority": "signing_condition",
+                    "owner": "ops / financial diligence",
+                    "timing": "before IC",
+                    "closure_test": "disruption_scenarios QA PASS",
+                    "interim_treatment": "LIMITED — flag scenarios as incomplete",
+                }
+            )
+        )
+    if _qa_fail("contingency_plan_vs_tested"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "List contingency / continuity arrangements and whether each "
+                        "has been used or tested (plan vs tested)"
+                    ),
+                    "required_records": "BCP register + drill / invocation evidence",
+                    "decision_effect": "Untested plans overstate absorbability",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "contingency_plan_vs_tested QA PASS",
+                    "interim_treatment": "LIMITED — treat untested plans as unproven",
+                }
+            )
+        )
+    if _qa_fail("alt_capacity_permissions_time"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Size alternate capacity with permissions/licences and "
+                        "transition time"
+                    ),
+                    "required_records": "Alt-site/line capacity pack + permit register",
+                    "decision_effect": "Named backups without time/permission are incomplete",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "alt_capacity_permissions_time QA PASS",
+                    "interim_treatment": "LIMITED — do not credit unnamed transition paths",
+                }
+            )
+        )
+    if _qa_fail("cost_impact_non_overlap"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Reconcile cost impacts so history and scenario/downside rows "
+                        "do not double-count the same shock"
+                    ),
+                    "required_records": "Single cost-impact bridge across SCR sections",
+                    "decision_effect": "Double-counted shocks inflate downside",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "cost_impact_non_overlap QA PASS",
+                    "interim_treatment": "Strip duplicate cost lines; reliance LIMITED",
+                }
+            )
+        )
+    if _qa_fail("supplier_reconcile"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Resolve Supplier Dependence reconcile conflicts (or supply "
+                        "the supplier-agent output if missing)"
+                    ),
+                    "required_records": "Supplier Dependence spec + contract pack",
+                    "decision_effect": "Conflicting supplier terms undermine break tests",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "supplier_reconcile QA PASS",
+                    "interim_treatment": "REWORK — prefer supplier-agent contract terms",
+                }
+            )
+        )
+    return out
+
+
 def _quality_reliance(
     *,
     chain: list[dict],
@@ -970,15 +1711,26 @@ def _heuristic_supply_chain_resilience_spec(
             extra += "\n" + m.strip()
     corpus_full = (corpus or "") + extra
 
-    chain = _apply_supplier_spofs(
-        _extract_critical_path(corpus_full),
-        supplier_spec,
+    chain = _annotate_chain_layers(
+        _apply_supplier_spofs(
+            _extract_critical_path(corpus_full),
+            supplier_spec,
+        ),
+        corpus_full,
     )
     capacity = _extract_capacity_headroom(corpus_full)
     history = _extract_disruption_history(corpus_full)
     continuity = _extract_continuity(corpus_full)
     downsides = _extract_downsides(
         chain=chain, capacity=capacity, history=history, corpus=corpus_full,
+    )
+    verified_deps = _verified_deps_from_supplier(supplier_spec)
+    scenarios = _extract_disruption_scenarios(
+        history=history, downsides=downsides, corpus=corpus_full,
+    )
+    alt_capacity = _extract_alt_capacity(corpus_full)
+    downsides, scenarios, dedupe_flags = _dedupe_scr_cost_impacts(
+        history=history, downsides=downsides, scenarios=scenarios,
     )
     reconcile = _reconcile_supplier_facts(
         chain_nodes=chain, supplier_spec=supplier_spec, corpus=corpus_full,
@@ -993,15 +1745,34 @@ def _heuristic_supply_chain_resilience_spec(
         _CONTINUITY_RULE,
         _DOWNSIDE_RULE,
         _RECONCILE_RULE,
+        _CHAIN_MAP_RULE,
+        _VERIFIED_DEP_RULE,
+        _SCENARIO_RULE,
+        _ALT_CAP_RULE,
+        _DEDUP_RULE,
+        _UNKNOWN_RULE,
     ]
     if reconcile.get("conflicts"):
         notes.append(
             f"Supplier reconcile: {len(reconcile['conflicts'])} conflict(s) — "
             f"prefer supplier agent contract terms."
         )
+    if dedupe_flags:
+        notes.append(_DEDUP_RULE + " " + dedupe_flags[0])
     for n in (legacy.get("resilience_notes") or [])[:3]:
         if isinstance(n, str) and n.strip():
             notes.append(_soften_invest(_clean(n, 240)))
+
+    scr_qa = _scr_evidence_qa(
+        chain=chain,
+        verified_deps=verified_deps,
+        scenarios=scenarios,
+        continuity=continuity,
+        alt_capacity=alt_capacity,
+        dedupe_flags=dedupe_flags,
+        reconcile=reconcile,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in scr_qa)
 
     quality, reliance, rationale = _quality_reliance(
         chain=chain,
@@ -1011,6 +1782,10 @@ def _heuristic_supply_chain_resilience_spec(
         downsides=downsides,
         reconcile=reconcile,
     )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "SCR evidence QA has open FAILs — reliance limited. " + rationale
+    rationale = f"{rationale} {_UNKNOWN_RULE}"
 
     spof_n = sum(1 for n in chain if str(n.get("spof") or "").lower() == "yes")
     bits = [f"Supply Chain Resilience for {company}"]
@@ -1025,18 +1800,23 @@ def _heuristic_supply_chain_resilience_spec(
     if metrics.get("dio_days") is not None:
         bits.append(f"DIO {metrics['dio_days']:g}d")
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "critical_path": chain,
         "capacity_headroom": capacity,
         "disruption_history": history,
         "continuity_arrangements": continuity,
         "plausible_downsides": downsides,
+        "disruption_scenarios": scenarios,
+        "verified_dependencies": verified_deps,
+        "alt_capacity": alt_capacity,
+        "cost_impact_flags": dedupe_flags,
+        "scr_evidence_qa": scr_qa,
         "supplier_reconcile": reconcile,
         # Legacy dual-write
         "logistics_metrics": metrics,
         "localization_milestones": milestones,
-        "resilience_notes": notes[:8],
+        "resilience_notes": notes[:12],
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": rationale,
@@ -1050,6 +1830,8 @@ def _heuristic_supply_chain_resilience_spec(
             and not milestones
         ),
     }
+    out["questions"] = _questions_from_scr_gaps(out)
+    return out
 
 
 def _llm_supply_chain_resilience_spec(
@@ -1060,6 +1842,11 @@ def _llm_supply_chain_resilience_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
     supplier_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
@@ -1073,18 +1860,29 @@ def _llm_supply_chain_resilience_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
 
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     supplier_blob = ""
-    if isinstance(supplier_spec, dict) and supplier_spec.get("vendors"):
+    if isinstance(supplier_spec, dict) and (
+        supplier_spec.get("vendors") or supplier_spec.get("spend_by_supplier")
+    ):
         supplier_blob = (
             "\nSUPPLIER_AGENT_SPEC (reconcile — do not contradict contract terms):\n"
             + str({
                 "vendors": (supplier_spec.get("vendors") or [])[:8],
                 "contract_terms": (supplier_spec.get("contract_terms") or [])[:4],
+                "operational_criticality": (
+                    supplier_spec.get("operational_criticality") or []
+                )[:4],
             })[:4_000]
             + "\n"
         )
@@ -1096,23 +1894,35 @@ def _llm_supply_chain_resilience_spec(
         f"Evidence:\n{corpus[:38_000]}\n\n"
         "Return JSON with keys:\n"
         "insight_snapshot (string),\n"
-        "critical_path: [{stage, description, spof, spof_type, supplier_or_asset, source, notes}],\n"
+        "critical_path: [{stage, layer (physical|digital), description, spof, spof_type, "
+        "supplier_or_asset, source, notes}],\n"
         "capacity_headroom: [{stage, current_capacity, utilization, headroom, planned_volume, "
         "when_binds, source, notes}],\n"
         "disruption_history: [{incident, duration, impact, resolution, source, notes}],\n"
+        "disruption_scenarios: [{scenario, duration, output_impact, cost_impact, cash_impact, "
+        "recovery, source, notes}],\n"
         "continuity_arrangements: [{arrangement, type, tested_or_used, source, notes}],\n"
+        "alt_capacity: [{source, permissions, transition_time, evidence, notes}],\n"
+        "verified_dependencies: [{supplier, role, criticality, evidence_status, source, notes}],\n"
         "plausible_downsides: [{exposure, plausible_cost, duration, bounded, unbounded_reason, "
         "source, notes}],\n"
         "supplier_reconcile: {supplier_agent_present, aligned: [string], conflicts: [string], "
         "notes, source},\n"
+        "scr_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "physical_digital_chain_map, verified_supplier_deps, disruption_scenarios, "
+        "contingency_plan_vs_tested, alt_capacity_permissions_time, cost_impact_non_overlap, "
+        "unknown_not_low_resilience, supplier_reconcile,\n"
+        "questions: [{question, required_records, decision_effect, priority, owner, "
+        "timing, closure_test, interim_treatment}],\n"
         "logistics_metrics: {dio_days?, dpo_days?, lead_time_days?, stockout_actual_pct?, "
         "utilization_pct?},\n"
         "localization_milestones: [string], resilience_notes: [string],\n"
         "quality_verdict (PASS|REWORK), reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
         "Do NOT contradict supplier-agent contract terms for the same supplier. "
-        "Mark SPOFs. Say tested vs untested for continuity. "
-        "Bound downside or say why unbounded. "
+        "Mark SPOFs on physical and digital path. Say tested vs untested for continuity. "
+        "Bound downside or say why unbounded. Unknown resilience is not low resilience. "
+        "Do not double-count cost impacts. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -1141,9 +1951,12 @@ def _normalise_llm_spec(
         cleaned = [r for r in raw if isinstance(r, dict) and r.get(required)]
         return cleaned or heur.get(key) or []
 
-    llm["critical_path"] = _apply_supplier_spofs(
-        _rows("critical_path", "stage"),
-        supplier_spec,
+    llm["critical_path"] = _annotate_chain_layers(
+        _apply_supplier_spofs(
+            _rows("critical_path", "stage"),
+            supplier_spec,
+        ),
+        corpus,
     )
     llm["capacity_headroom"] = _rows("capacity_headroom", "stage")
     llm["disruption_history"] = _rows("disruption_history", "incident")
@@ -1166,6 +1979,40 @@ def _normalise_llm_spec(
             row["unbounded_reason"] = _info_request("why downside cannot yet be bounded")
         row["notes"] = _DOWNSIDE_RULE
     llm["plausible_downsides"] = downsides
+
+    verified = _rows("verified_dependencies", "supplier")
+    if not verified or all(
+        str(v.get("evidence_status") or "") == "missing" for v in verified if isinstance(v, dict)
+    ):
+        verified = heur.get("verified_dependencies") or _verified_deps_from_supplier(supplier_spec)
+    llm["verified_dependencies"] = verified
+
+    scenarios = _rows("disruption_scenarios", "scenario")
+    if not scenarios:
+        scenarios = heur.get("disruption_scenarios") or _extract_disruption_scenarios(
+            history=llm["disruption_history"],
+            downsides=downsides,
+            corpus=corpus,
+        )
+    for row in scenarios:
+        row["notes"] = _SCENARIO_RULE
+    llm["disruption_scenarios"] = scenarios
+
+    alt_capacity = _rows("alt_capacity", "source")
+    if not alt_capacity:
+        alt_capacity = heur.get("alt_capacity") or _extract_alt_capacity(corpus)
+    for row in alt_capacity:
+        row["notes"] = _ALT_CAP_RULE
+    llm["alt_capacity"] = alt_capacity
+
+    downsides, scenarios, dedupe_flags = _dedupe_scr_cost_impacts(
+        history=llm["disruption_history"],
+        downsides=downsides,
+        scenarios=scenarios,
+    )
+    llm["plausible_downsides"] = downsides
+    llm["disruption_scenarios"] = scenarios
+    llm["cost_impact_flags"] = dedupe_flags
 
     # Force supplier reconcile from authoritative heuristic merge
     reconcile = _reconcile_supplier_facts(
@@ -1198,13 +2045,26 @@ def _normalise_llm_spec(
     notes = [_soften_invest(_clean(n, 240)) for n in notes if isinstance(n, str) and n.strip()]
     for rule in (
         _SPOF_RULE, _CAPACITY_RULE, _HISTORY_RULE, _CONTINUITY_RULE,
-        _DOWNSIDE_RULE, _RECONCILE_RULE,
+        _DOWNSIDE_RULE, _RECONCILE_RULE, _CHAIN_MAP_RULE, _VERIFIED_DEP_RULE,
+        _SCENARIO_RULE, _ALT_CAP_RULE, _DEDUP_RULE, _UNKNOWN_RULE,
     ):
         if not any(rule[:28].lower() in x.lower() for x in notes):
             notes.append(rule)
     if not notes:
         notes = heur["resilience_notes"]
-    llm["resilience_notes"] = notes[:8]
+    llm["resilience_notes"] = notes[:12]
+
+    scr_qa = _scr_evidence_qa(
+        chain=llm["critical_path"],
+        verified_deps=verified,
+        scenarios=scenarios,
+        continuity=continuity,
+        alt_capacity=alt_capacity,
+        dedupe_flags=dedupe_flags,
+        reconcile=reconcile,
+    )
+    llm["scr_evidence_qa"] = scr_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in scr_qa)
 
     quality, reliance, rationale = _quality_reliance(
         chain=llm["critical_path"],
@@ -1227,6 +2087,28 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "SCR evidence QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+    if _UNKNOWN_RULE[:20].lower() not in str(llm.get("quality_reliance_rationale") or "").lower():
+        llm["quality_reliance_rationale"] = (
+            _clean(llm.get("quality_reliance_rationale"), 400) + f" {_UNKNOWN_RULE}"
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_scr_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_scr_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
@@ -1288,18 +2170,25 @@ def build_supply_chain_resilience_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
             supplier_spec=supplier_spec,
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
                 supplier_spec=supplier_spec,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_supply_chain_resilience_spec(
+    heur = _heuristic_supply_chain_resilience_spec(
         company=target,
         corpus=corpus,
         sources=sources,
@@ -1307,6 +2196,8 @@ def build_supply_chain_resilience_spec(
         legacy_spec=legacy_spec,
         supplier_spec=supplier_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_supply_chain_resilience_markdown(
@@ -1326,6 +2217,17 @@ def render_supply_chain_resilience_markdown(
         spec.get("plausible_downsides")
         if isinstance(spec.get("plausible_downsides"), list) else []
     )
+    scenarios = (
+        spec.get("disruption_scenarios")
+        if isinstance(spec.get("disruption_scenarios"), list) else []
+    )
+    verified = (
+        spec.get("verified_dependencies")
+        if isinstance(spec.get("verified_dependencies"), list) else []
+    )
+    alt_capacity = (
+        spec.get("alt_capacity") if isinstance(spec.get("alt_capacity"), list) else []
+    )
     reconcile = (
         spec.get("supplier_reconcile")
         if isinstance(spec.get("supplier_reconcile"), dict) else {}
@@ -1342,19 +2244,23 @@ def render_supply_chain_resilience_markdown(
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
+    parts.append(f"{_UNKNOWN_RULE}\n\n")
 
     # 1
     parts.append("## 1. Critical Path & Single Points of Failure\n\n")
     parts.append(
-        f"Chain from input to delivered service. {_SPOF_RULE}\n\n"
+        f"Physical and digital chain from input to delivered service. "
+        f"{_SPOF_RULE} {_CHAIN_MAP_RULE}\n\n"
     )
     if chain:
         parts.append(_table(
-            ["Stage", "Description", "SPOF?", "SPOF type", "Supplier / site / asset", "Source"],
+            ["Stage", "Layer", "Description", "SPOF?", "SPOF type",
+             "Supplier / site / asset", "Source"],
             [
                 [
                     _clean(r.get("stage"), 40),
-                    _clean(r.get("description"), 140),
+                    _clean(r.get("layer") or "physical", 20),
+                    _clean(r.get("description"), 120),
                     _clean(r.get("spof"), 20),
                     _clean(r.get("spof_type"), 30),
                     _clean(r.get("supplier_or_asset"), 60),
@@ -1365,6 +2271,22 @@ def render_supply_chain_resilience_markdown(
         ))
     else:
         parts.append(f"**{_info_request('critical path map with SPOFs')}**\n\n")
+    if verified:
+        parts.append("### Verified dependencies (from Supplier Dependence)\n\n")
+        parts.append(f"{_VERIFIED_DEP_RULE}\n\n")
+        parts.append(_table(
+            ["Supplier", "Role", "Criticality", "Evidence", "Source"],
+            [
+                [
+                    _clean(r.get("supplier"), 60),
+                    _clean(r.get("role"), 40),
+                    _clean(r.get("criticality"), 40),
+                    _clean(r.get("evidence_status"), 20),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in verified if isinstance(r, dict)
+            ],
+        ))
     parts.append("---\n\n")
 
     # 2
@@ -1389,6 +2311,20 @@ def render_supply_chain_resilience_markdown(
         ))
     else:
         parts.append(f"**{_info_request('capacity and headroom by stage')}**\n\n")
+    parts.append(f"### Alternate capacity\n\n{_ALT_CAP_RULE}\n\n")
+    if alt_capacity:
+        parts.append(_table(
+            ["Source / option", "Permissions", "Transition time", "Evidence"],
+            [
+                [
+                    _clean(r.get("source"), 120),
+                    _clean(r.get("permissions"), 80),
+                    _clean(r.get("transition_time"), 60),
+                    _clean(r.get("evidence") or _NA, 40),
+                ]
+                for r in alt_capacity if isinstance(r, dict)
+            ],
+        ))
     if metrics:
         bits = [f"{k}: {v:g}" for k, v in list(metrics.items())[:6] if v is not None]
         if bits:
@@ -1396,7 +2332,7 @@ def render_supply_chain_resilience_markdown(
     parts.append("---\n\n")
 
     # 3
-    parts.append("## 3. Disruption History\n\n")
+    parts.append("## 3. Disruption History & Scenarios\n\n")
     parts.append(f"{_HISTORY_RULE}\n\n")
     if history:
         parts.append(_table(
@@ -1414,10 +2350,27 @@ def render_supply_chain_resilience_markdown(
         ))
     else:
         parts.append(f"**{_info_request('company disruption history')}**\n\n")
+    parts.append(f"### Disruption scenarios\n\n{_SCENARIO_RULE}\n\n")
+    if scenarios:
+        parts.append(_table(
+            ["Scenario", "Duration", "Output", "Cost", "Cash", "Recovery", "Source"],
+            [
+                [
+                    _clean(r.get("scenario"), 100),
+                    _clean(r.get("duration"), 40),
+                    _clean(r.get("output_impact"), 60),
+                    _clean(r.get("cost_impact"), 60),
+                    _clean(r.get("cash_impact"), 60),
+                    _clean(r.get("recovery"), 80),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in scenarios if isinstance(r, dict)
+            ],
+        ))
     parts.append("---\n\n")
 
     # 4
-    parts.append("## 4. Continuity Arrangements (Used / Tested)\n\n")
+    parts.append("## 4. Continuity Arrangements (Plan vs Tested)\n\n")
     parts.append(f"{_CONTINUITY_RULE}\n\n")
     if continuity:
         parts.append(_table(
@@ -1444,7 +2397,7 @@ def render_supply_chain_resilience_markdown(
 
     # 5
     parts.append("## 5. Plausible Downside & Supplier Reconcile\n\n")
-    parts.append(f"{_DOWNSIDE_RULE}\n\n")
+    parts.append(f"{_DOWNSIDE_RULE} {_DEDUP_RULE}\n\n")
     if downsides:
         parts.append(_table(
             ["Exposure", "Plausible cost", "Duration", "Bounded?", "If unbounded — why", "Source"],
@@ -1460,6 +2413,12 @@ def render_supply_chain_resilience_markdown(
                 for r in downsides if isinstance(r, dict)
             ],
         ))
+    flags = spec.get("cost_impact_flags") if isinstance(spec.get("cost_impact_flags"), list) else []
+    if flags:
+        parts.append("### Cost-impact overlap flags\n\n")
+        for f in flags[:4]:
+            parts.append(f"- {_clean(f, 200)}\n")
+        parts.append("\n")
     parts.append(f"### Supplier-agent reconcile\n\n{_RECONCILE_RULE}\n\n")
     parts.append(_table(
         ["Item", "Statement"],
@@ -1487,12 +2446,65 @@ def render_supply_chain_resilience_markdown(
     ))
     parts.append(
         "*This section does not recommend invest or pass. Continuity arrangements state "
-        "used/tested status. Supplier contract terms defer to the supplier agent on conflict.*\n\n"
+        "used/tested status. Supplier contract terms defer to the supplier agent on conflict. "
+        f"{_UNKNOWN_RULE}*\n\n"
     )
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    scr_qa = (
+        spec.get("scr_evidence_qa")
+        if isinstance(spec.get("scr_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. SCR Evidence QA\n\n")
+    parts.append(
+        "QA enforces physical/digital chain map, verified supplier deps, disruption "
+        "scenarios, contingency plan vs tested, alt capacity with permissions/time, "
+        "cost-impact non-overlap, unknown ≠ low resilience, and supplier reconcile.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in scr_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('SCR evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material SCR gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [
@@ -1518,13 +2530,14 @@ def render_supply_chain_resilience_markdown(
     )
     if notes:
         parts.append("### Resilience notes\n\n")
-        for n in notes[:6]:
+        for n in notes[:8]:
             if isinstance(n, str) and n.strip():
                 parts.append(f"- {_clean(n, 240)}\n")
         parts.append("\n")
     parts.append(
         "*This document tests what happens when something breaks and whether capacity, "
-        "contracts or plans can absorb it. It does not recommend invest or pass.*\n\n"
+        "contracts or plans can absorb it. Open SCR-evidence QA FAILs cap READY → LIMITED. "
+        "It does not recommend invest or pass.*\n\n"
     )
     parts.append("---\n\n")
 

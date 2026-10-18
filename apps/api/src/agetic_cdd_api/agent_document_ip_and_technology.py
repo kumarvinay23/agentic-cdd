@@ -63,6 +63,42 @@ _ADVANTAGE_RULE = (
     "If another agent claims an IP-based advantage, it is evidenced or "
     "contradicted here."
 )
+_MOAT_RULE = (
+    "Moat claims require proprietary ownership, an evidenced economic effect, "
+    "and something hard to replicate — using technology is not a moat."
+)
+_CYBER_RULE = (
+    "Systems / cyber / incident / restore-test checklist items are CLOSED only "
+    "with pack evidence; otherwise they stay OPEN."
+)
+_METRIC_OMIT_RULE = (
+    "Inapplicable software metrics (ARR, NRR, MAU, etc.) are omitted with a "
+    "one-line reason — do not force a SaaS template onto a non-software business."
+)
+_SOFTWARE_METRICS: tuple[tuple[str, str], ...] = (
+    ("ARR", "annual recurring revenue"),
+    ("NRR", "net revenue retention"),
+    ("GRR", "gross revenue retention"),
+    ("MAU", "monthly active users"),
+    ("DAU", "daily active users"),
+    ("churn", "logo / revenue churn"),
+    ("LTV/CAC", "lifetime value to CAC"),
+)
+_CYBER_ITEMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("access_control", ("access control", "RBAC", "SSO", "MFA", "auth")),
+    ("backup_restore_test", ("backup", "restore", "disaster recovery", "DR test", "restore tested")),
+    ("incident_history", ("incident", "outage", "downtime", "breach")),
+    ("cyber_controls", ("cyber", "firewall", "SOC", "vulnerability", "pen test", "security")),
+    ("data_protection", ("encrypt", "data protection", "DPDP", "GDPR", "PII")),
+)
+_MOAT_HARD_CUE = re.compile(
+    r"(?i)\b(hard\s+to\s+replicat|difficult\s+to\s+copy|trade\s+secret|"
+    r"exclusive|granted\s+patent|register(?:ed)?\s+patent)\b"
+)
+_MOAT_ECON_CUE = re.compile(
+    r"(?i)\b(margin|pricing\s+power|switching\s+cost|premium|"
+    r"cost\s+advantage|share\s+gain|moat)\b"
+)
 
 _RUN_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
@@ -745,6 +781,468 @@ def _legacy_dual_write(
     return patents[:8], core[:8], notes[:8]
 
 
+def _cyber_checklist(corpus: str, fitness: list[dict]) -> list[dict[str, str]]:
+    text = _prose(corpus)
+    fitness_blob = " ".join(
+        str(f.get("assessment") or "") for f in fitness if isinstance(f, dict)
+    )
+    blob = f"{text} {fitness_blob}"
+    rows: list[dict[str, str]] = []
+    for item, needles in _CYBER_ITEMS:
+        hit = next(
+            (
+                s for s in _sentences(text)
+                if any(n.lower() in s.lower() for n in needles)
+            ),
+            None,
+        )
+        if not hit and any(n.lower() in blob.lower() for n in needles):
+            hit = f"Evidence cue present for {item.replace('_', ' ')}"
+        closed = bool(hit)
+        rows.append({
+            "item": item.replace("_", " "),
+            "status": "CLOSED" if closed else "OPEN",
+            "detail": (
+                _clean(hit, 160) if hit
+                else _info_request(f"{item.replace('_', ' ')} evidence")
+            ),
+            "source": _DOC_CITE if closed else _NA,
+            "notes": _CYBER_RULE,
+        })
+    return rows
+
+
+def _moat_test(
+    *,
+    ownership: list[dict],
+    corpus: str,
+    competitive_spec: dict[str, Any] | None,
+) -> list[dict[str, str]]:
+    text = _prose(corpus)
+    rows: list[dict[str, str]] = []
+    owned = [
+        o for o in ownership
+        if isinstance(o, dict)
+        and o.get("classification") == "owned_ip"
+        and _is_filled(o.get("asset"))
+        and not str(o.get("asset")).startswith("Information")
+    ]
+    for o in owned[:4]:
+        asset = str(o.get("asset") or "")
+        verified = str(o.get("register_verified") or "").startswith("Yes")
+        proprietary = verified or "proprietary" in asset.lower()
+        econ = bool(_MOAT_ECON_CUE.search(text)) or bool(
+            isinstance(competitive_spec, dict)
+            and (
+                competitive_spec.get("moat_signals")
+                or competitive_spec.get("claimed_advantages")
+            )
+        )
+        hard = bool(_MOAT_HARD_CUE.search(text + " " + asset)) or verified
+        passes = proprietary and econ and hard
+        rows.append({
+            "asset": _clean(asset, 100),
+            "proprietary": "Yes" if proprietary else "No / unproven",
+            "economic_effect": (
+                "Evidenced cue in pack / competitive claim"
+                if econ else _info_request("economic effect of this IP")
+            ),
+            "hard_to_replicate": (
+                "Yes — register / hard-to-replicate cue"
+                if hard else _info_request("why hard to replicate")
+            ),
+            "moat_verdict": "PASS" if passes else "FAIL — incomplete moat test",
+            "source": o.get("source") or _DOC_CITE,
+            "notes": _MOAT_RULE,
+        })
+    if not rows:
+        rows.append({
+            "asset": _info_request("owned IP candidate for moat test"),
+            "proprietary": "Unassessed",
+            "economic_effect": _NA,
+            "hard_to_replicate": _NA,
+            "moat_verdict": "FAIL — no owned IP to test",
+            "source": _NA,
+            "notes": _MOAT_RULE,
+        })
+    return rows
+
+
+def _omit_software_metrics(corpus: str, tech_map: list[dict]) -> list[dict[str, str]]:
+    """Omit SaaS-template metrics when the business is not software-led."""
+    text = _prose(corpus).lower()
+    applies = [
+        t for t in tech_map
+        if isinstance(t, dict) and str(t.get("applies") or "").lower() == "yes"
+    ]
+    saas_like = bool(
+        re.search(r"(?i)\b(saas|ARR|NRR|subscription\s+software|cloud\s+product)\b", text)
+    ) or any(
+        "crm" in str(t.get("system_or_method") or "").lower()
+        and "salesforce" in str(t.get("system_or_method") or "").lower()
+        for t in applies
+    )
+    # Manufacturing / plant-led → omit software metrics by default unless SaaS cues
+    plant_led = any(
+        "plant" in str(t.get("category") or "").lower()
+        or "processing" in str(t.get("category") or "").lower()
+        for t in applies
+    )
+    rows: list[dict[str, str]] = []
+    for metric, label in _SOFTWARE_METRICS:
+        mentioned = bool(re.search(rf"(?i)\b{re.escape(metric)}\b", text))
+        if mentioned and saas_like:
+            rows.append({
+                "metric": metric,
+                "treatment": "RETAINED",
+                "reason": f"{label} evidenced in a software/SaaS-relevant pack",
+                "source": _DOC_CITE,
+                "notes": _METRIC_OMIT_RULE,
+            })
+        elif mentioned and not saas_like:
+            rows.append({
+                "metric": metric,
+                "treatment": "OMITTED",
+                "reason": (
+                    f"{label} mentioned but business is not a software template — "
+                    "do not underwrite as SaaS metrics"
+                ),
+                "source": _DOC_CITE,
+                "notes": _METRIC_OMIT_RULE,
+            })
+        elif plant_led or not saas_like:
+            rows.append({
+                "metric": metric,
+                "treatment": "OMITTED",
+                "reason": (
+                    f"{label} not applicable — not a software-subscription business "
+                    "on the opened packs"
+                ),
+                "source": _COMPUTED,
+                "notes": _METRIC_OMIT_RULE,
+            })
+    return rows[:8]
+
+
+def _ip_evidence_qa(
+    *,
+    tech_map: list[dict],
+    ownership: list[dict],
+    coc: list[dict],
+    cyber: list[dict],
+    moat: list[dict],
+    upgrades: list[dict],
+    reconcile: dict,
+    omitted_metrics: list[dict],
+    competitive_spec: dict[str, Any] | None,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    classified = [
+        o for o in ownership
+        if isinstance(o, dict)
+        and o.get("classification") in {
+            "owned_ip", "licensed_technology", "ordinary_tooling", "vendor_dependency",
+        }
+        and _is_filled(o.get("asset"))
+        and not str(o.get("asset")).startswith("Information")
+    ]
+    rows.append({
+        "check": "asset_map_classification",
+        "status": "PASS" if classified else "FAIL",
+        "finding": (
+            f"{len(classified)} asset(s) classified owned/licensed/ordinary/vendor"
+            if classified
+            else _info_request("asset map with owned / licensed / ordinary / vendor")
+        ),
+        "action": _OWN_RULE,
+    })
+
+    verified = [
+        o for o in ownership
+        if isinstance(o, dict) and str(o.get("register_verified") or "").startswith("Yes")
+    ]
+    owned = [
+        o for o in ownership
+        if isinstance(o, dict) and o.get("classification") == "owned_ip"
+        and _is_filled(o.get("asset"))
+        and not str(o.get("asset")).startswith("Information")
+    ]
+    # PASS if owned IP is register-verified, or no owned_ip claimed (licensed/vendor only)
+    reg_ok = bool(verified) or not owned
+    rows.append({
+        "check": "register_assignment_verify",
+        "status": "PASS" if reg_ok else "FAIL",
+        "finding": (
+            f"{len(verified)} register-verified right(s)"
+            if verified
+            else (
+                "No owned-IP claim requiring register verify"
+                if not owned
+                else _info_request("register / certificate verification for owned IP")
+            )
+        ),
+        "action": _OWN_RULE,
+    })
+
+    coc_ok = any(
+        isinstance(c, dict)
+        and str(c.get("transfers_on_coc") or "") not in {"Unknown", ""}
+        and not str(c.get("transfers_on_coc") or "").startswith("Information")
+        for c in coc
+    )
+    rows.append({
+        "check": "licence_coc_transfer",
+        "status": "PASS" if coc_ok else "FAIL",
+        "finding": (
+            "Licence / system CoC transfer assessed"
+            if coc_ok
+            else _info_request("change-of-control transfer terms for licences / systems")
+        ),
+        "action": _COC_RULE,
+    })
+
+    cyber_closed = sum(
+        1 for r in cyber if isinstance(r, dict) and r.get("status") == "CLOSED"
+    )
+    rows.append({
+        "check": "cyber_restore_checklist",
+        "status": "PASS" if cyber_closed >= 2 else "FAIL",
+        "finding": (
+            f"{cyber_closed}/{len(cyber)} cyber / restore checklist item(s) CLOSED"
+            if cyber
+            else _info_request("systems / cyber / incident / restore-test checklist")
+        ),
+        "action": _CYBER_RULE,
+    })
+
+    moat_disciplined = all(
+        isinstance(r, dict)
+        and (
+            r.get("moat_verdict") == "PASS"
+            or "FAIL" in str(r.get("moat_verdict") or "")
+        )
+        for r in moat
+    ) and bool(moat)
+    # Discipline PASS when we don't invent a PASS without all three legs
+    invented_moat = any(
+        isinstance(r, dict)
+        and r.get("moat_verdict") == "PASS"
+        and (
+            str(r.get("proprietary") or "").startswith("No")
+            or str(r.get("economic_effect") or "").startswith("Information")
+            or str(r.get("hard_to_replicate") or "").startswith("Information")
+        )
+        for r in moat
+    )
+    rows.append({
+        "check": "moat_test_discipline",
+        "status": "PASS" if moat_disciplined and not invented_moat else "FAIL",
+        "finding": (
+            "Moat test applied with proprietary / economic / hard-to-replicate legs"
+            if moat_disciplined and not invented_moat
+            else _info_request("moat test (proprietary + economic + hard to replicate)")
+        ),
+        "action": _MOAT_RULE,
+    })
+
+    cost_ok = any(
+        isinstance(u, dict)
+        and _is_filled(u.get("cost"))
+        and not str(u.get("cost")).startswith("Information")
+        for u in upgrades
+    )
+    rows.append({
+        "check": "replacement_cost_schedule",
+        "status": "PASS" if cost_ok else "FAIL",
+        "finding": (
+            "Plan-required replacement / upgrade costed with timing"
+            if cost_ok
+            else _info_request("replacement / upgrade cost schedule with timing")
+        ),
+        "action": _COST_RULE,
+    })
+
+    comp_present = isinstance(competitive_spec, dict) and bool(competitive_spec)
+    reconcile_ran = bool(
+        reconcile.get("other_agent_claims")
+        or reconcile.get("evidenced")
+        or reconcile.get("contradicted")
+        or "No IP-based advantage claims" in str(reconcile.get("notes") or "")
+    )
+    rows.append({
+        "check": "competitive_diff_cross_check",
+        "status": "PASS" if (comp_present and reconcile_ran) or reconcile_ran else "FAIL",
+        "finding": (
+            (
+                f"Competitive Differentiation prior present; "
+                f"{len(reconcile.get('contradicted') or [])} contradiction(s)"
+            )
+            if comp_present
+            else (
+                "IP advantage reconcile ran without Competitive Differentiation prior"
+                if reconcile_ran
+                else _info_request("Competitive Differentiation prior for IP cross-check")
+            )
+        ),
+        "action": _ADVANTAGE_RULE,
+    })
+
+    omitted = [
+        r for r in omitted_metrics
+        if isinstance(r, dict) and r.get("treatment") == "OMITTED" and _is_filled(r.get("reason"))
+    ]
+    rows.append({
+        "check": "omit_software_metrics",
+        "status": "PASS" if omitted or any(
+            isinstance(r, dict) and r.get("treatment") == "RETAINED"
+            for r in omitted_metrics
+        ) else "FAIL",
+        "finding": (
+            f"{len(omitted)} inapplicable software metric(s) omitted with reason"
+            if omitted
+            else (
+                "Software metrics retained where SaaS-relevant"
+                if omitted_metrics
+                else _info_request("omit inapplicable software metrics with reason")
+            )
+        ),
+        "action": _METRIC_OMIT_RULE,
+    })
+
+    # Tech map omit reasons
+    omit_ok = all(
+        _is_filled(t.get("omit_reason"))
+        for t in tech_map
+        if isinstance(t, dict) and str(t.get("applies") or "").lower() == "no"
+    ) if any(
+        isinstance(t, dict) and str(t.get("applies") or "").lower() == "no"
+        for t in tech_map
+    ) else True
+    # Fold into omit_software_metrics finding already; also ensure map discipline
+    if not omit_ok:
+        rows.append({
+            "check": "tech_map_omit_reasons",
+            "status": "FAIL",
+            "finding": _info_request("one-line omit reason for non-applicable run categories"),
+            "action": _MAP_RULE,
+        })
+    else:
+        rows.append({
+            "check": "tech_map_omit_reasons",
+            "status": "PASS",
+            "finding": "Non-applicable run categories omitted with reasons (or none omitted)",
+            "action": _MAP_RULE,
+        })
+    return rows
+
+
+def _questions_from_ip_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("ip_evidence_qa")
+        if isinstance(spec.get("ip_evidence_qa"), list) else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("asset_map_classification"):
+        out.append(normalize_question({
+            "question": "Complete asset map: owned / licensed / ordinary tooling / vendor",
+            "required_records": "IP schedule + licence MSAs + vendor contracts",
+            "decision_effect": "Unclassified assets inflate owned-IP and moat claims",
+            "priority": "mandatory_pre_decision",
+            "owner": "IP counsel / technology diligence",
+            "timing": "before IC",
+            "closure_test": "asset_map_classification QA PASS",
+            "interim_treatment": "LIMITED — do not treat use as ownership",
+        }))
+    if _qa_fail("register_assignment_verify"):
+        out.append(normalize_question({
+            "question": "Verify owned IP on register / certificates (not assertion)",
+            "required_records": "Patent / trademark certificates + assignment chain",
+            "decision_effect": "Asserted IP without register is not underwritable ownership",
+            "priority": "mandatory_pre_decision",
+            "owner": "IP counsel",
+            "timing": "before IC",
+            "closure_test": "register_assignment_verify QA PASS",
+            "interim_treatment": "BLOCKED for owned-IP claims until verified",
+        }))
+    if _qa_fail("licence_coc_transfer"):
+        out.append(normalize_question({
+            "question": "Extract licence / system change-of-control transfer terms",
+            "required_records": "MSA / EULA / system contracts with CoC clauses",
+            "decision_effect": "Non-transferable licences can break ops post-close",
+            "priority": "signing_condition",
+            "owner": "IP / commercial counsel",
+            "timing": "before signing",
+            "closure_test": "licence_coc_transfer QA PASS",
+            "interim_treatment": "LIMITED — assume consent may be required",
+        }))
+    if _qa_fail("cyber_restore_checklist"):
+        out.append(normalize_question({
+            "question": "Close systems / cyber / incident / restore-test checklist",
+            "required_records": "Security pack + DR restore test logs + incident register",
+            "decision_effect": "Open cyber / restore gaps are operational completion risk",
+            "priority": "signing_condition",
+            "owner": "technology diligence / CISO",
+            "timing": "per deal timetable",
+            "closure_test": "cyber_restore_checklist QA PASS",
+            "interim_treatment": "LIMITED — treat cyber/restore as open",
+        }))
+    if _qa_fail("moat_test_discipline"):
+        out.append(normalize_question({
+            "question": "Complete moat test: proprietary + economic effect + hard to replicate",
+            "required_records": "Register-verified IP + economic evidence + replication barriers",
+            "decision_effect": "Incomplete moat tests inflate Competitive Differentiation claims",
+            "priority": "signing_condition",
+            "owner": "strategy / IP diligence",
+            "timing": "per deal timetable",
+            "closure_test": "moat_test_discipline QA PASS",
+            "interim_treatment": "REWORK — strip invented moat PASS",
+        }))
+    if _qa_fail("replacement_cost_schedule"):
+        out.append(normalize_question({
+            "question": "Provide replacement / upgrade cost schedule with timing",
+            "required_records": "IT roadmap + capex budget tied to the plan",
+            "decision_effect": "Uncosted upgrades corrupt plan funding and timing",
+            "priority": "mandatory_pre_decision",
+            "owner": "technology / financial diligence",
+            "timing": "before IC",
+            "closure_test": "replacement_cost_schedule QA PASS",
+            "interim_treatment": "LIMITED — withhold upgrade funding claims",
+        }))
+    if _qa_fail("competitive_diff_cross_check"):
+        out.append(normalize_question({
+            "question": "Supply Competitive Differentiation output and reconcile IP claims",
+            "required_records": "Competitive Differentiation agent spec",
+            "decision_effect": "Unreconciled IP moat claims mislead underwriting",
+            "priority": "signing_condition",
+            "owner": "IC coordinator / IP diligence",
+            "timing": "per deal timetable",
+            "closure_test": "competitive_diff_cross_check QA PASS",
+            "interim_treatment": "LIMITED until cross-check complete",
+        }))
+    if _qa_fail("omit_software_metrics") or _qa_fail("tech_map_omit_reasons"):
+        out.append(normalize_question({
+            "question": "Omit inapplicable software metrics / run categories with reasons",
+            "required_records": "Business model note + tech map",
+            "decision_effect": "SaaS template metrics corrupt a non-software underwrite",
+            "priority": "signing_condition",
+            "owner": "technology diligence",
+            "timing": "per deal timetable",
+            "closure_test": "omit_software_metrics / tech_map_omit_reasons QA PASS",
+            "interim_treatment": "REWORK — strip forced SaaS metrics",
+        }))
+    return out
+
+
 def _quality_reliance(
     *,
     tech_map: list[dict],
@@ -753,6 +1251,7 @@ def _quality_reliance(
     fitness: list[dict],
     upgrades: list[dict],
     reconcile: dict,
+    qa_fail: bool = False,
 ) -> tuple[str, str, str]:
     applies = sum(
         1 for t in tech_map
@@ -791,27 +1290,27 @@ def _quality_reliance(
     if applies >= 1 and (verified >= 1 or owned >= 1 or fitness_ok >= 2):
         reliance = "READY" if verified >= 1 and coc_known >= 1 else "LIMITED"
         quality = "REWORK" if contradictions and verified == 0 else "PASS"
-        return (
-            quality,
-            reliance,
+        rationale = (
             f"Tech map applies to {applies} run-category(ies); {owned} owned-IP "
             f"row(s) ({verified} register-verified); {coc_known} CoC transfer "
             f"assessment(s); {fitness_ok} fitness note(s); {cost_ok} costed "
             f"upgrade(s). Advantage contradictions: {contradictions}. "
-            f"{_TECH_NE_IP_RULE}",
+            f"{_TECH_NE_IP_RULE}"
         )
-    if applies >= 1 or owned >= 1:
-        return (
-            "PASS",
-            "LIMITED",
+    elif applies >= 1 or owned >= 1:
+        quality, reliance = "PASS", "LIMITED"
+        rationale = (
             "Partial IP/technology evidence — register verification and/or CoC "
-            f"transfer thin. {_OWN_RULE} {_COC_RULE}",
+            f"transfer thin. {_OWN_RULE} {_COC_RULE}"
         )
-    return (
-        "PASS",
-        "BLOCKED",
-        "No technology map or register-backed IP evidence was opened.",
-    )
+    else:
+        quality, reliance = "PASS", "BLOCKED"
+        rationale = "No technology map or register-backed IP evidence was opened."
+
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "Open IP/technology QA FAILs cap READY → LIMITED. " + rationale
+    return quality, reliance, rationale
 
 
 # ---------------------------------------------------------------------------
@@ -843,6 +1342,11 @@ def _heuristic_ip_and_technology_spec(
     coc = _extract_coc_transfer(ownership, corpus_full)
     fitness = _extract_fitness(corpus_full, tech_map)
     upgrades = _extract_upgrade_costs(corpus_full)
+    cyber = _cyber_checklist(corpus_full, fitness)
+    moat = _moat_test(
+        ownership=ownership, corpus=corpus_full, competitive_spec=competitive_spec
+    )
+    omitted_metrics = _omit_software_metrics(corpus_full, tech_map)
     reconcile = _reconcile_ip_advantage(
         ownership=ownership,
         competitive_spec=competitive_spec,
@@ -852,6 +1356,19 @@ def _heuristic_ip_and_technology_spec(
         ownership, tech_map, fitness, legacy,
     )
 
+    ip_qa = _ip_evidence_qa(
+        tech_map=tech_map,
+        ownership=ownership,
+        coc=coc,
+        cyber=cyber,
+        moat=moat,
+        upgrades=upgrades,
+        reconcile=reconcile,
+        omitted_metrics=omitted_metrics,
+        competitive_spec=competitive_spec,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in ip_qa)
+
     quality, reliance, rationale = _quality_reliance(
         tech_map=tech_map,
         ownership=ownership,
@@ -859,6 +1376,7 @@ def _heuristic_ip_and_technology_spec(
         fitness=fitness,
         upgrades=upgrades,
         reconcile=reconcile,
+        qa_fail=qa_fail,
     )
 
     applies_n = sum(1 for t in tech_map if str(t.get("applies") or "").lower() == "yes")
@@ -870,16 +1388,21 @@ def _heuristic_ip_and_technology_spec(
         f"{applies_n} run-category(ies) mapped",
         f"{verified_n} register-verified right(s)",
         f"{len(reconcile.get('contradicted') or [])} IP-advantage contradiction(s)",
+        f"{sum(1 for r in cyber if r.get('status') == 'CLOSED')} cyber checklist CLOSED",
     ]
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "technology_map": tech_map,
         "ownership_separation": ownership,
         "change_of_control": coc,
         "system_fitness": fitness,
+        "cyber_checklist": cyber,
+        "moat_test": moat,
+        "omitted_software_metrics": omitted_metrics,
         "upgrade_costs": upgrades,
         "ip_advantage_reconcile": reconcile,
+        "ip_evidence_qa": ip_qa,
         # Legacy dual-write
         "patents": patents,
         "core_tech": core_tech,
@@ -893,6 +1416,8 @@ def _heuristic_ip_and_technology_spec(
         "dd_code": legacy.get("dd_code") or _DD_CODE,
         "empty": applies_n == 0 and verified_n == 0 and not patents,
     }
+    out["questions"] = _questions_from_ip_gaps(out)
+    return out
 
 
 def _llm_ip_and_technology_spec(
@@ -903,6 +1428,11 @@ def _llm_ip_and_technology_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
     competitive_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
@@ -916,6 +1446,12 @@ def _llm_ip_and_technology_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -945,13 +1481,24 @@ def _llm_ip_and_technology_spec(
         "register_verified, evidence, source, notes}],\n"
         "change_of_control: [{asset, classification, transfers_on_coc, terms, source, notes}],\n"
         "system_fitness: [{system, dimension, assessment, source, notes}],\n"
+        "cyber_checklist: [{item, status (CLOSED|OPEN), detail, source}],\n"
+        "moat_test: [{asset, proprietary, economic_effect, hard_to_replicate, "
+        "moat_verdict, source}],\n"
+        "omitted_software_metrics: [{metric, treatment (OMITTED|RETAINED), reason, source}],\n"
         "upgrade_costs: [{item, cost, when_required, plan_dependency, source, notes}],\n"
         "ip_advantage_reconcile: {other_agent_claims, evidenced, contradicted, notes, source},\n"
+        "ip_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "asset_map_classification, register_assignment_verify, licence_coc_transfer, "
+        "cyber_restore_checklist, moat_test_discipline, replacement_cost_schedule, "
+        "competitive_diff_cross_check, omit_software_metrics, tech_map_omit_reasons,\n"
+        "questions: [{question, required_records, decision_effect, priority, owner, "
+        "timing, closure_test, interim_treatment}],\n"
         "patents: [string], core_tech: [string], architecture_notes: [string],\n"
         "quality_verdict (PASS|REWORK), reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
         "Using technology is NOT owning IP. Verify from register/certificates. "
-        "Omit non-applicable run categories with a reason. "
+        "Omit non-applicable run categories and software metrics with a reason. "
+        "Moat requires proprietary + economic + hard to replicate. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -1022,6 +1569,36 @@ def _normalise_llm_spec(
         row["notes"] = _COST_RULE
     llm["upgrade_costs"] = upgrades
 
+    cyber = _rows("cyber_checklist", "item") or heur.get("cyber_checklist") or []
+    if not cyber:
+        cyber = _cyber_checklist(corpus, fitness)
+    llm["cyber_checklist"] = cyber
+
+    moat = _rows("moat_test", "asset") or heur.get("moat_test") or []
+    if not moat:
+        moat = _moat_test(
+            ownership=ownership, corpus=corpus, competitive_spec=competitive_spec
+        )
+    # Strip invented moat PASS
+    for row in moat:
+        if not isinstance(row, dict):
+            continue
+        if row.get("moat_verdict") == "PASS" and (
+            str(row.get("proprietary") or "").startswith("No")
+            or str(row.get("economic_effect") or "").startswith("Information")
+            or str(row.get("hard_to_replicate") or "").startswith("Information")
+        ):
+            row["moat_verdict"] = "FAIL — incomplete moat test"
+        row["notes"] = _MOAT_RULE
+    llm["moat_test"] = moat
+
+    omitted = (
+        _rows("omitted_software_metrics", "metric")
+        or heur.get("omitted_software_metrics")
+        or _omit_software_metrics(corpus, tech_map)
+    )
+    llm["omitted_software_metrics"] = omitted
+
     # Force advantage reconcile from heuristic merge
     reconcile = _reconcile_ip_advantage(
         ownership=ownership,
@@ -1048,10 +1625,27 @@ def _normalise_llm_spec(
     llm_notes = [
         _soften_invest(_clean(n, 200)) for n in llm_notes if isinstance(n, str) and n.strip()
     ]
-    for rule in (_TECH_NE_IP_RULE, _OWN_RULE, _COC_RULE, _FITNESS_RULE, _COST_RULE, _ADVANTAGE_RULE):
+    for rule in (
+        _TECH_NE_IP_RULE, _OWN_RULE, _COC_RULE, _FITNESS_RULE, _COST_RULE,
+        _ADVANTAGE_RULE, _MOAT_RULE, _CYBER_RULE, _METRIC_OMIT_RULE,
+    ):
         if not any(rule[:24].lower() in x.lower() for x in llm_notes):
             llm_notes.append(rule)
-    llm["architecture_notes"] = (llm_notes or notes)[:8]
+    llm["architecture_notes"] = (llm_notes or notes)[:10]
+
+    ip_qa = _ip_evidence_qa(
+        tech_map=tech_map,
+        ownership=ownership,
+        coc=coc,
+        cyber=cyber,
+        moat=moat,
+        upgrades=upgrades,
+        reconcile=reconcile,
+        omitted_metrics=omitted,
+        competitive_spec=competitive_spec,
+    )
+    llm["ip_evidence_qa"] = ip_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in ip_qa)
 
     quality, reliance, rationale = _quality_reliance(
         tech_map=tech_map,
@@ -1060,6 +1654,7 @@ def _normalise_llm_spec(
         fitness=fitness,
         upgrades=upgrades,
         reconcile=reconcile,
+        qa_fail=qa_fail,
     )
     # Unverified IP + contradicted advantage → REWORK
     if reconcile.get("contradicted") and not any(
@@ -1071,11 +1666,30 @@ def _normalise_llm_spec(
         llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else quality
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["reliance_verdict"] = rv if rv in {"READY", "LIMITED", "BLOCKED"} else reliance
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
     llm["quality_reliance_rationale"] = (
         _soften_invest(_clean(llm.get("quality_reliance_rationale"), 460))
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail:
+        llm["quality_reliance_rationale"] = (
+            (llm.get("quality_reliance_rationale") or "")
+            + " Open IP/technology QA FAILs cap READY → LIMITED."
+        ).strip()
+
+    if not isinstance(llm.get("questions"), list) or not llm.get("questions"):
+        llm["questions"] = _questions_from_ip_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_ip_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
@@ -1139,26 +1753,7 @@ def build_ip_and_technology_spec(
                     sources.append(name)
         corpus = "\n".join(bits)
 
-    if not prefer_heuristic:
-        llm = _llm_ip_and_technology_spec(
-            company=target,
-            corpus=corpus,
-            sources=sources,
-            sector=vars_.get("sector"),
-            geography=geography,
-            materiality=vars_.get("materiality"),
-            competitive_spec=competitive_spec,
-        )
-        if llm:
-            return _normalise_llm_spec(
-                llm,
-                sources=sources,
-                legacy_spec=legacy_spec,
-                corpus=corpus,
-                competitive_spec=competitive_spec,
-            )
-
-    return _heuristic_ip_and_technology_spec(
+    heur = _heuristic_ip_and_technology_spec(
         company=target,
         corpus=corpus,
         sources=sources,
@@ -1166,6 +1761,36 @@ def build_ip_and_technology_spec(
         legacy_spec=legacy_spec,
         competitive_spec=competitive_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    if prefer_heuristic:
+        return heur
+
+    llm = _llm_ip_and_technology_spec(
+        company=target,
+        corpus=corpus,
+        sources=sources,
+        sector=vars_.get("sector"),
+        geography=geography,
+        materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
+        competitive_spec=competitive_spec,
+    )
+    if llm:
+        out = _normalise_llm_spec(
+            llm,
+            sources=sources,
+            legacy_spec=legacy_spec,
+            corpus=corpus,
+            competitive_spec=competitive_spec,
+        )
+        out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+        return out
+
+    return heur
 
 
 def render_ip_and_technology_markdown(
@@ -1351,8 +1976,129 @@ def render_ip_and_technology_markdown(
     )
     parts.append("---\n\n")
 
-    # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    # 6 — Cyber checklist, moat test, omitted software metrics
+    cyber = (
+        spec.get("cyber_checklist")
+        if isinstance(spec.get("cyber_checklist"), list) else []
+    )
+    moat = spec.get("moat_test") if isinstance(spec.get("moat_test"), list) else []
+    omitted = (
+        spec.get("omitted_software_metrics")
+        if isinstance(spec.get("omitted_software_metrics"), list) else []
+    )
+    parts.append("## 6. Cyber Checklist, Moat Test & Software Metrics\n\n")
+    parts.append(f"{_CYBER_RULE} {_MOAT_RULE} {_METRIC_OMIT_RULE}\n\n")
+    parts.append("### Systems / cyber / incident / restore-test checklist\n\n")
+    if cyber:
+        parts.append(_table(
+            ["Item", "Status", "Detail", "Source"],
+            [
+                [
+                    _clean(r.get("item"), 40),
+                    _clean(r.get("status"), 16),
+                    _clean(r.get("detail"), 140),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in cyber if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append(f"**{_info_request('cyber / restore-test checklist')}**\n\n")
+    parts.append("### Moat test (proprietary · economic · hard to replicate)\n\n")
+    if moat:
+        parts.append(_table(
+            [
+                "Asset", "Proprietary?", "Economic effect",
+                "Hard to replicate?", "Moat verdict", "Source",
+            ],
+            [
+                [
+                    _clean(r.get("asset"), 80),
+                    _clean(r.get("proprietary"), 30),
+                    _clean(r.get("economic_effect"), 80),
+                    _clean(r.get("hard_to_replicate"), 60),
+                    _clean(r.get("moat_verdict"), 40),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in moat if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append(f"**{_info_request('moat test rows')}**\n\n")
+    parts.append("### Software metrics treatment\n\n")
+    if omitted:
+        parts.append(_table(
+            ["Metric", "Treatment", "Reason", "Source"],
+            [
+                [
+                    _clean(r.get("metric"), 20),
+                    _clean(r.get("treatment"), 16),
+                    _clean(r.get("reason"), 140),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in omitted if isinstance(r, dict)
+            ],
+        ))
+    else:
+        parts.append("No software-metric omit/retain decisions registered.\n\n")
+    parts.append("---\n\n")
+
+    # 7 QA
+    ip_qa = (
+        spec.get("ip_evidence_qa")
+        if isinstance(spec.get("ip_evidence_qa"), list) else []
+    )
+    parts.append("## 7. IP & Technology Evidence QA\n\n")
+    parts.append(
+        "QA enforces asset-map classification, register verification, CoC transfer, "
+        "cyber/restore checklist, moat-test discipline, replacement cost schedule, "
+        "Competitive Differentiation cross-check, and omitted software metrics.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in ip_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"**{_info_request('IP & technology evidence QA rows')}**\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 8 Questions
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material IP/technology gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    # 9 Quality
+    parts.append("## 9. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [
@@ -1383,8 +2129,10 @@ def render_ip_and_technology_markdown(
                 parts.append(f"- {_clean(n, 240)}\n")
         parts.append("\n")
     parts.append(
-        "*This document establishes what the business owns, what it rents, and what "
-        "its systems can and cannot do. It does not recommend invest or pass.*\n\n"
+        "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open IP/technology QA FAILs cap READY → LIMITED. "
+        "Using technology is not owning intellectual property. "
+        "This document does not recommend invest or pass.*\n\n"
     )
     parts.append("---\n\n")
 

@@ -1,12 +1,13 @@
 # Local / pre-compiled container orchestration for Agentic CDD
 #
-# 1) Build locally:
-#      cp .env.docker.example .env.docker   # set AGETIC_CDD_JWT_SECRET
-#      docker compose --env-file .env.docker build
-# 2) Run pre-built images (after pull from Artifact Registry):
-#      docker compose --env-file .env.docker pull && docker compose --env-file .env.docker up -d
-# 3) Or run images you already built:
-#      docker compose --env-file .env.docker up -d
+# Preferred (rebuild from current tree + recreate + smoke test):
+#   ./scripts/deploy-local-docker.sh
+#   ./scripts/deploy-local-docker.sh --api-only
+#   ./scripts/deploy-local-docker.sh --no-cache
+#
+# Manual:
+#   cp .env.docker.example .env.docker   # set AGETIC_CDD_JWT_SECRET
+#   docker compose --env-file .env.docker up -d --build --force-recreate
 
 services:
   api:
@@ -14,6 +15,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     container_name: agetic-cdd-api
     ports:
       - "${API_PORT:-4600}:4600"
@@ -49,6 +53,8 @@ services:
       dockerfile: Dockerfile.web
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:4600}
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
     container_name: agetic-cdd-web
     ports:
       - "${WEB_PORT:-3000}:3000"

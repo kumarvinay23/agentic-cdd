@@ -62,6 +62,10 @@ _NO_INFER_RULE = (
     "Environmental performance is not inferred from revenue or site count. "
     "Reporting regimes below the company's threshold are not applied."
 )
+_REG_CROSS_RULE = (
+    "Cross-check overlapping permits, obligations and regulatory actions with "
+    "Regulatory Compliance — do not invent a parallel compliance register."
+)
 
 _ENV_TOPIC_RE = re.compile(
     r"(?i)\b("
@@ -1097,12 +1101,360 @@ def _legacy_dual_write(
     return themes[:12], labour[:12], env[:12]
 
 
+def _esg_regulatory_cross_check(
+    *,
+    consequences: list[dict[str, Any]],
+    material: list[dict[str, Any]],
+    regulatory_spec: dict[str, Any] | None,
+) -> dict[str, Any]:
+    present = isinstance(regulatory_spec, dict) and bool(regulatory_spec)
+    aligned: list[str] = []
+    conflicts: list[str] = []
+    overlap: list[str] = []
+
+    esg_permit_cues = []
+    for row in list(consequences) + list(material):
+        if not isinstance(row, dict):
+            continue
+        blob = f"{row.get('topic')} {row.get('consequence_type')} {row.get('detail')} {row.get('why_material')}"
+        if re.search(r"(?i)\b(permit|clearance|licence|license|obligation|compliance)\b", blob):
+            esg_permit_cues.append(_clean(row.get("topic") or blob, 80))
+
+    if present:
+        permits = regulatory_spec.get("permit_register") or []
+        obligations = regulatory_spec.get("obligations") or []
+        reg_topics = []
+        for p in permits:
+            if isinstance(p, dict) and p.get("identifier"):
+                reg_topics.append(str(p.get("identifier")))
+        for o in obligations:
+            if isinstance(o, dict) and o.get("obligation"):
+                reg_topics.append(str(o.get("obligation")))
+        for cue in esg_permit_cues[:6]:
+            hit = next(
+                (
+                    r for r in reg_topics
+                    if cue.lower()[:20] in r.lower() or r.lower()[:20] in cue.lower()
+                ),
+                None,
+            )
+            if hit:
+                overlap.append(f"{cue} ↔ {_clean(hit, 60)}")
+            else:
+                conflicts.append(
+                    f"ESG cites '{cue}' without matching Regulatory Compliance row"
+                )
+        if overlap:
+            aligned.append(f"{len(overlap)} overlapping permit/obligation cue(s)")
+        elif not esg_permit_cues:
+            aligned.append("Regulatory prior present; no ESG permit/obligation overlap claimed")
+        else:
+            aligned.append("Regulatory prior present; overlap unresolved")
+    else:
+        conflicts.append("Regulatory Compliance prior not available for cross-check")
+
+    return {
+        "regulatory_prior_present": present,
+        "overlap": overlap[:6],
+        "aligned": aligned,
+        "conflicts": conflicts,
+        "notes": _REG_CROSS_RULE,
+    }
+
+
+def _esg_evidence_qa(
+    *,
+    material: list[dict[str, Any]],
+    product_footprint: list[dict[str, Any]],
+    metrics: list[dict[str, Any]],
+    workforce: list[dict[str, Any]],
+    consequences: list[dict[str, Any]],
+    reg_cross: dict[str, Any],
+    corpus: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+
+    real_m = [
+        t for t in material
+        if isinstance(t, dict) and not _is_info(t.get("topic")) and not _is_info(t.get("why_material"))
+    ]
+    rows.append({
+        "check": "materiality_screen",
+        "status": "PASS" if real_m else "FAIL",
+        "finding": (
+            f"{len(real_m)} material topic(s) with why"
+            if real_m
+            else _info_request("material topics for sector/jurisdiction/ownership with why")
+        ),
+        "action": _MATERIAL_RULE,
+    })
+
+    lenses = {
+        str(r.get("lens") or "").lower()
+        for r in product_footprint if isinstance(r, dict)
+    }
+    split_ok = any("product" in l for l in lenses) and any(
+        "footprint" in l or "operat" in l for l in lenses
+    )
+    rows.append({
+        "check": "product_vs_footprint_split",
+        "status": "PASS" if split_ok else "FAIL",
+        "finding": (
+            "Product impact separated from operating footprint"
+            if split_ok
+            else _info_request("product impact vs operating footprint split")
+        ),
+        "action": _FOOTPRINT_RULE,
+    })
+
+    real_metrics = [
+        m for m in metrics
+        if isinstance(m, dict)
+        and not _is_info(m.get("metric"))
+        and not _is_info(m.get("measured_result"))
+    ]
+    fields_ok = all(
+        not _is_info(m.get("boundary"))
+        and not _is_info(m.get("method"))
+        and not _is_info(m.get("baseline_year"))
+        and not _is_info(m.get("denominator"))
+        for m in real_metrics
+    ) if real_metrics else False
+    rows.append({
+        "check": "metric_boundary_method_baseline",
+        "status": "PASS" if real_metrics and fields_ok else "FAIL",
+        "finding": (
+            f"{len(real_metrics)} measured metric(s) with boundary/method/baseline/denominator"
+            if real_metrics and fields_ok
+            else _info_request("measured metrics with boundary, method, baseline, denominator")
+        ),
+        "action": _METRIC_RULE,
+    })
+
+    targets_separate = all(
+        "management_target" in m
+        for m in real_metrics
+    ) if real_metrics else False
+    # Also fail if target text is stuffed into measured_result
+    blended = any(
+        isinstance(m, dict)
+        and _TARGET_RE.search(str(m.get("measured_result") or ""))
+        and _is_info(m.get("management_target"))
+        for m in metrics
+    )
+    rows.append({
+        "check": "targets_vs_measured",
+        "status": "PASS" if (targets_separate and not blended) or not real_metrics else "FAIL",
+        "finding": (
+            "Management targets kept separate from measured results"
+            if (targets_separate and not blended) or not real_metrics
+            else _info_request("separate management targets from measured results")
+        ),
+        "action": _METRIC_RULE,
+    })
+
+    real_w = [
+        w for w in workforce
+        if isinstance(w, dict) and not _is_info(w.get("factor")) and not _is_info(w.get("record"))
+    ]
+    rows.append({
+        "check": "workforce_safety_where_material",
+        "status": "PASS" if real_w else "FAIL",
+        "finding": (
+            f"{len(real_w)} workforce/safety record(s) with cost/continuity link"
+            if real_w
+            else _info_request("workforce/safety where cost or continuity is affected")
+        ),
+        "action": _WORKFORCE_RULE,
+    })
+
+    real_c = [
+        c for c in consequences
+        if isinstance(c, dict) and not _is_info(c.get("topic")) and not _is_info(c.get("consequence_type"))
+    ]
+    rows.append({
+        "check": "consequence_column",
+        "status": "PASS" if real_c else "FAIL",
+        "finding": (
+            f"{len(real_c)} consequence row(s) (cost/permit/customer/reporting/none)"
+            if real_c
+            else _info_request("financial / regulatory consequence column")
+        ),
+        "action": _CONSEQUENCE_RULE,
+    })
+
+    reg_ok = bool(reg_cross.get("regulatory_prior_present")) and not any(
+        "without matching" in str(c).lower() for c in (reg_cross.get("conflicts") or [])
+    )
+    # Soft PASS when prior present even if some cues unmatched? Plan says cross-check.
+    # FAIL when prior missing OR hard unmatched conflicts exist.
+    hard = any("without matching" in str(c).lower() for c in (reg_cross.get("conflicts") or []))
+    rows.append({
+        "check": "regulatory_cross_check",
+        "status": "PASS" if reg_ok or (reg_cross.get("regulatory_prior_present") and not hard) else "FAIL",
+        "finding": (
+            "; ".join(reg_cross.get("aligned") or []) or "Regulatory cross-check complete"
+            if reg_cross.get("regulatory_prior_present") and not hard
+            else (
+                "; ".join(reg_cross.get("conflicts") or [])
+                or _info_request("Regulatory Compliance prior for cross-check")
+            )
+        ),
+        "action": _REG_CROSS_RULE,
+    })
+
+    # Affirmative inference only — strip advisory "do not infer…" sentences
+    scrubbed = re.sub(
+        r"(?i)[^.!?\n]*(?:"
+        r"do\s+not\s+infer|"
+        r"not\s+inferred\s+from|"
+        r"environmental\s+performance\s+is\s+not\s+inferred"
+        r")[^.!?\n]*[.!?]?",
+        " ",
+        corpus or "",
+    )
+    infer_viol = bool(
+        re.search(
+            r"(?i)(inferred from revenue|site count implies|emissions?\s+from\s+revenue|"
+            r"implies\s+(?:strong\s+)?environmental|per\s+site\s+count)",
+            scrubbed,
+        )
+    )
+    # Also check metric rows (skip already-scrubbed Information requests)
+    for m in metrics:
+        if not isinstance(m, dict):
+            continue
+        if str(m.get("measured_result") or "").startswith("Information"):
+            continue
+        blob = f"{m.get('metric')} {m.get('measured_result')} {m.get('method')}"
+        if re.search(r"(?i)(inferred from revenue|site count implies)", blob):
+            infer_viol = True
+    rows.append({
+        "check": "no_emissions_from_revenue_sites",
+        "status": "PASS" if not infer_viol else "FAIL",
+        "finding": (
+            "No environmental performance inferred from revenue or site count"
+            if not infer_viol
+            else "Emissions/performance inferred from revenue or site count — strip"
+        ),
+        "action": _NO_INFER_RULE,
+    })
+    return rows
+
+
+def _questions_from_esg_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("esg_evidence_qa")
+        if isinstance(spec.get("esg_evidence_qa"), list) else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("materiality_screen"):
+        out.append(normalize_question({
+            "question": "Complete materiality screen by sector, jurisdiction and ownership with why",
+            "required_records": "Sector ESG matrix + jurisdiction rules + ownership notes",
+            "decision_effect": "Non-material topics inflate diligence and miss real risks",
+            "priority": "mandatory_pre_decision",
+            "owner": "ESG diligence lead",
+            "timing": "before IC",
+            "closure_test": "materiality_screen QA PASS",
+            "interim_treatment": "LIMITED — do not treat generic ESG lists as material",
+        }))
+    if _qa_fail("product_vs_footprint_split"):
+        out.append(normalize_question({
+            "question": "Separate product impact from operating footprint",
+            "required_records": "Product claims + ops environmental packs",
+            "decision_effect": "Blending product story with footprint misstates ESG risk",
+            "priority": "signing_condition",
+            "owner": "ESG diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "product_vs_footprint_split QA PASS",
+            "interim_treatment": "LIMITED — keep lenses separate",
+        }))
+    if _qa_fail("metric_boundary_method_baseline"):
+        out.append(normalize_question({
+            "question": "Complete measured metrics with boundary, method, baseline and denominator",
+            "required_records": "ESG data pack / sustainability report extracts",
+            "decision_effect": "Metrics without method are not underwritable",
+            "priority": "mandatory_pre_decision",
+            "owner": "ESG / financial diligence",
+            "timing": "before IC",
+            "closure_test": "metric_boundary_method_baseline QA PASS",
+            "interim_treatment": "LIMITED — withhold metric claims",
+        }))
+    if _qa_fail("targets_vs_measured"):
+        out.append(normalize_question({
+            "question": "Keep management targets in a separate column from measured results",
+            "required_records": "Target schedule + measured actuals",
+            "decision_effect": "Targets treated as results inflate delivery claims",
+            "priority": "signing_condition",
+            "owner": "ESG diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "targets_vs_measured QA PASS",
+            "interim_treatment": "REWORK — split targets from measured",
+        }))
+    if _qa_fail("workforce_safety_where_material"):
+        out.append(normalize_question({
+            "question": "Provide workforce/safety records where cost or continuity is affected",
+            "required_records": "HR attrition / safety / regulatory action packs",
+            "decision_effect": "Open workforce gaps can break plan delivery and cost",
+            "priority": "signing_condition",
+            "owner": "HR / ESG diligence",
+            "timing": "per deal timetable",
+            "closure_test": "workforce_safety_where_material QA PASS",
+            "interim_treatment": "LIMITED — treat workforce risk as open",
+        }))
+    if _qa_fail("consequence_column"):
+        out.append(normalize_question({
+            "question": "State financial / regulatory consequence (or explicitly none) per material topic",
+            "required_records": "Permit / cost / customer / reporting schedules",
+            "decision_effect": "ESG without consequence is narrative, not diligence",
+            "priority": "mandatory_pre_decision",
+            "owner": "ESG diligence lead",
+            "timing": "before IC",
+            "closure_test": "consequence_column QA PASS",
+            "interim_treatment": "LIMITED — keep section short where consequence absent",
+        }))
+    if _qa_fail("regulatory_cross_check"):
+        out.append(normalize_question({
+            "question": "Supply Regulatory Compliance output and reconcile overlapping permits/obligations",
+            "required_records": "Regulatory Compliance agent spec",
+            "decision_effect": "Duplicate or conflicting compliance claims mislead IC",
+            "priority": "signing_condition",
+            "owner": "ESG / regulatory counsel",
+            "timing": "per deal timetable",
+            "closure_test": "regulatory_cross_check QA PASS",
+            "interim_treatment": "LIMITED until Regulatory cross-check complete",
+        }))
+    if _qa_fail("no_emissions_from_revenue_sites"):
+        out.append(normalize_question({
+            "question": "Remove environmental figures inferred from revenue or site count",
+            "required_records": "Measured emissions / intensity with method",
+            "decision_effect": "Inferred emissions are invented performance",
+            "priority": "mandatory_pre_decision",
+            "owner": "ESG diligence lead",
+            "timing": "before IC",
+            "closure_test": "no_emissions_from_revenue_sites QA PASS",
+            "interim_treatment": "REWORK — strip inferred env performance",
+        }))
+    return out
+
+
 def _quality_reliance(
     *,
     material: list[dict[str, Any]],
     metrics: list[dict[str, Any]],
     workforce: list[dict[str, Any]],
     consequences: list[dict[str, Any]],
+    qa_fail: bool = False,
 ) -> tuple[str, str, str]:
     real_m = [
         t for t in material
@@ -1135,6 +1487,9 @@ def _quality_reliance(
     else:
         reliance = "BLOCKED"
 
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+
     bits = [
         f"{len(real_m)} material topic(s)",
         f"{len(real_metrics)} measured metric(s) with results",
@@ -1142,6 +1497,8 @@ def _quality_reliance(
         f"{len(real_c)} consequence row(s)",
         _NO_INFER_RULE,
     ]
+    if qa_fail:
+        bits.append("Open ESG QA FAILs cap READY → LIMITED")
     return quality, reliance, _soften_invest(". ".join(bits) + ".")
 
 
@@ -1158,6 +1515,7 @@ def _heuristic_esg_and_sustainability_spec(
     sector: str | None = None,
     geography: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    regulatory_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
     geography = _infer_geography(corpus, geography)
@@ -1174,14 +1532,32 @@ def _heuristic_esg_and_sustainability_spec(
         workforce=workforce,
         geography=geography,
     )
+    reg_cross = _esg_regulatory_cross_check(
+        consequences=consequences,
+        material=material,
+        regulatory_spec=regulatory_spec,
+    )
     themes, labour, env = _legacy_dual_write(
         legacy=legacy, material=material, workforce=workforce
     )
+
+    esg_qa = _esg_evidence_qa(
+        material=material,
+        product_footprint=product_footprint,
+        metrics=metrics,
+        workforce=workforce,
+        consequences=consequences,
+        reg_cross=reg_cross,
+        corpus=corpus,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in esg_qa)
+
     quality, reliance, rationale = _quality_reliance(
         material=material,
         metrics=metrics,
         workforce=workforce,
         consequences=consequences,
+        qa_fail=qa_fail,
     )
 
     real_m = sum(1 for t in material if isinstance(t, dict) and not _is_info(t.get("topic")))
@@ -1194,9 +1570,10 @@ def _heuristic_esg_and_sustainability_spec(
         f"jurisdiction {geography or 'unset'}",
         f"{real_m} material topic(s)",
         f"{real_met} measured metric(s)",
+        f"Regulatory prior={'yes' if reg_cross.get('regulatory_prior_present') else 'no'}",
     ]
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "jurisdiction": geography or _info_request("deal jurisdiction"),
         "sector": sector or _info_request("sector"),
@@ -1205,6 +1582,8 @@ def _heuristic_esg_and_sustainability_spec(
         "measured_metrics": metrics,
         "workforce_safety": workforce,
         "consequences": consequences,
+        "regulatory_cross_check": reg_cross,
+        "esg_evidence_qa": esg_qa,
         # Legacy dual-write
         "themes": themes,
         "labour_flags": labour,
@@ -1220,6 +1599,8 @@ def _heuristic_esg_and_sustainability_spec(
         "slug": _AGENT_KEY,
         "empty": not real_m,
     }
+    out["questions"] = _questions_from_esg_gaps(out)
+    return out
 
 
 def _llm_esg_and_sustainability_spec(
@@ -1230,6 +1611,11 @@ def _llm_esg_and_sustainability_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -1242,6 +1628,12 @@ def _llm_esg_and_sustainability_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
         src_lines = (
             "\n".join(f"[{i}] {s}" for i, s in enumerate(sources[:16], start=1))
@@ -1259,19 +1651,31 @@ def _llm_esg_and_sustainability_spec(
             "method, baseline_year, denominator, source}],\n"
             "workforce_safety: [{factor, record, cost_or_continuity, regulatory_action, source}],\n"
             "consequences: [{topic, consequence_type, detail, threshold_and_date, source}],\n"
+            "esg_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+            "materiality_screen, product_vs_footprint_split, metric_boundary_method_baseline, "
+            "targets_vs_measured, workforce_safety_where_material, consequence_column, "
+            "regulatory_cross_check, no_emissions_from_revenue_sites,\n"
+            "questions: [{question, required_records, decision_effect, priority, owner, "
+            "timing, closure_test, interim_treatment}],\n"
             "quality_verdict, reliance_verdict, quality_reliance_rationale.\n"
             "Omit non-material topics. Separate product impact from operating footprint. "
             "Keep targets separate from measured results. "
             "Do not apply reporting regimes below threshold. "
             "Do not infer environmental performance from revenue or site count. "
-            "No invest or pass."
+            "Cross-check Regulatory Compliance. No invest or pass."
         )
         return generate_json(system=system, user=user, temperature=0.15)
     except Exception:
         return None
 
 
-def _normalise_llm_spec(llm: dict[str, Any], *, heur: dict[str, Any]) -> dict[str, Any]:
+def _normalise_llm_spec(
+    llm: dict[str, Any],
+    *,
+    heur: dict[str, Any],
+    corpus: str = "",
+    regulatory_spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     out = dict(heur)
     for key in (
         "insight_snapshot",
@@ -1302,9 +1706,68 @@ def _normalise_llm_spec(llm: dict[str, Any], *, heur: dict[str, Any]) -> dict[st
                 ),
                 "notes": _NO_INFER_RULE,
             }
+        # Ensure management_target key exists
+        if "management_target" not in m:
+            m["management_target"] = _NA
         cleaned_metrics.append(m)
     if cleaned_metrics:
         out["measured_metrics"] = cleaned_metrics
+
+    out["regulatory_cross_check"] = _esg_regulatory_cross_check(
+        consequences=out.get("consequences") or [],
+        material=out.get("material_topics") or [],
+        regulatory_spec=regulatory_spec,
+    )
+    esg_qa = _esg_evidence_qa(
+        material=out.get("material_topics") or [],
+        product_footprint=out.get("product_vs_footprint") or [],
+        metrics=out.get("measured_metrics") or [],
+        workforce=out.get("workforce_safety") or [],
+        consequences=out.get("consequences") or [],
+        reg_cross=out["regulatory_cross_check"],
+        corpus=corpus,
+    )
+    out["esg_evidence_qa"] = esg_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in esg_qa)
+
+    qv = str(out.get("quality_verdict") or "").upper()
+    rv = str(out.get("reliance_verdict") or "").upper()
+    if qv not in {"PASS", "REWORK"} or rv not in {"READY", "LIMITED", "BLOCKED"}:
+        qv, rv, rationale = _quality_reliance(
+            material=out.get("material_topics") or [],
+            metrics=out.get("measured_metrics") or [],
+            workforce=out.get("workforce_safety") or [],
+            consequences=out.get("consequences") or [],
+            qa_fail=qa_fail,
+        )
+        out["quality_verdict"] = qv
+        out["reliance_verdict"] = rv
+        out.setdefault("quality_reliance_rationale", rationale)
+    else:
+        out["quality_verdict"] = qv
+        out["reliance_verdict"] = rv
+        if qa_fail and rv == "READY":
+            out["reliance_verdict"] = "LIMITED"
+            out["quality_reliance_rationale"] = (
+                (out.get("quality_reliance_rationale") or "")
+                + " Open ESG QA FAILs cap READY → LIMITED."
+            ).strip()
+
+    if not isinstance(out.get("questions"), list) or not out.get("questions"):
+        out["questions"] = _questions_from_esg_gaps(out)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in out.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        out["questions"] = filled_q or _questions_from_esg_gaps(out)
+
+    for dead in ("recommendation", "confidence", "investment_verdict", "invest_recommendation"):
+        out.pop(dead, None)
+
     out["composer"] = "llm_v1"
     return out
 
@@ -1315,6 +1778,7 @@ def build_esg_and_sustainability_spec(
     index: dict[str, Any] | None = None,
     company: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    regulatory_spec: dict[str, Any] | None = None,
     corpus: str | None = None,
     sources: list[str] | None = None,
     prefer_heuristic: bool = False,
@@ -1352,7 +1816,9 @@ def build_esg_and_sustainability_spec(
         sector=str(sector) if sector else None,
         geography=str(geography) if geography else None,
         legacy_spec=legacy,
+        regulatory_spec=regulatory_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
     if prefer_heuristic:
         return heur
 
@@ -1363,10 +1829,19 @@ def build_esg_and_sustainability_spec(
         sector=str(sector) if sector else None,
         geography=str(geography) if geography else None,
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if not llm_raw:
         return heur
-    return _normalise_llm_spec(llm_raw, heur=heur)
+    out = _normalise_llm_spec(
+        llm_raw, heur=heur, corpus=full_corpus, regulatory_spec=regulatory_spec
+    )
+    out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return out
 
 
 def render_esg_and_sustainability_markdown(
@@ -1510,6 +1985,36 @@ def render_esg_and_sustainability_markdown(
         ))
     parts.append("---\n\n")
 
+    # 6 — Regulatory cross-check
+    reg_cross = (
+        spec.get("regulatory_cross_check")
+        if isinstance(spec.get("regulatory_cross_check"), dict) else {}
+    )
+    parts.append("## 6. Regulatory Compliance Cross-Check\n\n")
+    parts.append(f"{_REG_CROSS_RULE}\n\n")
+    parts.append(_table(
+        ["Field", "Value"],
+        [
+            [
+                "Regulatory prior present",
+                "Yes" if reg_cross.get("regulatory_prior_present") else "No",
+            ],
+            [
+                "Overlap",
+                _clean("; ".join(reg_cross.get("overlap") or []) or _NA, 200),
+            ],
+            [
+                "Aligned",
+                _clean("; ".join(reg_cross.get("aligned") or []) or _NA, 200),
+            ],
+            [
+                "Conflicts",
+                _clean("; ".join(reg_cross.get("conflicts") or []) or "None", 200),
+            ],
+        ],
+    ))
+    parts.append("---\n\n")
+
     if themes:
         parts.append("## Supporting — Legacy Themes\n\n")
         for t in themes[:8]:
@@ -1517,16 +2022,79 @@ def render_esg_and_sustainability_markdown(
                 parts.append(f"- {_soften_invest(_clean(t, 160))}\n")
         parts.append("\n---\n\n")
 
-    # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    # 7 QA
+    esg_qa = (
+        spec.get("esg_evidence_qa")
+        if isinstance(spec.get("esg_evidence_qa"), list) else []
+    )
+    parts.append("## 7. ESG Evidence QA\n\n")
+    parts.append(
+        "QA enforces materiality screen, product-vs-footprint split, metric fields, "
+        "targets-vs-measured separation, workforce/safety where material, consequence "
+        "column, Regulatory cross-check, and no emissions inferred from revenue/sites.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in esg_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"**{_info_request('ESG evidence QA rows')}**\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 8 Questions
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material ESG gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    # 9 Quality
+    parts.append("## 9. Quality & Reliance\n\n")
     qv = spec.get("quality_verdict") or "REWORK"
     rv = spec.get("reliance_verdict") or "BLOCKED"
     rationale = spec.get("quality_reliance_rationale") or _NA
-    parts.append(f"**Quality:** {qv}  \n")
-    parts.append(f"**Reliance:** {rv}  \n\n")
-    parts.append(f"{_soften_invest(_clean(rationale, 600))}\n\n")
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _clean(rationale, 460)],
+        ],
+    ))
+    parts.append(f"**Quality:** {_clean(qv, 20)} — is the work accurate and honest about limits?\n\n")
+    parts.append(f"**Reliance:** {_clean(rv, 20)} — can a decision rest on this ESG assessment?\n\n")
     parts.append(
         "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open ESG QA FAILs cap READY → LIMITED. "
+        f"{_NO_INFER_RULE} "
         "This agent does not issue an invest or pass recommendation.*\n\n"
     )
     parts.append("---\n\n")

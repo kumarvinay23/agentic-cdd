@@ -169,11 +169,16 @@ def test_swot_prompt_book_listed() -> None:
     system = compose_system("swot_analysis", sector="EV", geography="India")
     assert "swot_analysis" in listed_agents()
     assert "synthesis" in system.lower() or "upstream" in system.lower() or "finding" in system.lower()
+    assert "deal perimeter" in system.lower() or "[DEAL_PERIMETER]" not in system
     body = agent_prompt("swot_analysis")
     assert "Ola" not in body and "SoftBank" not in body
     assert "unexamined" in body.lower()
     assert "no new" in body.lower() or "no new claims" in body.lower()
     assert "rank" in body.lower()
+    assert "finding-id" in body.lower() or "finding id" in body.lower()
+    assert "action" in body.lower() and "owner" in body.lower()
+    assert "questions" in body.lower()
+    assert "blocker" in body.lower()
 
 
 def test_swot_not_company_hardcoded() -> None:
@@ -206,6 +211,9 @@ def test_items_traced_to_upstream_with_quantification() -> None:
     for it in all_struct:
         assert it.get("source_agent"), f"untraced: {it}"
         assert it.get("source_finding")
+        assert it.get("finding_id"), f"missing finding_id: {it}"
+        assert str(it.get("finding_id")).startswith("SWOT-")
+        assert it.get("evidence_status")
         assert it.get("evidence_class") in {
             "demonstrated",
             "external_possibility",
@@ -303,6 +311,10 @@ def test_render_markdown_sections() -> None:
     assert "## 1. Demonstrated Strengths" in md
     assert "## 2. Demonstrated Weaknesses" in md
     assert "## 5. Information Gaps" in md
+    assert "## 7. Priority Action Rows" in md
+    assert "## 8. SWOT Evidence QA" in md
+    assert "## 9. Questions and Inputs Required" in md
+    assert "## 10. Quality & Reliance" in md
     assert "recommend invest" not in md.lower()
     assert "recommend pass" not in md.lower()
     low = md.lower()
@@ -325,6 +337,7 @@ def test_render_agent_document_dispatch() -> None:
     md = render_agent_document("swot_analysis", output)
     assert "Demonstrated Strengths" in md
     assert "Information Gaps" in md
+    assert "## 10. Quality & Reliance" in md
 
 
 def test_build_prefer_heuristic() -> None:
@@ -336,6 +349,86 @@ def test_build_prefer_heuristic() -> None:
     )
     assert spec.get("composer") == "heuristic_swot_v1"
     assert "revenue_quality" in (spec.get("upstream_agents_used") or [])
+    assert "deal_slots" in spec
+
+
+def test_finding_ids_and_priority_action_rows() -> None:
+    heur = _heuristic_swot_analysis_spec(
+        company="Test3",
+        prior_agents=_prior_agents(),
+    )
+    all_items = (
+        (heur.get("strengths_structured") or [])
+        + (heur.get("weaknesses_structured") or [])
+        + (heur.get("opportunities_structured") or [])
+        + (heur.get("threats_structured") or [])
+        + (heur.get("information_gaps") or [])
+        + (heur.get("unresolved_items") or [])
+    )
+    for it in all_items:
+        assert it.get("finding_id")
+        assert it.get("evidence_status")
+    actions = heur.get("priority_action_rows") or []
+    assert actions
+    for row in actions:
+        assert row.get("combo")
+        assert row.get("action")
+        assert row.get("owner")
+        assert row.get("timing")
+        assert row.get("success_measure")
+
+
+def test_cash_flow_gap_not_weakness() -> None:
+    prior = {
+        "cash_flow": {
+            "spec": {
+                "liquidity": {"pressure": "unavailable", "notes": "cash pack incomplete"},
+                "quality_verdict": "PASS",
+                "reliance_verdict": "LIMITED",
+            },
+            "findings": ["Liquidity inputs incomplete"],
+        },
+        "revenue_quality": {
+            "spec": {
+                "retention_metrics": {"nrr_pct": 81.0},
+                "quality_verdict": "PASS",
+                "reliance_verdict": "READY",
+            },
+            "findings": ["NRR 81.0%"],
+        },
+    }
+    heur = _heuristic_swot_analysis_spec(company="Test3", prior_agents=prior)
+    gaps = heur.get("information_gaps") or []
+    assert any(
+        "liquidity" in str(g.get("statement") or "").lower()
+        for g in gaps
+        if isinstance(g, dict)
+    )
+    for w in heur.get("weaknesses_structured") or []:
+        assert "liquidity inputs incomplete" not in str(w.get("statement") or "").lower()
+
+
+def test_swot_evidence_qa_and_ready_cap() -> None:
+    heur = _heuristic_swot_analysis_spec(
+        company="Test3",
+        prior_agents=_prior_agents(),
+    )
+    qa = {r.get("check"): r for r in (heur.get("swot_evidence_qa") or []) if isinstance(r, dict)}
+    assert "finding_id_and_evidence_status" in qa
+    assert "gap_not_in_weaknesses" in qa
+    assert "priority_action_rows_complete" in qa
+    assert "dedup_conflict_qa" in qa
+    assert "blockers_not_overridden" in qa
+    assert qa["gap_not_in_weaknesses"]["status"] == "PASS"
+    assert qa["blockers_not_overridden"]["status"] == "PASS"
+    assert heur.get("reliance_verdict") == "BLOCKED"  # open blockers from synergies
+    qa_fail = any(
+        isinstance(r, dict) and r.get("status") == "FAIL"
+        for r in (heur.get("swot_evidence_qa") or [])
+    )
+    if qa_fail:
+        assert heur.get("reliance_verdict") != "READY"
+        assert heur.get("questions")
 
 
 def test_disagreement_carried_unresolved() -> None:

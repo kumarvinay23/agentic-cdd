@@ -128,6 +128,10 @@ def test_recommendation_prompt_book_listed() -> None:
     assert "condition" in body.lower() and "precedent" in body.lower()
     assert "hundred" in body.lower() or "100" in body
     assert "finding" in body.lower()
+    assert "continue diligence" in body.lower() or "conditional offer" in body.lower()
+    assert "questions" in body.lower()
+    assert "failure" in body.lower()
+    assert "cash flow" in body.lower() or "final valuation" in body.lower()
 
 
 def test_recommendation_not_company_hardcoded() -> None:
@@ -175,6 +179,9 @@ def test_price_structure_protection_separated() -> None:
     for cp in cps:
         assert cp.get("owner")
         assert cp.get("acceptance_test")
+        assert cp.get("evidence")
+        assert cp.get("deadline")
+        assert cp.get("failure_consequence")
 
 
 def test_day100_only_where_finding_requires() -> None:
@@ -221,9 +228,14 @@ def test_no_invest_pass_language() -> None:
     low = md.lower()
     assert "recommend invest" not in low
     assert "recommend pass" not in low
+    assert "## 0. Decision Stage" in md
     assert "## 1. Price Adjustments" in md
     assert "## 4. Conditions Precedent" in md
     assert "## 6. Still Open" in md
+    assert "## 7. Blocked Workstreams" in md
+    assert "## 8. Recommendations Evidence QA" in md
+    assert "## 9. Questions and Inputs Required" in md
+    assert "## 10. Quality & Reliance" in md
 
 
 def test_quantify_or_state_gap() -> None:
@@ -283,3 +295,141 @@ def test_legacy_dual_write_cps() -> None:
     assert cps
     assert all(isinstance(c, str) and c.startswith("CP:") for c in cps)
     assert all("owner:" in c for c in cps)
+
+
+def test_decision_stage_and_blocked_workstreams() -> None:
+    heur = _heuristic_recommendation_spec(
+        company="Test3",
+        prior_agents=_prior_agents(),
+        deal_slots={"decision_stage": "diligence", "as_of_date": "2024-03-31"},
+    )
+    stage = heur.get("decision_stage") or {}
+    assert stage.get("stage") in {
+        "continue_diligence",
+        "conditional_offer",
+        "pause_more_evidence",
+        "decline_current_terms",
+        "proceed_to_ic_on_conditions",
+    }
+    assert "invest" not in str(stage.get("label") or "").lower()
+    assert heur.get("blocked_workstreams")
+    assert any(
+        "valuation" in str(b.get("workstream") or "") or "synerg" in str(b.get("workstream") or "")
+        for b in heur["blocked_workstreams"]
+        if isinstance(b, dict)
+    )
+    qa = {
+        r.get("check"): r
+        for r in (heur.get("recommendation_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert "decision_stage_vocabulary" in qa
+    assert "blocked_workstreams_carried" in qa
+    assert "condition_schema_complete" in qa
+    assert "no_post_close_disguise" in qa
+    assert qa["decision_stage_vocabulary"]["status"] == "PASS"
+    assert qa["blocked_workstreams_carried"]["status"] == "PASS"
+    assert qa["condition_schema_complete"]["status"] == "PASS"
+    assert heur.get("deal_slots", {}).get("as_of_date") == "2024-03-31"
+
+
+def test_cash_flow_and_fvr_reconcile() -> None:
+    prior = _prior_agents()
+    prior["cash_flow"] = {
+        "spec": {
+            "ebitda_to_cash_bridge": [],
+            "liquidity": {"pressure": "verified_tight", "runway_months_computed": 3.0},
+            "quality_verdict": "PASS",
+            "reliance_verdict": "BLOCKED",
+        },
+        "findings": ["EBITDA→cash bridge incomplete"],
+    }
+    prior["regulatory_compliance"] = {
+        "spec": {
+            "critical_permits": [
+                {
+                    "permit": "Factory licence",
+                    "recommendation_action": "CP: factory licence consent to change of control",
+                    "transfer_on_coc": "open",
+                }
+            ],
+            "quality_verdict": "PASS",
+            "reliance_verdict": "LIMITED",
+        },
+        "findings": ["Critical permit open"],
+    }
+    heur = _heuristic_recommendation_spec(company="Test3", prior_agents=prior)
+    agents = " ".join(heur.get("upstream_agents_used") or [])
+    assert "cash_flow" in agents
+    assert "regulatory_compliance" in agents
+    assert any(
+        r.get("source_agent") == "cash_flow"
+        for r in (heur.get("recommendations") or [])
+        if isinstance(r, dict)
+    )
+    assert any(
+        r.get("source_agent") == "regulatory_compliance"
+        for r in (heur.get("recommendations") or [])
+        if isinstance(r, dict)
+    )
+    qa = {
+        r.get("check"): r
+        for r in (heur.get("recommendation_evidence_qa") or [])
+        if isinstance(r, dict)
+    }
+    assert qa.get("reconcile_fvr_reg_ir_cf", {}).get("status") == "PASS"
+
+
+def test_post_close_disguise_reclassified() -> None:
+    prior = {
+        "internal_risk": {
+            "spec": {
+                "observed_weaknesses": [
+                    {
+                        "weakness": "Untested disaster recovery",
+                        "evidence": "Information request: DR test report",
+                    }
+                ],
+                "quality_verdict": "PASS",
+                "reliance_verdict": "READY",
+            },
+            "findings": ["Untested DR"],
+        }
+    }
+    # Force a post_completion disguise via growth-style harvest isn't available;
+    # inject through a custom path by using growth_opportunities with hypothesis
+    # plus a crafted post that scrub will catch — use internal weakness which
+    # becomes post_completion, then verify scrub when finding matches unknown.
+    heur = _heuristic_recommendation_spec(company="Test3", prior_agents=prior)
+    posts = heur.get("post_completion_actions") or []
+    # Weakness "Untested..." becomes post_completion then scrub → CP
+    assert not any(
+        _PRE_MATCH(p)
+        for p in posts
+        if isinstance(p, dict)
+    )
+    cps = heur.get("conditions_precedent_structured") or []
+    assert any(
+        "untested" in str(c.get("source_finding") or "").lower()
+        or "untested" in str(c.get("action") or "").lower()
+        for c in cps
+        if isinstance(c, dict)
+    )
+
+
+def _PRE_MATCH(row: dict) -> bool:
+    blob = f"{row.get('source_finding') or ''} {row.get('action') or ''}".lower()
+    return "untested" in blob or "information request" in blob
+
+
+def test_qa_fail_caps_ready() -> None:
+    # Empty prior → REWORK/LIMITED (not READY)
+    heur = _heuristic_recommendation_spec(company="Test3", prior_agents={})
+    assert heur.get("reliance_verdict") != "READY"
+    # With blockers → BLOCKED
+    heur2 = _heuristic_recommendation_spec(
+        company="Test3",
+        prior_agents=_prior_agents(),
+    )
+    assert heur2.get("reliance_verdict") == "BLOCKED"
+    assert heur2.get("questions") is not None

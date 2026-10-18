@@ -168,3 +168,94 @@ def test_margin_display_keeps_unit_with_brackets() -> None:
         figure_type=FigureType.CALCULATED,
     )
     assert format_cell_display(cell) == "(1.91)%"
+
+
+def test_exhibit_label_no_empty_or_double_brackets() -> None:
+    from agetic_cdd_api.fdd_schemas import EightLabels, FddFact
+    from agetic_cdd_api.services_fdd_bridge import facts_to_exhibit_cells
+    from agetic_cdd_api.services_fdd_render import _exhibit_body, _strip_fy_from_label
+
+    closed = __import__("datetime").date.today().year - 1
+    facts = [
+        FddFact(
+            fact_id="f:ap:closed",
+            metric_key="accounts_payable",
+            fiscal_year=closed,
+            value=0.50,
+            display="0.50",
+            status=CellStatus.PROVEN,
+            release_status=CellStatus.PROVEN,
+            labels=EightLabels(line="Accounts Payable", statement="bs"),
+        ),
+        FddFact(
+            fact_id="f:rev:plan",
+            metric_key="revenue",
+            fiscal_year=closed + 5,
+            value=20.0,
+            display="20.0",
+            status=CellStatus.PROVEN,
+            release_status=CellStatus.PROVEN,
+            labels=EightLabels(line="Revenue", statement="is", source="monthly pack"),
+            sources=["monthly_pack.xlsx"],
+        ),
+        FddFact(
+            fact_id="f:em:closed",
+            metric_key="ebitda_margin",
+            fiscal_year=closed,
+            value=0.043,
+            display="4.3",
+            status=CellStatus.PROVEN,
+            release_status=CellStatus.PROVEN,
+            labels=EightLabels(line="EBITDA margin", statement="is"),
+            unit="%",
+            scale="M",
+            currency="USD",
+        ),
+    ]
+    cells = facts_to_exhibit_cells(facts)
+    by_mk = {c.metric_key: c for c in cells}
+    assert "()" not in (by_mk["accounts_payable"].label or "")
+    assert "(FY" not in (by_mk["accounts_payable"].label or "")
+    # Open-year label uses middle-dot — never nested "(FY2030E (plan))"
+    assert "·" in (by_mk["revenue"].label or "")
+    assert "E (plan))" not in (by_mk["revenue"].label or "")
+    assert by_mk["revenue"].status == CellStatus.DOUBTFUL
+    assert by_mk["ebitda_margin"].unit == "%"
+    assert by_mk["ebitda_margin"].scale is None
+
+    # Render path: no empty (), margins show %, open years not proven
+    stripped = _strip_fy_from_label("Accounts Payable (FY2025)", closed)
+    assert "()" not in stripped
+    ex = Exhibit(
+        exhibit_id="ex_db_bs",
+        title="BS",
+        cells=[by_mk["accounts_payable"], by_mk["ebitda_margin"], by_mk["revenue"]],
+    )
+    body, _refs = _exhibit_body(ex)
+    assert "()" not in body
+    assert "EBITDA margin" in body and "%" in body
+    assert "doubtful" in body.lower()
+
+
+def test_headline_metric_no_repeated_fy() -> None:
+    from agetic_cdd_api.services_fdd_commentary import _headline_metric_name
+
+    cell = ExhibitCell(
+        cell_id="ta",
+        exhibit_id="ex_db_bs",
+        label="Total Assets (FY2025)",
+        value=7.15,
+        fact_id="f",
+        metric_key="total_assets",
+        fiscal_year=2025,
+        status=CellStatus.PROVEN,
+    )
+    assert _headline_metric_name(cell) == "Total Assets"
+
+
+def test_percent_unit_survives_money_scale() -> None:
+    from agetic_cdd_api.services_fdd_bridge import _sanitize_money_unit
+
+    assert _sanitize_money_unit("ebitda_margin", unit="%", scale="M") == "%"
+    assert _sanitize_money_unit("nrr", unit=None, scale="M") == "%"
+    assert _sanitize_money_unit("total_equity", unit="%", scale="M") is None

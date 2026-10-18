@@ -61,6 +61,77 @@ _HYPOTHESIS_RULE = (
     "Risks with no evidence in the records are hypotheses — labelled as such "
     "with what would test them."
 )
+_OPS_MAP_RULE = (
+    "Day-to-day delivery depends on a mapped set of processes, assets, sites "
+    "and labour — SPOF-style dependencies are named from records."
+)
+_UTIL_RULE = (
+    "Capacity and utilisation are stated against current and planned volume; "
+    "where the plan binds capacity, say when."
+)
+_INCIDENT_RULE = (
+    "Incidents, maintenance and insurance are reviewed only where evidenced — "
+    "missing packs are named, not invented."
+)
+_CASH_IMPACT_RULE = (
+    "Disruption impacts are traced to revenue, EBITDA and cash where the "
+    "packs allow — not EBITDA alone."
+)
+_CONTINUITY_OPS_RULE = (
+    "Continuity / BCP arrangements state whether each has been used or tested "
+    "(untested is not mitigation)."
+)
+_BOTTLENECK_CF_RULE = (
+    "Growth-plan bottlenecks are reconciled with Cash Flow — funding and "
+    "working-capital constraints must not contradict ops capacity claims."
+)
+_NO_PROXY_RULE = (
+    "Cyber and insurance conclusions are not invented from weak proxies "
+    "(IT/CRM/ERP mentions alone are not cyber evidence)."
+)
+_SITE_CUE = re.compile(
+    r"(?i)\b(plant|site|facility|factory|depot|warehouse|campus|Hosur|"
+    r"manufacturing\s+(?:site|location))\b"
+)
+_ASSET_CUE = re.compile(
+    r"(?i)\b(line|fleet|asset|equipment|tooling|mould|mold|conveyor|"
+    r"press|kiln|reactor|vehicle\s+fleet)\b"
+)
+_LABOUR_CUE = re.compile(
+    r"(?i)\b(labour|labor|workforce|headcount|operators?|technicians?|"
+    r"attrition|turnover|shift|staff(?:ing)?)\b"
+)
+_PROCESS_CUE = re.compile(
+    r"(?i)\b(process|SOP|assembly|manufactur|fulfilment|QA|QC|inspect|"
+    r"service\s+resolution|last[- ]mile)\b"
+)
+_UTIL_CUE = re.compile(
+    r"(?i)\b(capacity\s+utili[sz]ation|utili[sz]ation|headroom|throughput|"
+    r"binds?|bottleneck|monthly\s+production\s+capacity)\b"
+)
+_MAINT_CUE = re.compile(
+    r"(?i)\b(maintenance|preventive\s+maintenance|PM\s+schedule|overhaul|"
+    r"downtime\s+for\s+maintenance|MTBF|MTTR)\b"
+)
+_INSURANCE_CUE = re.compile(
+    r"(?i)\b(insurance|indemnity|policy\s+limit|cover(?:age)?|insured|"
+    r"business\s+interruption\s+(?:cover|policy)|BI\s+cover)\b"
+)
+_CYBER_CUE = re.compile(
+    r"(?i)\b(cyber|ransomware|data\s+breach|security\s+incident|"
+    r"penetration\s+test|SOC\s+2|ISO\s*27001)\b"
+)
+_WEAK_IT_PROXY = re.compile(
+    r"(?i)\b(IT|CRM|ERP|software|system|SaaS|cloud)\b"
+)
+_CASH_CUE = re.compile(
+    r"(?i)\b(cash|liquidity|working\s+capital|WC\s+impact|cash\s+burn|"
+    r"free\s+cash\s+flow|FCF)\b"
+)
+_CONTINUITY_OPS_CUE = re.compile(
+    r"(?i)\b(BCP|business\s+continuity|contingency|backup|spare\s+capacity|"
+    r"continuity\s+plan|disaster\s+recovery|DR\s+plan|tested|untested|drill)\b"
+)
 
 _EVIDENCE_CUE = re.compile(
     r"(?i)\b(incident|downtime|rework|defect|stockout|recall|safety|"
@@ -415,6 +486,32 @@ def _size_risk(row: dict[str, Any], corpus: str) -> dict[str, str]:
     else:
         ebitda = _info_request(f"EBITDA impact if '{_clean(risk, 40)}' recurs at observed rate")
 
+    revenue = _NA
+    rm = re.search(r"(?i)(?:revenue|sales)\s+impact[^.%]{0,40}?(INR\s*[\d,]+(?:\.\d+)?\s*(?:Cr|cr)?)", search_in)
+    if rm:
+        revenue = _clean(rm.group(0), 80)
+    elif cost != _NA and re.search(r"(?i)revenue", search_in):
+        revenue = cost
+
+    cash = _NA
+    if _CASH_CUE.search(search_in):
+        cm_cash = _COST_RE.search(search_in) if _CASH_CUE.search(search_in) else None
+        cash_sent = next(
+            (s for s in _sentences(text) if _CASH_CUE.search(s) and (
+                any(tok in s.lower() for tok in risk.lower().split()[:2] if len(tok) > 3)
+                or _COST_RE.search(s)
+            )),
+            None,
+        )
+        if cash_sent:
+            cash = _clean(cash_sent, 100)
+        elif cm_cash:
+            cash = _clean(cm_cash.group(0), 60)
+        else:
+            cash = _info_request(f"cash / liquidity impact if '{_clean(risk, 40)}' recurs")
+    else:
+        cash = _info_request(f"cash / liquidity impact if '{_clean(risk, 40)}' recurs")
+
     sized = "Yes" if (freq != _NA or cost != _NA) and not str(ebitda).startswith("Information") else (
         "Partial" if freq != _NA or cost != _NA else "No"
     )
@@ -422,10 +519,12 @@ def _size_risk(row: dict[str, Any], corpus: str) -> dict[str, str]:
         "risk": _clean(risk, 120),
         "frequency": freq if freq != _NA else _info_request("how often this has occurred"),
         "cost": cost if cost != _NA else _info_request("what it cost historically"),
+        "revenue_impact": revenue if revenue != _NA else _info_request("revenue impact if recurs"),
         "ebitda_if_recurs": ebitda,
+        "cash_impact": cash,
         "sized": sized,
         "source": _DOC_CITE if local or _is_filled(evidence) else _NA,
-        "notes": _SIZE_RULE,
+        "notes": f"{_SIZE_RULE} {_CASH_IMPACT_RULE}",
     }
 
 
@@ -440,10 +539,12 @@ def _extract_sized(register: list[dict], corpus: str) -> list[dict[str, str]]:
             "risk": _info_request("evidenced operational risks to size"),
             "frequency": _NA,
             "cost": _NA,
+            "revenue_impact": _NA,
             "ebitda_if_recurs": _NA,
+            "cash_impact": _NA,
             "sized": "No",
             "source": _NA,
-            "notes": _SIZE_RULE,
+            "notes": f"{_SIZE_RULE} {_CASH_IMPACT_RULE}",
         })
     return out[:10]
 
@@ -674,6 +775,635 @@ def _legacy_risk_items(register: list[dict], sized: list[dict], legacy: dict[str
     return out
 
 
+def _extract_ops_map(corpus: str) -> list[dict[str, Any]]:
+    """Process / asset / site / labour map from records."""
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(kind: str, name: str, evidence: str, *, source: str = _DOC_CITE) -> None:
+        key = f"{kind}:{name.strip().lower()[:60]}"
+        if not name.strip() or key in seen:
+            return
+        seen.add(key)
+        rows.append({
+            "element_type": kind,
+            "name": _clean(name, 80),
+            "evidence": _clean(evidence, 160),
+            "source": source,
+            "notes": _OPS_MAP_RULE,
+        })
+
+    for s in _sentences(text)[:40]:
+        if _SITE_CUE.search(s):
+            m = re.search(
+                r"(?i)(?:plant|site|facility|factory|depot|warehouse)\s+(?:at\s+)?"
+                r"([A-Z][A-Za-z0-9&'.-]{2,}(?:\s+[A-Z][A-Za-z0-9&'.-]{1,}){0,2})",
+                s,
+            )
+            _add("site", m.group(1) if m else _clean(s, 60), s)
+        if _ASSET_CUE.search(s):
+            _add("asset", _clean(s, 60), s)
+        if _LABOUR_CUE.search(s):
+            _add("labour", _clean(s, 60), s)
+        if _PROCESS_CUE.search(s):
+            _add("process", _clean(s, 60), s)
+        if len(rows) >= 10:
+            break
+
+    kinds = {r.get("element_type") for r in rows}
+    for need in ("process", "asset", "site", "labour"):
+        if need not in kinds:
+            rows.append({
+                "element_type": need,
+                "name": _info_request(f"{need} map for day-to-day delivery"),
+                "evidence": _NA,
+                "source": _NA,
+                "notes": _OPS_MAP_RULE,
+            })
+    return rows[:12]
+
+
+def _extract_capacity_utilisation(corpus: str) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    util_m = re.search(
+        r"(?i)(?:capacity\s+)?utili[sz]ation[^.%]{0,30}?(\d+(?:\.\d+)?)\s*%",
+        text,
+    )
+    cap_m = re.search(
+        r"(?i)(?:monthly\s+)?(?:production\s+)?capacity[^.%]{0,40}?"
+        r"([\d,]+(?:\.\d+)?)\s*(units?|vehicles?)?",
+        text,
+    )
+    bind = next(
+        (s for s in _sentences(text) if re.search(r"(?i)\bbinds?\b|bottleneck|plan\s+ramp", s)),
+        None,
+    )
+    if util_m or cap_m or bind:
+        rows.append({
+            "stage": "operations / plant",
+            "current_capacity": (
+                _clean(cap_m.group(0), 80) if cap_m else _info_request("current capacity")
+            ),
+            "utilisation": (
+                f"{util_m.group(1)}%" if util_m else _info_request("utilisation %")
+            ),
+            "headroom": (
+                _info_request("headroom vs plan")
+                if not bind
+                else _clean(bind, 120)
+            ),
+            "when_binds": _clean(bind, 120) if bind else _info_request("when plan binds capacity"),
+            "source": _DOC_CITE if (util_m or cap_m or bind) else _NA,
+            "notes": _UTIL_RULE,
+        })
+    else:
+        rows.append({
+            "stage": "operations",
+            "current_capacity": _info_request("current capacity"),
+            "utilisation": _info_request("utilisation %"),
+            "headroom": _info_request("headroom vs plan"),
+            "when_binds": _info_request("when plan binds capacity"),
+            "source": _NA,
+            "notes": _UTIL_RULE,
+        })
+    return rows
+
+
+def _extract_incident_maintenance_insurance(corpus: str) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    for s in _sentences(text):
+        kind = None
+        if _EVIDENCE_CUE.search(s) and re.search(
+            r"(?i)\b(incident|downtime|outage|near[- ]miss|injury|recall)\b", s
+        ):
+            kind = "incident"
+        elif _MAINT_CUE.search(s):
+            kind = "maintenance"
+        elif _INSURANCE_CUE.search(s):
+            kind = "insurance"
+        if not kind:
+            continue
+        rows.append({
+            "review_type": kind,
+            "finding": _clean(s, 180),
+            "source": _DOC_CITE,
+            "notes": _INCIDENT_RULE,
+        })
+        if len(rows) >= 8:
+            break
+    for need in ("incident", "maintenance", "insurance"):
+        if not any(r.get("review_type") == need for r in rows):
+            rows.append({
+                "review_type": need,
+                "finding": _info_request(f"{need} review evidence"),
+                "source": _NA,
+                "notes": _INCIDENT_RULE,
+            })
+    return rows[:9]
+
+
+def _extract_continuity_ops(corpus: str, controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    text = _prose(corpus)
+    rows: list[dict[str, Any]] = []
+    for s in _sentences(text):
+        if not _CONTINUITY_OPS_CUE.search(s):
+            continue
+        tested = "Untested / not evidenced"
+        if re.search(r"(?i)\b(tested|drill|used\s+in|invoked)\b", s):
+            if re.search(r"(?i)\b(never|untested|not\s+tested)\b", s):
+                tested = "Untested"
+            else:
+                tested = "Used or tested"
+        elif re.search(r"(?i)\b(never|untested|not\s+tested)\b", s):
+            tested = "Untested"
+        rows.append({
+            "arrangement": _clean(s, 180),
+            "tested_or_used": tested,
+            "mitigation_status": (
+                "Mitigation credited" if tested == "Used or tested"
+                else "Not mitigation — continuity untested or not evidenced"
+            ),
+            "source": _DOC_CITE,
+            "notes": _CONTINUITY_OPS_RULE,
+        })
+        if len(rows) >= 6:
+            break
+    # Fold control rows that look like continuity
+    for c in controls:
+        if not isinstance(c, dict):
+            continue
+        blob = f"{c.get('control') or ''} {c.get('risk') or ''}"
+        if not _CONTINUITY_OPS_CUE.search(blob):
+            continue
+        if any(
+            str(c.get("control") or "")[:40].lower() in str(r.get("arrangement") or "").lower()
+            for r in rows
+        ):
+            continue
+        tested = str(c.get("tested") or "Untested / not evidenced")
+        rows.append({
+            "arrangement": _clean(c.get("control") or c.get("risk"), 180),
+            "tested_or_used": tested,
+            "mitigation_status": c.get("mitigation_status") or (
+                "Mitigation credited" if tested == "Tested"
+                else "Not mitigation — continuity untested or not evidenced"
+            ),
+            "source": str(c.get("source") or _DOC_CITE),
+            "notes": _CONTINUITY_OPS_RULE,
+        })
+    if not rows:
+        rows.append({
+            "arrangement": _info_request("continuity / BCP arrangements"),
+            "tested_or_used": "Untested / not evidenced",
+            "mitigation_status": "Not mitigation — continuity untested or not evidenced",
+            "source": _NA,
+            "notes": _CONTINUITY_OPS_RULE,
+        })
+    return rows[:8]
+
+
+def _reconcile_growth_bottlenecks(
+    *,
+    hist_plan: list[dict[str, Any]],
+    capacity: list[dict[str, Any]],
+    cash_flow_spec: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Reconcile plan-amplified ops bottlenecks with Cash Flow where available."""
+    plan_rows = [
+        r for r in hist_plan
+        if isinstance(r, dict)
+        and "plan" in str(r.get("bucket") or "").lower()
+    ]
+    binds = [
+        c for c in capacity
+        if isinstance(c, dict)
+        and _is_filled(c.get("when_binds"))
+        and not str(c.get("when_binds")).startswith("Information")
+    ]
+    cf_present = isinstance(cash_flow_spec, dict) and bool(cash_flow_spec)
+    conflicts: list[str] = []
+    aligned: list[str] = []
+    cf_notes: list[str] = []
+
+    if not cf_present:
+        return {
+            "cash_flow_present": False,
+            "plan_bottlenecks": len(plan_rows),
+            "capacity_binds": len(binds),
+            "aligned": [],
+            "conflicts": [],
+            "notes": (
+                f"{_BOTTLENECK_CF_RULE} Cash Flow output not available in this run — "
+                f"bottleneck reconcile deferred."
+            ),
+            "source": _NA,
+        }
+
+    # Pull WC / liquidity signals from cash flow
+    metrics = cash_flow_spec.get("cash_metrics") if isinstance(cash_flow_spec.get("cash_metrics"), dict) else {}
+    bridges = cash_flow_spec.get("bridges") if isinstance(cash_flow_spec.get("bridges"), list) else []
+    wc = cash_flow_spec.get("working_capital") if isinstance(cash_flow_spec.get("working_capital"), dict) else {}
+    liquidity = cash_flow_spec.get("liquidity") if isinstance(cash_flow_spec.get("liquidity"), dict) else {}
+    if metrics:
+        cf_notes.append(f"cash_metrics keys: {', '.join(list(metrics.keys())[:6])}")
+    if wc:
+        cf_notes.append("working_capital present")
+    if liquidity:
+        cf_notes.append("liquidity present")
+
+    if plan_rows and (metrics or wc or liquidity or bridges):
+        aligned.append(
+            f"{len(plan_rows)} plan-amplified ops risk(s) cross-checked against Cash Flow packs."
+        )
+    elif plan_rows:
+        conflicts.append(
+            "Plan-amplified ops bottlenecks present but Cash Flow has no WC/liquidity/"
+            "bridge evidence to reconcile funding."
+        )
+    if binds and not (wc or liquidity or metrics):
+        conflicts.append(
+            "Capacity bind evidenced in ops but Cash Flow lacks utilisation/funding bridge."
+        )
+    elif binds:
+        aligned.append("Capacity bind(s) noted alongside Cash Flow evidence.")
+
+    return {
+        "cash_flow_present": True,
+        "plan_bottlenecks": len(plan_rows),
+        "capacity_binds": len(binds),
+        "aligned": aligned[:6] or ["No overlapping bottleneck facts to compare yet."],
+        "conflicts": conflicts[:6],
+        "notes": (
+            f"{_BOTTLENECK_CF_RULE} "
+            + (
+                f"{len(conflicts)} conflict(s) — reconcile ops capacity with Cash Flow."
+                if conflicts
+                else "No bottleneck conflicts detected against Cash Flow."
+            )
+            + ((" " + "; ".join(cf_notes)) if cf_notes else "")
+        ),
+        "source": _DOC_CITE,
+    }
+
+
+def _guard_cyber_insurance_proxies(
+    register: list[dict[str, Any]],
+    incident_review: list[dict[str, Any]],
+    corpus: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Strip invented cyber/insurance claims grounded only in weak IT proxies."""
+    text = _prose(corpus)
+    has_cyber = bool(_CYBER_CUE.search(text))
+    has_insurance = bool(_INSURANCE_CUE.search(text))
+    flags: list[str] = []
+    out: list[dict[str, Any]] = []
+    for row in register:
+        if not isinstance(row, dict):
+            continue
+        r = dict(row)
+        blob = f"{r.get('risk') or ''} {r.get('evidence') or ''} {r.get('category') or ''}"
+        # Cyber from IT/CRM/ERP alone
+        if re.search(r"(?i)\bcyber\b", blob) and not has_cyber:
+            if _WEAK_IT_PROXY.search(blob) or str(r.get("category") or "") == "systems":
+                flags.append(
+                    f"Stripped weak-proxy cyber claim: {_clean(r.get('risk'), 80)}"
+                )
+                r["hypothesis"] = True
+                r["risk"] = _clean(f"[Hypothesis] {r.get('risk')}", 120)
+                r["test_request"] = _info_request(
+                    "cyber evidence (incident / pen-test / control report) — not IT system name alone"
+                )
+                r["notes"] = _NO_PROXY_RULE
+        # Insurance invented without insurance language
+        if re.search(r"(?i)\binsurance\b", blob) and not has_insurance:
+            flags.append(
+                f"Stripped unverified insurance claim: {_clean(r.get('risk'), 80)}"
+            )
+            r["hypothesis"] = True
+            r["risk"] = _clean(f"[Hypothesis] {r.get('risk')}", 120)
+            r["test_request"] = _info_request(
+                "insurance policy / BI cover evidence"
+            )
+            r["notes"] = _NO_PROXY_RULE
+        out.append(r)
+
+    # Flag incident-review insurance rows without evidence
+    for row in incident_review:
+        if not isinstance(row, dict):
+            continue
+        if row.get("review_type") == "insurance" and str(row.get("finding") or "").startswith("Information"):
+            flags.append("Insurance review unevidenced — not invented from proxies.")
+    return out, flags[:8]
+
+
+def _ops_evidence_qa(
+    *,
+    ops_map: list[dict[str, Any]],
+    capacity: list[dict[str, Any]],
+    incident_review: list[dict[str, Any]],
+    sized: list[dict[str, Any]],
+    continuity: list[dict[str, Any]],
+    bottleneck_cf: dict[str, Any],
+    proxy_flags: list[str],
+) -> list[dict[str, str]]:
+    """Explicit PASS/FAIL QA for operational-risk discipline."""
+    rows: list[dict[str, str]] = []
+
+    filled_kinds = {
+        str(r.get("element_type") or "")
+        for r in ops_map
+        if isinstance(r, dict)
+        and _is_filled(r.get("name"))
+        and not str(r.get("name")).startswith("Information")
+    }
+    map_ok = len(filled_kinds & {"process", "asset", "site", "labour"}) >= 2
+    rows.append({
+        "check": "process_asset_site_labour_map",
+        "status": "PASS" if map_ok else "FAIL",
+        "finding": (
+            f"Mapped element types: {', '.join(sorted(filled_kinds)) or 'none'}"
+            if map_ok
+            else _info_request("process / asset / site / labour map from records")
+        ),
+        "action": _OPS_MAP_RULE,
+    })
+
+    util_ok = any(
+        isinstance(c, dict)
+        and (
+            (
+                _is_filled(c.get("utilisation"))
+                and not str(c.get("utilisation")).startswith("Information")
+            )
+            or (
+                _is_filled(c.get("current_capacity"))
+                and not str(c.get("current_capacity")).startswith("Information")
+            )
+        )
+        for c in capacity
+    )
+    rows.append({
+        "check": "capacity_utilisation",
+        "status": "PASS" if util_ok else "FAIL",
+        "finding": (
+            "Capacity and/or utilisation evidenced"
+            if util_ok
+            else _info_request("capacity and utilisation vs plan")
+        ),
+        "action": _UTIL_RULE,
+    })
+
+    inc_ok = sum(
+        1 for r in incident_review
+        if isinstance(r, dict)
+        and r.get("review_type") in {"incident", "maintenance", "insurance"}
+        and _is_filled(r.get("finding"))
+        and not str(r.get("finding")).startswith("Information")
+    )
+    rows.append({
+        "check": "incident_maintenance_insurance",
+        "status": "PASS" if inc_ok >= 1 else "FAIL",
+        "finding": (
+            f"{inc_ok} incident/maintenance/insurance finding(s) evidenced"
+            if inc_ok >= 1
+            else _info_request("incident / maintenance / insurance review")
+        ),
+        "action": _INCIDENT_RULE,
+    })
+
+    pnl_ok = sum(
+        1 for s in sized
+        if isinstance(s, dict)
+        and str(s.get("sized") or "") in {"Yes", "Partial"}
+        and (
+            (
+                _is_filled(s.get("ebitda_if_recurs"))
+                and not str(s.get("ebitda_if_recurs")).startswith("Information")
+            )
+            or (
+                _is_filled(s.get("cash_impact"))
+                and not str(s.get("cash_impact")).startswith("Information")
+            )
+            or (
+                _is_filled(s.get("revenue_impact"))
+                and not str(s.get("revenue_impact")).startswith("Information")
+            )
+        )
+    )
+    rows.append({
+        "check": "disruption_to_pnl_cash",
+        "status": "PASS" if pnl_ok >= 1 else "FAIL",
+        "finding": (
+            f"{pnl_ok} risk(s) sized to revenue/EBITDA/cash"
+            if pnl_ok >= 1
+            else _info_request("disruption → revenue / EBITDA / cash sizing")
+        ),
+        "action": _CASH_IMPACT_RULE,
+    })
+
+    tested = sum(
+        1 for c in continuity
+        if isinstance(c, dict)
+        and (
+            str(c.get("tested_or_used") or "") in {"Used or tested", "Tested"}
+            or (
+                "tested" in str(c.get("tested_or_used") or "").lower()
+                and "untested" not in str(c.get("tested_or_used") or "").lower()
+            )
+        )
+    )
+    has_cont = any(
+        isinstance(c, dict)
+        and _is_filled(c.get("arrangement"))
+        and not str(c.get("arrangement")).startswith("Information")
+        for c in continuity
+    )
+    rows.append({
+        "check": "continuity_tested_vs_untested",
+        "status": "PASS" if has_cont else "FAIL",
+        "finding": (
+            f"{tested} used/tested; continuity status stated"
+            if has_cont
+            else _info_request("continuity arrangements with used/tested status")
+        ),
+        "action": _CONTINUITY_OPS_RULE,
+    })
+
+    cf_present = bool(bottleneck_cf.get("cash_flow_present"))
+    conflicts = len(bottleneck_cf.get("conflicts") or [])
+    rows.append({
+        "check": "growth_bottleneck_cash_flow",
+        "status": "FAIL" if (not cf_present or conflicts) else "PASS",
+        "finding": (
+            f"{conflicts} bottleneck conflict(s) vs Cash Flow"
+            if conflicts
+            else (
+                "Growth-plan bottlenecks reconciled with Cash Flow"
+                if cf_present
+                else _info_request("Cash Flow output for growth-bottleneck reconcile")
+            )
+        ),
+        "action": _BOTTLENECK_CF_RULE,
+    })
+
+    rows.append({
+        "check": "no_invented_cyber_insurance",
+        "status": "FAIL" if proxy_flags else "PASS",
+        "finding": (
+            "; ".join(proxy_flags[:3])
+            if proxy_flags
+            else _NO_PROXY_RULE
+        ),
+        "action": _NO_PROXY_RULE,
+    })
+    return rows
+
+
+def _questions_from_ops_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("ops_evidence_qa")
+        if isinstance(spec.get("ops_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("process_asset_site_labour_map"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide the process / asset / site / labour map for day-to-day "
+                        "delivery from ops records"
+                    ),
+                    "required_records": "Ops site register + asset list + labour roster",
+                    "decision_effect": "Operational failure modes cannot be grounded without a map",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "ops diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "process_asset_site_labour_map QA PASS",
+                    "interim_treatment": "BLOCKED — do not invent an ops map",
+                }
+            )
+        )
+    if _qa_fail("capacity_utilisation"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Provide capacity and utilisation vs current and planned volume",
+                    "required_records": "Capacity pack + utilisation series + plan volumes",
+                    "decision_effect": "Plan ramp may bind capacity without this evidence",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "capacity_utilisation QA PASS",
+                    "interim_treatment": "LIMITED — flag capacity as untested vs plan",
+                }
+            )
+        )
+    if _qa_fail("incident_maintenance_insurance"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide incident log, maintenance schedule and insurance / BI "
+                        "cover evidence"
+                    ),
+                    "required_records": "Incident register + PM schedule + insurance certificates",
+                    "decision_effect": "Cannot size absorbability without incident/insurance packs",
+                    "priority": "signing_condition",
+                    "owner": "ops / insurance diligence",
+                    "timing": "per deal timetable",
+                    "closure_test": "incident_maintenance_insurance QA PASS",
+                    "interim_treatment": "LIMITED — do not invent cover from proxies",
+                }
+            )
+        )
+    if _qa_fail("disruption_to_pnl_cash"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Size each material disruption to revenue, EBITDA and cash "
+                        "at the observed recurrence rate"
+                    ),
+                    "required_records": "Incident cost bridge + P&L / cash impact schedule",
+                    "decision_effect": "EBITDA-only sizing understates cash at risk",
+                    "priority": "signing_condition",
+                    "owner": "financial / ops diligence",
+                    "timing": "before IC",
+                    "closure_test": "disruption_to_pnl_cash QA PASS",
+                    "interim_treatment": "LIMITED — withhold unsigned cash impacts",
+                }
+            )
+        )
+    if _qa_fail("continuity_tested_vs_untested"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "List continuity / BCP arrangements and whether each has been "
+                        "used or tested"
+                    ),
+                    "required_records": "BCP register + drill / invocation evidence",
+                    "decision_effect": "Untested continuity overstates absorbability",
+                    "priority": "signing_condition",
+                    "owner": "ops diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "continuity_tested_vs_untested QA PASS",
+                    "interim_treatment": "LIMITED — treat untested plans as unproven",
+                }
+            )
+        )
+    if _qa_fail("growth_bottleneck_cash_flow"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Reconcile growth-plan ops bottlenecks with Cash Flow "
+                        "(WC / liquidity / funding)"
+                    ),
+                    "required_records": "Cash Flow agent output + plan capacity bridge",
+                    "decision_effect": "Ops capacity claims may contradict funding reality",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "financial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "growth_bottleneck_cash_flow QA PASS",
+                    "interim_treatment": "LIMITED — do not credit unfunded capacity ramps",
+                }
+            )
+        )
+    if _qa_fail("no_invented_cyber_insurance"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Remove cyber/insurance claims grounded only in weak IT proxies; "
+                        "supply real cyber incident / insurance evidence or label hypotheses"
+                    ),
+                    "required_records": "Cyber control report and/or insurance certificates",
+                    "decision_effect": "Invented cyber/insurance distorts the risk register",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "ops / cyber diligence",
+                    "timing": "before IC",
+                    "closure_test": "no_invented_cyber_insurance QA PASS",
+                    "interim_treatment": "Strip proxy claims; reliance LIMITED",
+                }
+            )
+        )
+    return out
+
+
 def _quality_reliance(
     *,
     register: list[dict],
@@ -743,6 +1473,7 @@ def _heuristic_operational_risk_spec(
     sources: list[str],
     geography: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del geography
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
@@ -759,9 +1490,19 @@ def _heuristic_operational_risk_spec(
     corpus_full = (corpus or "") + extra
 
     register = _extract_register(corpus_full, legacy)
+    ops_map = _extract_ops_map(corpus_full)
+    capacity = _extract_capacity_utilisation(corpus_full)
+    incident_review = _extract_incident_maintenance_insurance(corpus_full)
+    register, proxy_flags = _guard_cyber_insurance_proxies(
+        register, incident_review, corpus_full,
+    )
     sized = _extract_sized(register, corpus_full)
     controls = _extract_controls(register, corpus_full)
+    continuity = _extract_continuity_ops(corpus_full, controls)
     hist_plan = _extract_historical_vs_plan(register, corpus_full)
+    bottleneck_cf = _reconcile_growth_bottlenecks(
+        hist_plan=hist_plan, capacity=capacity, cash_flow_spec=cash_flow_spec,
+    )
     priced = _extract_priced_vs_noise(register, sized, corpus_full)
     kpi_gaps = _legacy_kpi_gaps(register, legacy)
     risk_items = _legacy_risk_items(register, sized, legacy)
@@ -773,14 +1514,44 @@ def _heuristic_operational_risk_spec(
         _PLAN_RULE,
         _PRICE_RULE,
         _HYPOTHESIS_RULE,
+        _OPS_MAP_RULE,
+        _UTIL_RULE,
+        _INCIDENT_RULE,
+        _CASH_IMPACT_RULE,
+        _CONTINUITY_OPS_RULE,
+        _BOTTLENECK_CF_RULE,
+        _NO_PROXY_RULE,
     ]
+    if proxy_flags:
+        notes.append(_NO_PROXY_RULE + " " + proxy_flags[0])
+    if bottleneck_cf.get("conflicts"):
+        notes.append(
+            f"Cash Flow bottleneck reconcile: {len(bottleneck_cf['conflicts'])} conflict(s)."
+        )
     for n in (legacy.get("integrity_notes") or [])[:3]:
         if isinstance(n, str) and n.strip():
             notes.append(_soften_invest(_clean(n, 240)))
 
+    ops_qa = _ops_evidence_qa(
+        ops_map=ops_map,
+        capacity=capacity,
+        incident_review=incident_review,
+        sized=sized,
+        continuity=continuity,
+        bottleneck_cf=bottleneck_cf,
+        proxy_flags=proxy_flags,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in ops_qa)
+
     quality, reliance, rationale = _quality_reliance(
         register=register, sized=sized, controls=controls, priced=priced,
     )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = "Ops evidence QA has open FAILs — reliance limited. " + rationale
+    if bottleneck_cf.get("conflicts"):
+        quality = "REWORK"
+        rationale = "Growth-bottleneck vs Cash Flow conflicts — rework. " + rationale
 
     evidenced_n = sum(
         1 for r in register
@@ -796,17 +1567,24 @@ def _heuristic_operational_risk_spec(
         f"{tested_n} tested control(s)",
     ]
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
+        "ops_map": ops_map,
+        "capacity_utilisation": capacity,
+        "incident_maintenance_insurance": incident_review,
         "risk_register": register,
         "sized_risks": sized,
         "controls": controls,
+        "continuity_arrangements": continuity,
         "historical_vs_plan": hist_plan,
+        "growth_bottleneck_reconcile": bottleneck_cf,
         "priced_vs_noise": priced,
+        "proxy_flags": proxy_flags,
+        "ops_evidence_qa": ops_qa,
         # Legacy dual-write
         "kpi_gaps": kpi_gaps,
         "risk_items": risk_items,
-        "integrity_notes": notes[:8],
+        "integrity_notes": notes[:12],
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": rationale,
@@ -816,6 +1594,8 @@ def _heuristic_operational_risk_spec(
         "dd_code": legacy.get("dd_code") or _DD_CODE,
         "empty": evidenced_n == 0 and not kpi_gaps and not risk_items,
     }
+    out["questions"] = _questions_from_ops_gaps(out)
+    return out
 
 
 def _llm_operational_risk_spec(
@@ -826,6 +1606,12 @@ def _llm_operational_risk_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -838,30 +1624,61 @@ def _llm_operational_risk_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
 
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
+    cf_blob = ""
+    if isinstance(cash_flow_spec, dict) and cash_flow_spec:
+        cf_blob = (
+            "\nCASH_FLOW_SPEC (reconcile growth bottlenecks — do not contradict):\n"
+            + str({
+                "cash_metrics": cash_flow_spec.get("cash_metrics"),
+                "working_capital": cash_flow_spec.get("working_capital"),
+                "liquidity": cash_flow_spec.get("liquidity"),
+            })[:3_000]
+            + "\n"
+        )
     user = (
         f"Target company / deal name: {company}\n"
         f"Geography focus: {geography or 'as evidenced in the data room'}\n\n"
-        f"Sources:\n{src_list}\n\n"
+        f"Sources:\n{src_list}\n"
+        f"{cf_blob}\n"
         f"Evidence:\n{corpus[:38_000]}\n\n"
         "Return JSON with keys:\n"
         "insight_snapshot (string),\n"
+        "ops_map: [{element_type (process|asset|site|labour), name, evidence, source, notes}],\n"
+        "capacity_utilisation: [{stage, current_capacity, utilisation, headroom, when_binds, "
+        "source, notes}],\n"
+        "incident_maintenance_insurance: [{review_type, finding, source, notes}],\n"
         "risk_register: [{risk, category, evidence, record_type, hypothesis, "
         "test_request, source, notes}],\n"
-        "sized_risks: [{risk, frequency, cost, ebitda_if_recurs, sized, source, notes}],\n"
+        "sized_risks: [{risk, frequency, cost, revenue_impact, ebitda_if_recurs, cash_impact, "
+        "sized, source, notes}],\n"
         "controls: [{risk, control, tested, mitigation_status, source, notes}],\n"
+        "continuity_arrangements: [{arrangement, tested_or_used, mitigation_status, source, notes}],\n"
         "historical_vs_plan: [{risk, bucket, plan_driver, source, notes}],\n"
         "priced_vs_noise: [{risk, classification, rationale, source, notes}],\n"
+        "ops_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "process_asset_site_labour_map, capacity_utilisation, incident_maintenance_insurance, "
+        "disruption_to_pnl_cash, continuity_tested_vs_untested, growth_bottleneck_cash_flow, "
+        "no_invented_cyber_insurance,\n"
+        "questions: [{question, required_records, decision_effect, priority, owner, "
+        "timing, closure_test, interim_treatment}],\n"
         "kpi_gaps: [{kpi, status}], risk_items: [{risk, likelihood, impact}],\n"
         "integrity_notes: [string],\n"
         "quality_verdict (PASS|REWORK), reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
         "Derive risks ONLY from records — no generic taxonomy. "
         "Untested controls are not mitigation. Label hypotheses. "
+        "Do not invent cyber/insurance from weak IT proxies. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -874,6 +1691,7 @@ def _normalise_llm_spec(
     sources: list[str],
     legacy_spec: dict[str, Any] | None,
     corpus: str = "",
+    cash_flow_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
     heur = _heuristic_operational_risk_spec(
@@ -881,6 +1699,7 @@ def _normalise_llm_spec(
         corpus=corpus,
         sources=sources,
         legacy_spec=legacy,
+        cash_flow_spec=cash_flow_spec,
     )
 
     def _rows(key: str, required: str) -> list[dict[str, Any]]:
@@ -900,11 +1719,31 @@ def _normalise_llm_spec(
         else:
             row["hypothesis"] = False
             row["notes"] = _REGISTER_RULE
+
+    ops_map = _rows("ops_map", "name") or heur.get("ops_map") or []
+    llm["ops_map"] = ops_map
+    capacity = _rows("capacity_utilisation", "stage") or heur.get("capacity_utilisation") or []
+    llm["capacity_utilisation"] = capacity
+    incident_review = (
+        _rows("incident_maintenance_insurance", "review_type")
+        or heur.get("incident_maintenance_insurance")
+        or []
+    )
+    llm["incident_maintenance_insurance"] = incident_review
+
+    register, proxy_flags = _guard_cyber_insurance_proxies(
+        register, incident_review, corpus,
+    )
     llm["risk_register"] = register
+    llm["proxy_flags"] = proxy_flags or list(heur.get("proxy_flags") or [])
 
     sized = _rows("sized_risks", "risk")
     for row in sized:
-        row["notes"] = _SIZE_RULE
+        if not row.get("cash_impact"):
+            row["cash_impact"] = _info_request("cash / liquidity impact if recurs")
+        if not row.get("revenue_impact"):
+            row["revenue_impact"] = _info_request("revenue impact if recurs")
+        row["notes"] = f"{_SIZE_RULE} {_CASH_IMPACT_RULE}"
     llm["sized_risks"] = sized
 
     controls = _rows("controls", "risk")
@@ -922,10 +1761,24 @@ def _normalise_llm_spec(
         row["notes"] = _CONTROL_RULE
     llm["controls"] = controls
 
+    continuity = _rows("continuity_arrangements", "arrangement")
+    if not continuity:
+        continuity = heur.get("continuity_arrangements") or _extract_continuity_ops(
+            corpus, controls,
+        )
+    for row in continuity:
+        row["notes"] = _CONTINUITY_OPS_RULE
+    llm["continuity_arrangements"] = continuity
+
     hist = _rows("historical_vs_plan", "risk")
     for row in hist:
         row["notes"] = _PLAN_RULE
     llm["historical_vs_plan"] = hist
+
+    bottleneck_cf = _reconcile_growth_bottlenecks(
+        hist_plan=hist, capacity=capacity, cash_flow_spec=cash_flow_spec,
+    )
+    llm["growth_bottleneck_reconcile"] = bottleneck_cf
 
     priced = _rows("priced_vs_noise", "risk")
     for row in priced:
@@ -947,12 +1800,26 @@ def _normalise_llm_spec(
     notes = [_soften_invest(_clean(n, 240)) for n in notes if isinstance(n, str) and n.strip()]
     for rule in (
         _REGISTER_RULE, _SIZE_RULE, _CONTROL_RULE, _PLAN_RULE, _PRICE_RULE, _HYPOTHESIS_RULE,
+        _OPS_MAP_RULE, _UTIL_RULE, _INCIDENT_RULE, _CASH_IMPACT_RULE,
+        _CONTINUITY_OPS_RULE, _BOTTLENECK_CF_RULE, _NO_PROXY_RULE,
     ):
         if not any(rule[:28].lower() in x.lower() for x in notes):
             notes.append(rule)
     if not notes:
         notes = heur["integrity_notes"]
-    llm["integrity_notes"] = notes[:8]
+    llm["integrity_notes"] = notes[:12]
+
+    ops_qa = _ops_evidence_qa(
+        ops_map=ops_map,
+        capacity=capacity,
+        incident_review=incident_review,
+        sized=sized,
+        continuity=continuity,
+        bottleneck_cf=bottleneck_cf,
+        proxy_flags=llm["proxy_flags"],
+    )
+    llm["ops_evidence_qa"] = ops_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in ops_qa)
 
     quality, reliance, rationale = _quality_reliance(
         register=register, sized=sized, controls=controls, priced=priced,
@@ -966,6 +1833,26 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if bottleneck_cf.get("conflicts"):
+        llm["quality_verdict"] = "REWORK"
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "Ops evidence QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_ops_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_ops_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
@@ -987,6 +1874,7 @@ def build_operational_risk_spec(
     index: dict[str, Any] | None = None,
     company: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    cash_flow_spec: dict[str, Any] | None = None,
     corpus: str | None = None,
     sources: list[str] | None = None,
     prefer_heuristic: bool = False,
@@ -1026,22 +1914,34 @@ def build_operational_risk_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
+            cash_flow_spec=cash_flow_spec,
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
+                cash_flow_spec=cash_flow_spec,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_operational_risk_spec(
+    heur = _heuristic_operational_risk_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
         legacy_spec=legacy_spec,
+        cash_flow_spec=cash_flow_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_operational_risk_markdown(
@@ -1061,16 +1961,48 @@ def render_operational_risk_markdown(
         spec.get("priced_vs_noise")
         if isinstance(spec.get("priced_vs_noise"), list) else []
     )
+    ops_map = spec.get("ops_map") if isinstance(spec.get("ops_map"), list) else []
+    capacity = (
+        spec.get("capacity_utilisation")
+        if isinstance(spec.get("capacity_utilisation"), list) else []
+    )
+    incident_review = (
+        spec.get("incident_maintenance_insurance")
+        if isinstance(spec.get("incident_maintenance_insurance"), list) else []
+    )
+    continuity = (
+        spec.get("continuity_arrangements")
+        if isinstance(spec.get("continuity_arrangements"), list) else []
+    )
+    bottleneck = (
+        spec.get("growth_bottleneck_reconcile")
+        if isinstance(spec.get("growth_bottleneck_reconcile"), dict) else {}
+    )
     kpi_gaps = spec.get("kpi_gaps") if isinstance(spec.get("kpi_gaps"), list) else []
     risk_items = spec.get("risk_items") if isinstance(spec.get("risk_items"), list) else []
     notes = spec.get("integrity_notes") if isinstance(spec.get("integrity_notes"), list) else []
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
+    parts.append(f"{_NO_PROXY_RULE}\n\n")
 
     # 1
     parts.append("## 1. Evidence-Derived Risk Register\n\n")
     parts.append(f"{_REGISTER_RULE}\n\n")
+    if ops_map:
+        parts.append(f"### Process / asset / site / labour map\n\n{_OPS_MAP_RULE}\n\n")
+        parts.append(_table(
+            ["Type", "Name", "Evidence", "Source"],
+            [
+                [
+                    _clean(r.get("element_type"), 20),
+                    _clean(r.get("name"), 80),
+                    _clean(r.get("evidence"), 120),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in ops_map if isinstance(r, dict)
+            ],
+        ))
     if register:
         parts.append(_table(
             ["Risk", "Category", "Evidence from records", "Hypothesis?", "Source"],
@@ -1099,17 +2031,35 @@ def render_operational_risk_markdown(
     parts.append("---\n\n")
 
     # 2
-    parts.append("## 2. Sized Risks (Frequency / Cost / EBITDA)\n\n")
-    parts.append(f"{_SIZE_RULE}\n\n")
-    if sized:
+    parts.append("## 2. Sized Risks (Revenue / EBITDA / Cash)\n\n")
+    parts.append(f"{_SIZE_RULE} {_CASH_IMPACT_RULE}\n\n")
+    if capacity:
+        parts.append(f"### Capacity & utilisation\n\n{_UTIL_RULE}\n\n")
         parts.append(_table(
-            ["Risk", "Frequency", "Historical cost", "EBITDA if recurs", "Sized?", "Source"],
+            ["Stage", "Capacity", "Utilisation", "Headroom", "When binds", "Source"],
             [
                 [
-                    _clean(r.get("risk"), 100),
-                    _clean(r.get("frequency"), 60),
-                    _clean(r.get("cost"), 60),
-                    _clean(r.get("ebitda_if_recurs"), 100),
+                    _clean(r.get("stage"), 40),
+                    _clean(r.get("current_capacity"), 80),
+                    _clean(r.get("utilisation"), 40),
+                    _clean(r.get("headroom"), 80),
+                    _clean(r.get("when_binds"), 100),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in capacity if isinstance(r, dict)
+            ],
+        ))
+    if sized:
+        parts.append(_table(
+            ["Risk", "Frequency", "Cost", "Revenue", "EBITDA", "Cash", "Sized?", "Source"],
+            [
+                [
+                    _clean(r.get("risk"), 80),
+                    _clean(r.get("frequency"), 50),
+                    _clean(r.get("cost"), 50),
+                    _clean(r.get("revenue_impact"), 50),
+                    _clean(r.get("ebitda_if_recurs"), 80),
+                    _clean(r.get("cash_impact"), 60),
                     _clean(r.get("sized"), 20),
                     _clean(r.get("source") or _NA, 40),
                 ]
@@ -1121,8 +2071,21 @@ def render_operational_risk_markdown(
     parts.append("---\n\n")
 
     # 3
-    parts.append("## 3. Controls & Testing\n\n")
-    parts.append(f"{_CONTROL_RULE}\n\n")
+    parts.append("## 3. Controls, Continuity & Reviews\n\n")
+    parts.append(f"{_CONTROL_RULE} {_CONTINUITY_OPS_RULE}\n\n")
+    if incident_review:
+        parts.append(f"### Incident / maintenance / insurance\n\n{_INCIDENT_RULE}\n\n")
+        parts.append(_table(
+            ["Type", "Finding", "Source"],
+            [
+                [
+                    _clean(r.get("review_type"), 20),
+                    _clean(r.get("finding"), 180),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in incident_review if isinstance(r, dict)
+            ],
+        ))
     if controls:
         parts.append(_table(
             ["Risk", "Control in place", "Tested?", "Mitigation status", "Source"],
@@ -1139,6 +2102,20 @@ def render_operational_risk_markdown(
         ))
     else:
         parts.append(f"**{_info_request('controls and test status')}**\n\n")
+    if continuity:
+        parts.append("### Continuity arrangements (tested vs untested)\n\n")
+        parts.append(_table(
+            ["Arrangement", "Used or tested?", "Mitigation status", "Source"],
+            [
+                [
+                    _clean(r.get("arrangement"), 140),
+                    _clean(r.get("tested_or_used"), 40),
+                    _clean(r.get("mitigation_status"), 80),
+                    _clean(r.get("source") or _NA, 40),
+                ]
+                for r in continuity if isinstance(r, dict)
+            ],
+        ))
     parts.append("---\n\n")
 
     # 4
@@ -1159,6 +2136,33 @@ def render_operational_risk_markdown(
         ))
     else:
         parts.append(f"**{_info_request('historical vs plan classification')}**\n\n")
+    parts.append(f"### Growth-bottleneck ↔ Cash Flow\n\n{_BOTTLENECK_CF_RULE}\n\n")
+    parts.append(_table(
+        ["Item", "Statement"],
+        [
+            [
+                "Cash Flow present",
+                "Yes" if bottleneck.get("cash_flow_present") else "No",
+            ],
+            ["Plan bottlenecks", str(bottleneck.get("plan_bottlenecks") or 0)],
+            ["Capacity binds", str(bottleneck.get("capacity_binds") or 0)],
+            [
+                "Aligned",
+                "; ".join(
+                    _clean(a, 120) for a in (bottleneck.get("aligned") or [])[:3]
+                    if isinstance(a, str)
+                ) or "—",
+            ],
+            [
+                "Conflicts",
+                "; ".join(
+                    _clean(c, 120) for c in (bottleneck.get("conflicts") or [])[:3]
+                    if isinstance(c, str)
+                ) or "None",
+            ],
+            ["Notes", _clean(bottleneck.get("notes"), 280)],
+        ],
+    ))
     parts.append("---\n\n")
 
     # 5
@@ -1192,12 +2196,65 @@ def render_operational_risk_markdown(
         ))
     parts.append(
         "*This section does not recommend invest or pass. Untested controls are not "
-        "mitigation. Hypotheses are labelled and request what would test them.*\n\n"
+        "mitigation. Hypotheses are labelled and request what would test them. "
+        f"{_NO_PROXY_RULE}*\n\n"
     )
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    ops_qa = (
+        spec.get("ops_evidence_qa")
+        if isinstance(spec.get("ops_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. Operational Risk Evidence QA\n\n")
+    parts.append(
+        "QA enforces ops map, capacity/utilisation, incident/maintenance/insurance, "
+        "disruption → P&L/cash, continuity tested vs untested, growth-bottleneck "
+        "Cash Flow reconcile, and no invented cyber/insurance from weak proxies.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in ops_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('ops evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material operational-risk gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [
@@ -1223,13 +2280,14 @@ def render_operational_risk_markdown(
     )
     if notes:
         parts.append("### Integrity notes\n\n")
-        for n in notes[:6]:
+        for n in notes[:8]:
             if isinstance(n, str) and n.strip():
                 parts.append(f"- {_clean(n, 240)}\n")
         parts.append("\n")
     parts.append(
         "*This document builds an operational risk register from evidence and sizes "
-        "what each failure mode would cost. It does not recommend invest or pass.*\n\n"
+        "what each failure mode would cost. Open ops-evidence QA FAILs cap READY → LIMITED. "
+        "It does not recommend invest or pass.*\n\n"
     )
     parts.append("---\n\n")
 

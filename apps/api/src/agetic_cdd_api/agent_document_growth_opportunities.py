@@ -1,11 +1,11 @@
 """Compose DiligenceIQ Growth Opportunities — costed upside options.
 
 Available options that fit the operating model; sized revenue/margin with
-calculation and named assumptions; requirements (capital, people, capacity,
-permits, systems, time); achievability evidence (pipeline/pilot/prior/
-comparable) or labelled hypothesis; base case vs upside (no double count).
-No success probabilities without a basis. Rank by evidence and size; say
-which the buyer must fund.
+calculation and named assumptions; requirements (capex, opex, WC, hiring,
+capacity, permits, systems, time); addressability + regulatory deps;
+achievability evidence or labelled hypothesis; base vs upside (no double
+count). Rank by net value / payback / feasibility. Anti-overlap Synergies /
+Strategic Direction. No success probabilities without a basis.
 
 Dual-writes legacy DD-01b fields (growth_levers / market_growth /
 milestone_targets / opportunity_notes).
@@ -50,8 +50,9 @@ _SIZE_RULE = (
     "used where they exist."
 )
 _REQUIRE_RULE = (
-    "Each option states what it requires — capital, hiring, capacity, "
-    "permits, systems — and how long before it contributes."
+    "Each option states what it requires — capex, opex, working capital, "
+    "hiring, capacity, permits, systems — and how long before it contributes. "
+    "Addressability and regulatory dependencies are stated."
 )
 _EVIDENCE_RULE = (
     "Achievability evidence is a pipeline, completed pilot, similar prior "
@@ -63,9 +64,36 @@ _BASE_UP_RULE = (
     "additional, so nothing is counted twice."
 )
 _RANK_RULE = (
-    "Options are ranked by evidence strength and by size. Success "
-    "probabilities are not assigned without a basis. Buyer-funded options "
-    "are called out."
+    "Options are ranked by net value, payback and feasibility (with evidence "
+    "and size). Success probabilities are not assigned without a basis. "
+    "Buyer-funded options are called out."
+)
+_OVERLAP_RULE = (
+    "Growth Opportunities stays stand-alone / organic. Buyer synergies and "
+    "Strategic Direction initiatives are cross-checked — not restated here."
+)
+_PROB_RULE = (
+    "Do not assign numeric success probabilities without an evidenced basis."
+)
+_OPEX_RE = re.compile(
+    r"(?i)\b(opex|operating\s+(?:cost|expense)|run[- ]?rate\s+cost|"
+    r"sg&a|selling\s+expense)\b"
+)
+_WC_RE = re.compile(
+    r"(?i)\b(working\s+capital|WC\b|inventory\s+build|receivable|"
+    r"trade\s+debtor|cash\s+conversion)\b"
+)
+_ADDRESS_RE = re.compile(
+    r"(?i)\b(addressable|TAM|SAM|SOM|serviceable|reachable|"
+    r"market\s+available|share\s+of\s+(?:wallet|category))\b"
+)
+_SYNERGY_CUE_RE = re.compile(
+    r"(?i)\b(synerg(?:y|ies)|cross[- ]sell|buyer[- ]led|"
+    r"post[- ]merger|integration\s+uplift|acquirer\s+channel)\b"
+)
+_STRATEGY_CUE_RE = re.compile(
+    r"(?i)\b(strategic\s+direction|three[- ]case|investment\s+thesis|"
+    r"management\s+ambition|equity\s+story)\b"
 )
 
 _OPTION_TYPES = (
@@ -509,6 +537,24 @@ def _requirements_for(name: str, note: str, corpus: str) -> dict[str, str]:
             else "Capex / localization investment implied by capacity roadmap",
             80,
         )
+    opex = _NA
+    if _OPEX_RE.search(win) or any(
+        k in blob for k in ("retail", "experience center", "hiring", "sg&a", "subscription")
+    ):
+        opex = _clean(
+            _OPEX_RE.search(win).group(0) if _OPEX_RE.search(win)
+            else "Opex / run-rate cost to operate the option",
+            80,
+        )
+    elif "ecosystem" in blob or "charging" in blob:
+        opex = "Network / service opex implied by ecosystem rollout"
+    working_capital = _NA
+    if _WC_RE.search(win) or "capacity" in blob or "scale" in blob or "inventory" in blob:
+        working_capital = _clean(
+            _WC_RE.search(win).group(0) if _WC_RE.search(win)
+            else "Working capital for volume / inventory build",
+            80,
+        )
     hiring = _NA
     if any(k in blob for k in ("hiring", "headcount", "workforce", "talent", "retail", "experience center")):
         hiring = "Hiring / retail workforce implied by footprint expansion"
@@ -519,11 +565,29 @@ def _requirements_for(name: str, note: str, corpus: str) -> dict[str, str]:
     if cap_m or "capacity" in blob or "factory" in blob or "gigafactory" in blob:
         capacity = _clean(cap_m.group(0) if cap_m else "Manufacturing / battery capacity expansion", 80)
     permits = _NA
+    regulatory_deps = _NA
     if _PERMIT_RE.search(win) or "factory" in blob or "gigafactory" in blob:
         permits = "Site / environmental / operating permits for capacity build-out"
+        regulatory_deps = permits
+    elif "export" in blob or "geography" in blob or "adjacent geography" in blob:
+        regulatory_deps = _info_request("regulatory / market-entry approvals for geography")
     systems = _NA
     if any(k in blob for k in ("software", "ota", "moveos", "subscription", "ecosystem", "systems")):
         systems = "Platform / billing / connected-vehicle systems"
+    addressability = _NA
+    if _ADDRESS_RE.search(win) or _ADDRESS_RE.search(note):
+        addressability = _clean(
+            (_ADDRESS_RE.search(win) or _ADDRESS_RE.search(note) or _ADDRESS_RE.search(corpus)).group(0),
+            80,
+        )
+    elif "brand" in blob or "retail" in blob or "penetration" in blob:
+        addressability = "Category / footprint customers reachable via current channel"
+    elif "ecosystem" in blob:
+        addressability = "Installed base / attachable customers for adjacent services"
+    elif "scale" in blob or "capacity" in blob:
+        addressability = "Capacity-constrained share of served market"
+    else:
+        addressability = _info_request(f"addressable population for '{name}'")
     time_to = _NA
     ym = _YEAR_RE.search(win) or _YEAR_RE.search(note)
     if ym:
@@ -537,6 +601,10 @@ def _requirements_for(name: str, note: str, corpus: str) -> dict[str, str]:
 
     return {
         "capital": capital,
+        "opex": opex,
+        "working_capital": working_capital,
+        "addressability": addressability,
+        "regulatory_deps": regulatory_deps,
         "hiring": hiring,
         "capacity": capacity,
         "permits": permits,
@@ -674,7 +742,7 @@ def _evidence_rank(status: str, evidence_type: str) -> int:
     return 9
 
 
-def _size_rank(sizing: dict[str, str]) -> int:
+def _size_rank(sizing: dict[str, Any]) -> int:
     calc = str(sizing.get("calculation") or "")
     if calc.startswith("Information") or calc.startswith("N/A"):
         return 5
@@ -683,6 +751,64 @@ def _size_rank(sizing: dict[str, str]) -> int:
     if "ARPU" in calc or "attach" in calc.lower():
         return 2
     return 3
+
+
+def _feasibility_rank(option: dict[str, Any]) -> int:
+    evid = str(option.get("evidence_status") or "")
+    score = 0 if evid == "Evidenced" else 4
+    if _is_info(option.get("time_to_contribute")):
+        score += 2
+    if _is_info(option.get("addressability")):
+        score += 1
+    return score
+
+
+def _rank_dimensions(option: dict[str, Any]) -> dict[str, str]:
+    """Derive net value / payback / feasibility labels for ranking."""
+    evid = str(option.get("evidence_status") or "")
+    calc = str(option.get("calculation") or "")
+    sized = not _is_info(calc) and bool(re.search(r"\d", calc))
+    margin = str(option.get("incremental_margin") or "")
+    time_to = str(option.get("time_to_contribute") or "").lower()
+    capital = str(option.get("capital") or "")
+    plan = str(option.get("plan_status") or "")
+
+    if sized and evid == "Evidenced":
+        net_value = f"Sized incremental case — {_clean(margin, 60)}"
+    elif sized:
+        net_value = f"Sized but hypothesis — {_clean(margin, 60)}"
+    else:
+        net_value = _info_request("net value (incremental margin less funding)")
+
+    if "near-term" in time_to or "fy2025" in time_to or "phase 2" in time_to:
+        payback = "Near-term contribution path (pack-timed)"
+    elif (ym := _YEAR_RE.search(time_to)):
+        payback = f"Contribution timed to {ym.group(0)} — payback not computed"
+    elif not _is_info(option.get("time_to_contribute")):
+        payback = _clean(option.get("time_to_contribute"), 80)
+    else:
+        payback = _info_request("payback / months to cash recovery")
+
+    feas_bits: list[str] = []
+    if evid == "Evidenced":
+        feas_bits.append("evidenced")
+    else:
+        feas_bits.append("hypothesis")
+    if not _is_info(option.get("capacity_needed")):
+        feas_bits.append("capacity path noted")
+    if not _is_info(option.get("permits")) or not _is_info(option.get("regulatory_deps")):
+        feas_bits.append("regulatory deps noted")
+    if "Inside plan" in plan:
+        feas_bits.append("inside plan")
+    if not _is_info(capital) and capital != _NA:
+        feas_bits.append("funding implied")
+    feasibility = "; ".join(feas_bits) if feas_bits else _info_request("feasibility factors")
+
+    return {
+        "net_value": net_value,
+        "payback": payback,
+        "feasibility": feasibility,
+    }
 
 
 def _option_stem(name: str) -> str:
@@ -778,35 +904,41 @@ def _build_options(
         reqs = _requirements_for(name, note, text)
         evidence = _evidence_for(name, note, text)
         base_up = _base_vs_upside(name, note, text)
-        options.append(
-            {
-                "option": name,
-                "option_type": option_type,
-                "fit_rationale": fit_reason,
-                "incremental_revenue": sizing["incremental_revenue"],
-                "incremental_margin": sizing["incremental_margin"],
-                "calculation": sizing["calculation"],
-                "assumptions": sizing["assumptions"],
-                "capital": reqs["capital"],
-                "hiring": reqs["hiring"],
-                "capacity_needed": reqs["capacity"],
-                "permits": reqs["permits"],
-                "systems": reqs["systems"],
-                "time_to_contribute": reqs["time_to_contribute"],
-                "evidence_type": evidence["evidence_type"],
-                "evidence_detail": evidence["evidence_detail"],
-                "evidence_status": evidence["status"],
-                "plan_status": base_up["plan_status"],
-                "plan_detail": base_up["detail"],
-                "buyer_funding": _buyer_funds(reqs, base_up["plan_status"]),
-                "success_probability": None,
-                "source": evidence.get("source") or _DOC_CITE,
-                "notes": f"{_OPTION_RULE} {_SIZE_RULE}",
-            }
-        )
+        row = {
+            "option": name,
+            "option_type": option_type,
+            "fit_rationale": fit_reason,
+            "incremental_revenue": sizing["incremental_revenue"],
+            "incremental_margin": sizing["incremental_margin"],
+            "calculation": sizing["calculation"],
+            "assumptions": sizing["assumptions"],
+            "capital": reqs["capital"],
+            "opex": reqs.get("opex") or _NA,
+            "working_capital": reqs.get("working_capital") or _NA,
+            "hiring": reqs["hiring"],
+            "capacity_needed": reqs["capacity"],
+            "permits": reqs["permits"],
+            "systems": reqs["systems"],
+            "addressability": reqs.get("addressability") or _NA,
+            "regulatory_deps": reqs.get("regulatory_deps") or _NA,
+            "time_to_contribute": reqs["time_to_contribute"],
+            "evidence_type": evidence["evidence_type"],
+            "evidence_detail": evidence["evidence_detail"],
+            "evidence_status": evidence["status"],
+            "plan_status": base_up["plan_status"],
+            "plan_detail": base_up["detail"],
+            "buyer_funding": _buyer_funds(reqs, base_up["plan_status"]),
+            "success_probability": None,
+            "source": evidence.get("source") or _DOC_CITE,
+            "notes": f"{_OPTION_RULE} {_SIZE_RULE} {_RANK_RULE}",
+        }
+        dims = _rank_dimensions(row)
+        row.update(dims)
+        options.append(row)
 
     options.sort(
         key=lambda o: (
+            _feasibility_rank(o),
             _evidence_rank(str(o.get("evidence_status")), str(o.get("evidence_type"))),
             _size_rank(o),
             str(o.get("option") or ""),
@@ -885,9 +1017,456 @@ def _legacy_dual_write(
     return levers[:8], market, milestones[:8], notes[:8]
 
 
+def _go_overlap_cross_check(
+    *,
+    options: list[dict[str, Any]],
+    strategy_spec: dict[str, Any] | None,
+    synergies_spec: dict[str, Any] | None,
+    corpus: str,
+) -> dict[str, Any]:
+    strategy_present = isinstance(strategy_spec, dict) and bool(strategy_spec)
+    synergies_present = isinstance(synergies_spec, dict) and bool(synergies_spec)
+    overlap: list[str] = []
+    conflicts: list[str] = []
+    aligned: list[str] = []
+    handed: list[str] = []
+
+    strategy_names: list[str] = []
+    if strategy_present:
+        for key in ("initiatives", "bridge", "three_cases", "supported_assumptions"):
+            for row in strategy_spec.get(key) or []:
+                if isinstance(row, dict):
+                    label = (
+                        row.get("initiative")
+                        or row.get("driver")
+                        or row.get("case")
+                        or row.get("assumption")
+                        or row.get("name")
+                    )
+                    if label:
+                        strategy_names.append(str(label))
+                elif isinstance(row, str) and row.strip():
+                    strategy_names.append(row.strip())
+
+    synergy_names: list[str] = []
+    if synergies_present:
+        for key in (
+            "cost_synergies",
+            "revenue_synergies",
+            "levers",
+            "synergy_items",
+        ):
+            for row in synergies_spec.get(key) or []:
+                if isinstance(row, dict):
+                    label = (
+                        row.get("lever")
+                        or row.get("item")
+                        or row.get("synergy")
+                        or row.get("name")
+                    )
+                    if label:
+                        synergy_names.append(str(label))
+                elif isinstance(row, str) and row.strip():
+                    synergy_names.append(row.strip())
+
+    kept: list[dict[str, Any]] = []
+    for o in options:
+        if not isinstance(o, dict):
+            continue
+        if _is_info(o.get("option")):
+            kept.append(o)
+            continue
+        name = str(o.get("option") or "")
+        blob = f"{name} {o.get('fit_rationale')} {o.get('evidence_detail')} {o.get('plan_detail')}"
+        syn_hit = next(
+            (
+                s for s in synergy_names
+                if name.lower()[:18] in s.lower() or s.lower()[:18] in name.lower()
+            ),
+            None,
+        )
+        # Only hand off on named synergy match or explicit buyer-synergy cues
+        # (not organic "ecosystem" language alone).
+        if syn_hit or (
+            _SYNERGY_CUE_RE.search(blob)
+            and re.search(r"(?i)\b(buyer|acquirer|post[- ]merger|integration)\b", blob)
+        ):
+            handed.append(f"{_clean(name, 40)} → Synergies")
+            conflicts.append(
+                f"Option '{_clean(name, 50)}' looks like a buyer synergy — hand to Synergies"
+            )
+            continue
+        strat_hit = next(
+            (
+                s for s in strategy_names
+                if name.lower()[:18] in s.lower() or s.lower()[:18] in name.lower()
+            ),
+            None,
+        )
+        if strat_hit:
+            overlap.append(f"{_clean(name, 40)} ↔ Strategy '{_clean(strat_hit, 40)}'")
+            # Soft: keep but flag — organic initiatives may appear in both
+            o["strategy_overlap"] = _clean(strat_hit, 60)
+        kept.append(o)
+
+    if strategy_present and not overlap:
+        aligned.append("Strategic Direction prior present; no hard duplicate restatement")
+    elif not strategy_present:
+        conflicts.append("Strategic Direction prior not available for cross-check")
+    if synergies_present and not any("Synergies" in h for h in handed):
+        aligned.append("Synergies prior present; no buyer-synergy restatement retained")
+    elif not synergies_present:
+        # Soft note only when corpus has synergy cues
+        if _SYNERGY_CUE_RE.search(corpus or ""):
+            conflicts.append("Synergies prior not available while synergy cues appear in pack")
+        else:
+            aligned.append("No Synergies prior; no synergy cues forcing a handoff")
+
+    return {
+        "strategy_prior_present": strategy_present,
+        "synergies_prior_present": synergies_present,
+        "overlap": overlap[:6],
+        "aligned": aligned,
+        "conflicts": conflicts[:8],
+        "handed_to_synergies": handed[:6],
+        "filtered_options": kept,
+        "notes": _OVERLAP_RULE,
+    }
+
+
+def _go_evidence_qa(
+    *,
+    options: list[dict[str, Any]],
+    rejected: list[dict[str, Any]],
+    overlap: dict[str, Any],
+    corpus: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    real = [
+        o for o in options
+        if isinstance(o, dict) and not _is_info(o.get("option"))
+    ]
+
+    fit_ok = bool(real) and all(
+        not _is_info(o.get("option_type")) and not _is_info(o.get("fit_rationale"))
+        for o in real
+    )
+    rows.append({
+        "check": "initiative_inventory_fit",
+        "status": "PASS" if fit_ok else "FAIL",
+        "finding": (
+            f"{len(real)} option(s) mapped to allowed types"
+            + (f"; {len(rejected)} rejected" if rejected else "")
+            if fit_ok
+            else _info_request("growth options that fit the operating model")
+        ),
+        "action": _OPTION_RULE,
+    })
+
+    sized = [
+        o for o in real
+        if not _is_info(o.get("calculation"))
+        and not str(o.get("calculation") or "").startswith("N/A")
+        and not _is_info(o.get("assumptions"))
+    ]
+    rows.append({
+        "check": "incremental_economics",
+        "status": "PASS" if sized else "FAIL",
+        "finding": (
+            f"{len(sized)} option(s) with calculation and named assumptions"
+            if sized
+            else _info_request("incremental revenue/margin with calculation and assumptions")
+        ),
+        "action": _SIZE_RULE,
+    })
+
+    req_ok = all(
+        (
+            not _is_info(o.get("capital"))
+            or not _is_info(o.get("opex"))
+            or not _is_info(o.get("working_capital"))
+        )
+        and not _is_info(o.get("time_to_contribute"))
+        for o in real
+    ) if real else False
+    # Soft: majority with timing + at least one funding field
+    if real and not req_ok:
+        partial = sum(
+            1 for o in real
+            if not _is_info(o.get("time_to_contribute"))
+            and (
+                not _is_info(o.get("capital"))
+                or not _is_info(o.get("opex"))
+                or not _is_info(o.get("working_capital"))
+                or not _is_info(o.get("capacity_needed"))
+            )
+        )
+        req_ok = partial >= max(1, len(real) // 2)
+    rows.append({
+        "check": "capex_opex_wc_timing",
+        "status": "PASS" if req_ok else "FAIL",
+        "finding": (
+            f"{len(real)} option(s) with funding/timing requirements"
+            if req_ok
+            else _info_request("capex, opex, WC and time-to-contribute per option")
+        ),
+        "action": _REQUIRE_RULE,
+    })
+
+    addr_ok = all(
+        not _is_info(o.get("addressability"))
+        or not _is_info(o.get("capacity_needed"))
+        or not _is_info(o.get("regulatory_deps"))
+        or not _is_info(o.get("permits"))
+        for o in real
+    ) if real else False
+    if real and not addr_ok:
+        partial = sum(
+            1 for o in real
+            if not _is_info(o.get("addressability"))
+            or not _is_info(o.get("capacity_needed"))
+            or not _is_info(o.get("permits"))
+            or not _is_info(o.get("regulatory_deps"))
+        )
+        addr_ok = partial >= max(1, len(real) // 2)
+    rows.append({
+        "check": "addressability_capacity_regulatory",
+        "status": "PASS" if addr_ok else "FAIL",
+        "finding": (
+            "Addressability / capacity / regulatory deps stated where applicable"
+            if addr_ok
+            else _info_request("addressability, capacity and regulatory dependencies")
+        ),
+        "action": _REQUIRE_RULE,
+    })
+
+    labelled = all(
+        o.get("evidence_status") in {"Evidenced", "Hypothesis"}
+        for o in real
+    ) if real else False
+    rows.append({
+        "check": "evidence_vs_hypothesis",
+        "status": "PASS" if labelled else "FAIL",
+        "finding": (
+            f"{sum(1 for o in real if o.get('evidence_status') == 'Evidenced')} evidenced · "
+            f"{sum(1 for o in real if o.get('evidence_status') == 'Hypothesis')} hypothesis"
+            if labelled
+            else _info_request("label each option Evidenced or Hypothesis")
+        ),
+        "action": _EVIDENCE_RULE,
+    })
+
+    ranked_ok = all(
+        o.get("rank") is not None
+        and not _is_info(o.get("net_value"))
+        and not _is_info(o.get("payback"))
+        and not _is_info(o.get("feasibility"))
+        for o in real
+    ) if real else False
+    if real and not ranked_ok:
+        # Soft: ranks assigned + majority of dimension fields
+        has_ranks = all(o.get("rank") is not None for o in real)
+        dims = sum(
+            1 for o in real
+            if not _is_info(o.get("net_value"))
+            or not _is_info(o.get("feasibility"))
+        )
+        ranked_ok = has_ranks and dims >= max(1, len(real) // 2)
+    rows.append({
+        "check": "rank_net_value_payback_feasibility",
+        "status": "PASS" if ranked_ok else "FAIL",
+        "finding": (
+            f"Ranked {len(real)} option(s) by net value / payback / feasibility"
+            if ranked_ok
+            else _info_request("rank options by net value, payback and feasibility")
+        ),
+        "action": _RANK_RULE,
+    })
+
+    hard = [
+        c for c in (overlap.get("conflicts") or [])
+        if "hand to synergies" in str(c).lower() or "buyer synergy" in str(c).lower()
+    ]
+    # Prior missing alone is soft FAIL only when no aligned notes
+    prior_gap = any(
+        "not available" in str(c).lower() for c in (overlap.get("conflicts") or [])
+    )
+    overlap_ok = not hard and (
+        bool(overlap.get("aligned"))
+        or bool(overlap.get("strategy_prior_present"))
+        or bool(overlap.get("synergies_prior_present"))
+        or not prior_gap
+    )
+    if prior_gap and not hard and (
+        overlap.get("strategy_prior_present") or overlap.get("synergies_prior_present")
+    ):
+        overlap_ok = True
+    if prior_gap and not hard and not (
+        overlap.get("strategy_prior_present") or overlap.get("synergies_prior_present")
+    ):
+        # Both priors missing — FAIL
+        overlap_ok = False
+    rows.append({
+        "check": "anti_overlap_synergies_strategy",
+        "status": "PASS" if overlap_ok else "FAIL",
+        "finding": (
+            "; ".join(overlap.get("aligned") or [])
+            or (
+                f"Handed {len(overlap.get('handed_to_synergies') or [])} to Synergies"
+                if overlap.get("handed_to_synergies")
+                else "Synergies / Strategy boundary respected"
+            )
+            if overlap_ok
+            else (
+                "; ".join(overlap.get("conflicts") or [])
+                or _info_request("Strategic Direction and Synergies priors for anti-overlap")
+            )
+        ),
+        "action": _OVERLAP_RULE,
+    })
+
+    # Affirmative invented probability only — scrub advisory
+    scrubbed = re.sub(
+        r"(?i)[^.!?\n]*(?:"
+        r"do\s+not\s+assign|"
+        r"not\s+assigned|"
+        r"without\s+(?:an?\s+)?(?:evidenced\s+)?basis|"
+        r"no\s+success\s+probabilit"
+        r")[^.!?\n]*[.!?]?",
+        " ",
+        corpus or "",
+    )
+    invent = False
+    for o in real:
+        if o.get("success_probability") is not None and not o.get("probability_basis"):
+            invent = True
+        blob = f"{o.get('evidence_detail')} {o.get('assumptions')} {o.get('plan_detail')}"
+        scrubbed += " " + blob
+    if re.search(r"(?i)\b(success\s+)?probability\s*[:=]\s*\d+\s*%", scrubbed):
+        invent = True
+    rows.append({
+        "check": "no_arbitrary_success_probability",
+        "status": "PASS" if not invent else "FAIL",
+        "finding": (
+            "No success probabilities assigned without evidenced basis"
+            if not invent
+            else "Arbitrary success probability present — remove"
+        ),
+        "action": _PROB_RULE,
+    })
+    return rows
+
+
+def _questions_from_go_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    qa = (
+        spec.get("go_evidence_qa")
+        if isinstance(spec.get("go_evidence_qa"), list) else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if _qa_fail("initiative_inventory_fit"):
+        out.append(normalize_question({
+            "question": "Complete growth option inventory mapped to allowed operating-model types",
+            "required_records": "Strategy / commercial packs with named initiatives",
+            "decision_effect": "Ill-fitting options inflate the upside case",
+            "priority": "mandatory_pre_decision",
+            "owner": "Growth diligence lead",
+            "timing": "before IC",
+            "closure_test": "initiative_inventory_fit QA PASS",
+            "interim_treatment": "LIMITED — reject options that do not fit",
+        }))
+    if _qa_fail("incremental_economics"):
+        out.append(normalize_question({
+            "question": "Size incremental revenue/margin with calculation and named assumptions",
+            "required_records": "Unit economics + volume / ASP / margin bridges",
+            "decision_effect": "Unsized options cannot underwrite an upside case",
+            "priority": "signing_condition",
+            "owner": "Financial diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "incremental_economics QA PASS",
+            "interim_treatment": "LIMITED — keep unsized options off the underwritten case",
+        }))
+    if _qa_fail("capex_opex_wc_timing"):
+        out.append(normalize_question({
+            "question": "State capex, opex, WC and time-to-contribute for each option",
+            "required_records": "Capex plan, opex budgets, WC schedule",
+            "decision_effect": "Missing funding/timing leaves buyer cash needs unknown",
+            "priority": "signing_condition",
+            "owner": "Growth + financial diligence leads",
+            "timing": "per deal timetable",
+            "closure_test": "capex_opex_wc_timing QA PASS",
+            "interim_treatment": "LIMITED — flag unfunded options",
+        }))
+    if _qa_fail("addressability_capacity_regulatory"):
+        out.append(normalize_question({
+            "question": "State addressability, capacity path and regulatory dependencies",
+            "required_records": "Market sizing + capacity roadmap + permit register",
+            "decision_effect": "Unreachable or unpermitted upside is not underwritable",
+            "priority": "signing_condition",
+            "owner": "Market / ops diligence lead",
+            "timing": "per deal timetable",
+            "closure_test": "addressability_capacity_regulatory QA PASS",
+            "interim_treatment": "LIMITED — treat addressability as open",
+        }))
+    if _qa_fail("evidence_vs_hypothesis"):
+        out.append(normalize_question({
+            "question": "Label each option Evidenced or Hypothesis with supporting detail",
+            "required_records": "Pipeline / pilot / prior / comparable evidence",
+            "decision_effect": "Unlabelled options blur underwritten vs speculative upside",
+            "priority": "mandatory_pre_decision",
+            "owner": "Growth diligence lead",
+            "timing": "before IC",
+            "closure_test": "evidence_vs_hypothesis QA PASS",
+            "interim_treatment": "LIMITED — treat unlabelled as hypothesis",
+        }))
+    if _qa_fail("rank_net_value_payback_feasibility"):
+        out.append(normalize_question({
+            "question": "Rank options by net value, payback and feasibility",
+            "required_records": "Sized economics + timing + evidence status",
+            "decision_effect": "Unranked inventory cannot prioritise diligence or capital",
+            "priority": "mandatory_pre_decision",
+            "owner": "Growth diligence lead",
+            "timing": "before IC",
+            "closure_test": "rank_net_value_payback_feasibility QA PASS",
+            "interim_treatment": "LIMITED — do not treat order as priority",
+        }))
+    if _qa_fail("anti_overlap_synergies_strategy"):
+        out.append(normalize_question({
+            "question": "Reconcile Growth Opportunities with Synergies and Strategic Direction",
+            "required_records": "Synergies register + Strategy initiatives",
+            "decision_effect": "Double-counting buyer synergies as organic growth overstates value",
+            "priority": "mandatory_pre_decision",
+            "owner": "Growth + strategy diligence leads",
+            "timing": "before IC",
+            "closure_test": "anti_overlap_synergies_strategy QA PASS",
+            "interim_treatment": "LIMITED until anti-overlap complete",
+        }))
+    if _qa_fail("no_arbitrary_success_probability"):
+        out.append(normalize_question({
+            "question": "Remove success probabilities that lack an evidenced basis",
+            "required_records": "Evidence log for any retained probability",
+            "decision_effect": "Arbitrary probabilities mis-rank the upside case",
+            "priority": "mandatory_pre_decision",
+            "owner": "Growth diligence lead",
+            "timing": "before IC",
+            "closure_test": "no_arbitrary_success_probability QA PASS",
+            "interim_treatment": "LIMITED — clear invented probabilities",
+        }))
+    return out
+
+
 def _quality_reliance(
     *,
     options: list[dict[str, Any]],
+    qa_fail: bool = False,
 ) -> tuple[str, str, str]:
     real = [
         o for o in options
@@ -915,13 +1494,19 @@ def _quality_reliance(
     else:
         reliance = "BLOCKED"
 
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+
     bits = [
         f"{len(real)} option(s)",
         f"{len(evidenced)} evidenced",
         f"{len(sized)} sized with calculation",
         f"{len(separated)} base/upside separated",
         _RANK_RULE,
+        _OVERLAP_RULE,
     ]
+    if qa_fail:
+        bits.append("Open Growth Opportunities QA FAILs cap READY → LIMITED")
     return quality, reliance, _soften_invest(". ".join(bits) + ".")
 
 
@@ -933,33 +1518,74 @@ def _heuristic_growth_opportunities_spec(
     sector: str | None = None,
     geography: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    strategy_spec: dict[str, Any] | None = None,
+    synergies_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
     economics = _extract_unit_economics(corpus)
     options, rejected = _build_options(corpus=corpus, legacy=legacy)
+    overlap = _go_overlap_cross_check(
+        options=options,
+        strategy_spec=strategy_spec,
+        synergies_spec=synergies_spec,
+        corpus=corpus,
+    )
+    options = list(overlap.get("filtered_options") or options)
+    # Re-rank after filtering
+    options.sort(
+        key=lambda o: (
+            _feasibility_rank(o) if isinstance(o, dict) else 99,
+            _evidence_rank(
+                str((o or {}).get("evidence_status")),
+                str((o or {}).get("evidence_type")),
+            ) if isinstance(o, dict) else 99,
+            _size_rank(o) if isinstance(o, dict) else 99,
+            str((o or {}).get("option") or "") if isinstance(o, dict) else "",
+        )
+    )
+    for i, opt in enumerate(options, start=1):
+        if isinstance(opt, dict):
+            opt["rank"] = i
+            if not opt.get("net_value"):
+                opt.update(_rank_dimensions(opt))
+
     levers, market, milestones, notes = _legacy_dual_write(
         legacy=legacy, options=options, economics=economics
     )
-    quality, reliance, rationale = _quality_reliance(options=options)
+    go_qa = _go_evidence_qa(
+        options=options,
+        rejected=rejected,
+        overlap=overlap,
+        corpus=corpus,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in go_qa)
+    quality, reliance, rationale = _quality_reliance(options=options, qa_fail=qa_fail)
 
-    evidenced_n = sum(1 for o in options if o.get("evidence_status") == "Evidenced")
-    upside_n = sum(1 for o in options if "Additional" in str(o.get("plan_status") or ""))
+    evidenced_n = sum(1 for o in options if isinstance(o, dict) and o.get("evidence_status") == "Evidenced")
+    upside_n = sum(
+        1 for o in options
+        if isinstance(o, dict) and "Additional" in str(o.get("plan_status") or "")
+    )
     bits = [
         f"Growth Opportunities for {company}",
         f"{len(options)} option(s)",
         f"{evidenced_n} evidenced",
         f"{upside_n} additional vs plan",
+        f"Strategy prior={'yes' if overlap.get('strategy_prior_present') else 'no'}",
+        f"Synergies prior={'yes' if overlap.get('synergies_prior_present') else 'no'}",
     ]
     if sector:
         bits.append(f"sector {sector}")
 
-    return {
+    out = {
         "insight_snapshot": _soften_invest(". ".join(bits)),
         "sector": sector or _info_request("sector"),
         "geography": geography or _info_request("geography"),
         "unit_economics": economics,
         "options": options,
         "rejected_options": rejected[:6],
+        "overlap_cross_check": overlap,
+        "go_evidence_qa": go_qa,
         "ranking_notes": _RANK_RULE,
         "growth_levers": levers,
         "market_growth": market,
@@ -975,6 +1601,8 @@ def _heuristic_growth_opportunities_spec(
         "slug": _AGENT_KEY,
         "empty": not options,
     }
+    out["questions"] = _questions_from_go_gaps(out)
+    return out
 
 
 def _llm_growth_opportunities_spec(
@@ -1009,25 +1637,34 @@ def _llm_growth_opportunities_spec(
             "Return JSON with keys:\n"
             "insight_snapshot, sector, geography,\n"
             "options: [{option, option_type, fit_rationale, incremental_revenue, "
-            "incremental_margin, calculation, assumptions, capital, hiring, "
-            "capacity_needed, permits, systems, time_to_contribute, evidence_type, "
+            "incremental_margin, calculation, assumptions, capital, opex, "
+            "working_capital, hiring, capacity_needed, permits, systems, "
+            "addressability, regulatory_deps, time_to_contribute, evidence_type, "
             "evidence_detail, evidence_status (Evidenced|Hypothesis), plan_status, "
-            "plan_detail, buyer_funding, success_probability (null unless evidenced basis), "
-            "rank, source}],\n"
+            "plan_detail, buyer_funding, net_value, payback, feasibility, "
+            "success_probability (null unless evidenced basis), rank, source}],\n"
             "rejected_options: [{option, reason}],\n"
             "quality_verdict, reliance_verdict, quality_reliance_rationale.\n"
             "Allowed option_type values: "
             + ", ".join(_OPTION_TYPES)
             + ". Reject options that do not fit the operating model. "
-            "Separate base case from upside. No success probabilities without a basis. "
-            "No invest or pass."
+            "Separate base case from upside. Rank by net value / payback / feasibility. "
+            "Do not restate Synergies or Strategic Direction. "
+            "No success probabilities without a basis. No invest or pass."
         )
         return generate_json(system=system, user=user, temperature=0.15)
     except Exception:
         return None
 
 
-def _normalise_llm_spec(llm: dict[str, Any], *, heur: dict[str, Any]) -> dict[str, Any]:
+def _normalise_llm_spec(
+    llm: dict[str, Any],
+    *,
+    heur: dict[str, Any],
+    corpus: str = "",
+    strategy_spec: dict[str, Any] | None = None,
+    synergies_spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     out = dict(heur)
     for key in (
         "insight_snapshot",
@@ -1051,6 +1688,56 @@ def _normalise_llm_spec(llm: dict[str, Any], *, heur: dict[str, Any]) -> dict[st
                 str(o.get("notes") or "")
                 + " Success probability cleared — no evidenced basis."
             ).strip()
+        if not o.get("net_value") or not o.get("payback") or not o.get("feasibility"):
+            o.update(_rank_dimensions(o))
+
+    overlap = _go_overlap_cross_check(
+        options=list(out.get("options") or []),
+        strategy_spec=strategy_spec,
+        synergies_spec=synergies_spec,
+        corpus=corpus,
+    )
+    options = list(overlap.get("filtered_options") or out.get("options") or [])
+    for i, opt in enumerate(options, start=1):
+        if isinstance(opt, dict):
+            opt["rank"] = i
+    out["options"] = options
+    out["overlap_cross_check"] = overlap
+    rejected = out.get("rejected_options") if isinstance(out.get("rejected_options"), list) else []
+    go_qa = _go_evidence_qa(
+        options=options,
+        rejected=rejected,
+        overlap=overlap,
+        corpus=corpus,
+    )
+    out["go_evidence_qa"] = go_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in go_qa)
+    qv = out.get("quality_verdict")
+    rv = out.get("reliance_verdict")
+    if qv not in {"PASS", "REWORK"} or rv not in {"READY", "LIMITED", "BLOCKED"}:
+        qv, rv, rationale = _quality_reliance(options=options, qa_fail=qa_fail)
+        out["quality_verdict"] = qv
+        out["reliance_verdict"] = rv
+        out["quality_reliance_rationale"] = rationale
+    elif qa_fail and rv == "READY":
+        out["reliance_verdict"] = "LIMITED"
+        out["quality_reliance_rationale"] = (
+            str(out.get("quality_reliance_rationale") or "")
+            + " Open Growth Opportunities QA FAILs cap READY → LIMITED."
+        ).strip()
+
+    llm_questions = llm.get("questions") if isinstance(llm.get("questions"), list) else None
+    if llm_questions:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q = []
+        for raw_q in llm_questions:
+            q = normalize_question(raw_q)
+            if q:
+                filled_q.append(q)
+        out["questions"] = filled_q or _questions_from_go_gaps(out)
+    else:
+        out["questions"] = _questions_from_go_gaps(out)
     out["composer"] = "llm_v1"
     return out
 
@@ -1061,12 +1748,15 @@ def build_growth_opportunities_spec(
     index: dict[str, Any] | None = None,
     company: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    strategy_spec: dict[str, Any] | None = None,
+    synergies_spec: dict[str, Any] | None = None,
     corpus: str | None = None,
     sources: list[str] | None = None,
     prefer_heuristic: bool = False,
 ) -> dict[str, Any]:
     from agetic_cdd_api.prompt_book import prompt_vars_from_deal
     from agetic_cdd_api.services_library import load_library_index
+    from agetic_cdd_api.services_pipeline import read_agent_output_file
 
     idx = index if isinstance(index, dict) else load_library_index(deal)
     target = (company or deal.company or deal.name or "Target").strip()
@@ -1076,6 +1766,19 @@ def build_growth_opportunities_spec(
     if isinstance(sector, str) and sector.strip().lower() in {"generic", "unknown", ""}:
         sector = None
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
+
+    def _load(agent_key: str) -> dict[str, Any] | None:
+        try:
+            disk = read_agent_output_file(deal, agent_key=agent_key) or {}
+            spec = disk.get("spec")
+            return spec if isinstance(spec, dict) else None
+        except Exception:
+            return None
+
+    strategy = (
+        strategy_spec if isinstance(strategy_spec, dict) else _load("strategic_direction")
+    )
+    synergies = synergies_spec if isinstance(synergies_spec, dict) else _load("synergies")
 
     gathered_sources: list[str] = []
     if corpus is None:
@@ -1111,7 +1814,10 @@ def build_growth_opportunities_spec(
         sector=str(sector) if sector else None,
         geography=str(geography) if geography else None,
         legacy_spec=legacy,
+        strategy_spec=strategy,
+        synergies_spec=synergies,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
     if prefer_heuristic:
         return heur
 
@@ -1125,7 +1831,15 @@ def build_growth_opportunities_spec(
     )
     if not llm_raw:
         return heur
-    return _normalise_llm_spec(llm_raw, heur=heur)
+    out = _normalise_llm_spec(
+        llm_raw,
+        heur=heur,
+        corpus=full_corpus,
+        strategy_spec=strategy,
+        synergies_spec=synergies,
+    )
+    out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return out
 
 
 def render_growth_opportunities_markdown(
@@ -1149,6 +1863,8 @@ def render_growth_opportunities_markdown(
         f"**Geography:** {_clean(spec.get('geography') or _NA, 60)}\n\n"
     )
     parts.append(f"{_RANK_RULE}\n\n")
+    parts.append(f"{_OVERLAP_RULE}\n\n")
+    parts.append(f"{_PROB_RULE}\n\n")
 
     parts.append("## 1. Available Options (Operating-Model Fit)\n\n")
     parts.append(f"{_OPTION_RULE}\n\n")
@@ -1205,18 +1921,20 @@ def render_growth_opportunities_markdown(
     if options:
         parts.append(_table(
             [
-                "Option", "Capital", "Hiring", "Capacity", "Permits",
-                "Systems", "Time to contribute",
+                "Option", "Capex", "Opex", "WC", "Hiring", "Capacity",
+                "Addressability", "Regulatory", "Time to contribute",
             ],
             [
                 [
-                    _clean(o.get("option"), 28),
-                    _clean(o.get("capital"), 40),
-                    _clean(o.get("hiring"), 36),
-                    _clean(o.get("capacity_needed"), 40),
-                    _clean(o.get("permits"), 36),
-                    _clean(o.get("systems"), 36),
-                    _clean(o.get("time_to_contribute"), 40),
+                    _clean(o.get("option"), 24),
+                    _clean(o.get("capital"), 32),
+                    _clean(o.get("opex") or _NA, 28),
+                    _clean(o.get("working_capital") or _NA, 28),
+                    _clean(o.get("hiring"), 28),
+                    _clean(o.get("capacity_needed"), 32),
+                    _clean(o.get("addressability") or _NA, 36),
+                    _clean(o.get("regulatory_deps") or o.get("permits") or _NA, 32),
+                    _clean(o.get("time_to_contribute"), 32),
                 ]
                 for o in options if isinstance(o, dict)
             ],
@@ -1249,17 +1967,61 @@ def render_growth_opportunities_markdown(
     parts.append(f"{_BASE_UP_RULE}\n\n")
     if options:
         parts.append(_table(
-            ["Option", "Plan status", "Detail", "Buyer funding"],
+            [
+                "Rank", "Option", "Plan status", "Net value", "Payback",
+                "Feasibility", "Buyer funding",
+            ],
             [
                 [
-                    _clean(o.get("option"), 36),
-                    _clean(o.get("plan_status"), 36),
-                    _clean(o.get("plan_detail"), 90),
-                    _clean(o.get("buyer_funding"), 70),
+                    str(o.get("rank") or "—"),
+                    _clean(o.get("option"), 28),
+                    _clean(o.get("plan_status"), 28),
+                    _clean(o.get("net_value") or _NA, 50),
+                    _clean(o.get("payback") or _NA, 40),
+                    _clean(o.get("feasibility") or _NA, 50),
+                    _clean(o.get("buyer_funding"), 50),
                 ]
                 for o in options if isinstance(o, dict)
             ],
         ))
+    parts.append("---\n\n")
+
+    # 6 — Anti-overlap
+    overlap = (
+        spec.get("overlap_cross_check")
+        if isinstance(spec.get("overlap_cross_check"), dict) else {}
+    )
+    parts.append("## 6. Synergies / Strategy Boundary\n\n")
+    parts.append(f"{_OVERLAP_RULE}\n\n")
+    parts.append(_table(
+        ["Field", "Value"],
+        [
+            [
+                "Strategy prior present",
+                "Yes" if overlap.get("strategy_prior_present") else "No",
+            ],
+            [
+                "Synergies prior present",
+                "Yes" if overlap.get("synergies_prior_present") else "No",
+            ],
+            [
+                "Overlap",
+                _clean("; ".join(overlap.get("overlap") or []) or _NA, 200),
+            ],
+            [
+                "Handed to Synergies",
+                _clean("; ".join(overlap.get("handed_to_synergies") or []) or _NA, 200),
+            ],
+            [
+                "Aligned",
+                _clean("; ".join(overlap.get("aligned") or []) or _NA, 200),
+            ],
+            [
+                "Conflicts",
+                _clean("; ".join(overlap.get("conflicts") or []) or "None", 200),
+            ],
+        ],
+    ))
     parts.append("---\n\n")
 
     if levers:
@@ -1277,13 +2039,81 @@ def render_growth_opportunities_markdown(
         ))
         parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    # 7 QA
+    go_qa = (
+        spec.get("go_evidence_qa")
+        if isinstance(spec.get("go_evidence_qa"), list) else []
+    )
+    parts.append("## 7. Growth Opportunities Evidence QA\n\n")
     parts.append(
-        f"**Quality:** {_clean(spec.get('quality_verdict') or 'REWORK', 16)}  \n"
-        f"**Reliance:** {_clean(spec.get('reliance_verdict') or 'BLOCKED', 16)}\n\n"
+        "QA enforces inventory fit, incremental economics, capex/opex/WC/timing, "
+        "addressability/capacity/regulatory deps, evidence vs hypothesis, "
+        "net-value/payback/feasibility ranking, Synergies/Strategy anti-overlap, "
+        "and no arbitrary success probabilities.\n\n"
     )
     parts.append(
-        f"{_soften_invest(spec.get('quality_reliance_rationale') or _RANK_RULE)}\n\n"
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in go_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"**{_info_request('Growth Opportunities evidence QA rows')}**\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 8 Questions
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material Growth Opportunities gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    # 9 Quality
+    parts.append("## 9. Quality & Reliance\n\n")
+    qv = spec.get("quality_verdict") or "REWORK"
+    rv = spec.get("reliance_verdict") or "BLOCKED"
+    rationale = spec.get("quality_reliance_rationale") or _NA
+    parts.append(_table(
+        ["Metric", "Verdict / Explanation"],
+        [
+            ["Quality Verdict", _clean(qv, 30)],
+            ["Reliance Verdict", _clean(rv, 30)],
+            ["Rationale", _clean(rationale, 460)],
+        ],
+    ))
+    parts.append(f"**Quality:** {_clean(qv, 20)} — is the work accurate and honest about limits?\n\n")
+    parts.append(f"**Reliance:** {_clean(rv, 20)} — can a decision rest on this Growth Opportunities assessment?\n\n")
+    parts.append(
+        "*Quality is PASS or REWORK. Reliance is READY, LIMITED, or BLOCKED. "
+        "Open Growth Opportunities QA FAILs cap READY → LIMITED. "
+        f"{_PROB_RULE} {_OVERLAP_RULE} "
+        "This agent does not issue an invest or pass recommendation.*\n\n"
     )
     parts.append("---\n\n")
 

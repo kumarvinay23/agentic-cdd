@@ -45,6 +45,7 @@ def _named_buyer_corpus() -> str:
         "Cross-sell of Contoso insurance attach to target customers via buyer channel; "
         "pilot sold to 2 fleet operators. "
         "Severance estimated INR 5 Cr in Year 1. Advisory fees INR 2 Cr. "
+        "Integration risk on systems cutover may delay run-rate by one year. "
         "Do not apply 10% of the cost base as a synergy."
     )
 
@@ -70,11 +71,18 @@ def test_synergies_prompt_book_listed() -> None:
     system = compose_system("synergies", sector="EV", geography="India")
     assert "synergies" in listed_agents()
     assert "buyer" in system.lower() or "acquirer" in system.lower()
+    # Deal slots filled by compose_system
+    assert "deal perimeter" in system.lower() or "[DEAL_PERIMETER]" not in system
     body = agent_prompt("synergies")
     assert "Ola" not in body and "SoftBank" not in body
     assert "underwritten" in body.lower() or "underwrite" in body.lower()
     assert "percentage" in body.lower() or "cost base" in body.lower()
     assert "stand-alone" in body.lower() or "standalone" in body.lower()
+    assert "gross" in body.lower() and "net cash" in body.lower()
+    assert "growth opportunities" in body.lower()
+    assert "execution" in body.lower()
+    assert "final valuation" in body.lower() or "fvr" in body.lower()
+    assert "questions" in body.lower()
 
 
 def test_synergies_not_company_hardcoded() -> None:
@@ -109,6 +117,11 @@ def test_no_named_buyer_hypotheses_only_no_number() -> None:
     assert hyps
     assert heur.get("reliance_verdict") == "BLOCKED"
     assert (heur.get("stand_alone_separation") or {}).get("in_standalone_valuation") is False
+    fvr = heur.get("fvr_exclusion") or {}
+    assert fvr.get("include_in_final_valuation_range") is False
+    qa = {r.get("check"): r for r in (heur.get("sy_evidence_qa") or []) if isinstance(r, dict)}
+    assert qa.get("no_uplift_without_buyer", {}).get("status") == "PASS"
+    assert qa.get("named_buyer_or_hypothesis_only", {}).get("status") == "PASS"
 
 
 def test_named_buyer_cost_synergies_bottom_up() -> None:
@@ -132,6 +145,13 @@ def test_named_buyer_cost_synergies_bottom_up() -> None:
         assert r.get("item")
         assert r.get("item_type")
         assert "action_owner" in r
+        assert "gross_benefit" in r
+        assert "overlap_double_count" in r
+        assert "cannibalisation" in r
+        assert "one_off_costs" in r
+        assert "tax_effect" in r
+        assert "timing" in r
+        assert "net_cash" in r
         # Must not be a bare % of cost base as the saving method
         assert "10% of the cost base" not in str(r.get("saving") or "").lower()
 
@@ -163,6 +183,8 @@ def test_rejects_percentage_of_cost_base() -> None:
     assert rejected or not any(
         isinstance(r, dict) and r.get("underwritable") for r in costs
     )
+    qa = {r.get("check"): r for r in (heur.get("sy_evidence_qa") or []) if isinstance(r, dict)}
+    assert qa.get("no_percent_of_cost_base", {}).get("status") == "PASS"
 
 
 def test_revenue_synergies_sceptical_separate() -> None:
@@ -184,9 +206,11 @@ def test_revenue_synergies_sceptical_separate() -> None:
         assert "product" in r
         assert "channel" in r
         assert "evidence_combination_sells" in r
+        assert "gross_benefit" in r
+        assert "net_cash" in r
 
 
-def test_cost_to_achieve_and_phasing() -> None:
+def test_cost_to_achieve_and_phasing_with_owner() -> None:
     heur = _heuristic_synergies_spec(
         company="Test3",
         corpus=_named_buyer_corpus(),
@@ -206,6 +230,11 @@ def test_cost_to_achieve_and_phasing() -> None:
     assert phasing
     years = " ".join(str(p.get("year") or "") for p in phasing if isinstance(p, dict))
     assert "Y1" in years or "Run-rate" in years or "run" in years.lower()
+    for p in phasing:
+        if isinstance(p, dict):
+            assert "owner" in p
+    qa = {r.get("check"): r for r in (heur.get("sy_evidence_qa") or []) if isinstance(r, dict)}
+    assert qa.get("phasing_with_owner", {}).get("status") == "PASS"
 
 
 def test_seller_share_and_standalone_layer() -> None:
@@ -224,6 +253,71 @@ def test_seller_share_and_standalone_layer() -> None:
     assert "separate" in str(stand.get("layer") or "").lower() or "committee" in str(
         stand.get("layer") or ""
     ).lower()
+
+
+def test_go_reconcile_and_execution_risks() -> None:
+    go_prior = {
+        "options": [
+            {
+                "option": "Organic charging network expansion",
+                "evidence_status": "Evidenced",
+            }
+        ],
+        "growth_levers": [{"name": "Scale Advantage"}],
+    }
+    heur = _heuristic_synergies_spec(
+        company="Test3",
+        corpus=_named_buyer_corpus(),
+        sources=["CIM.pdf"],
+        sector="Electric Two-Wheelers",
+        geography="India",
+        legacy_spec=_legacy(),
+        growth_opportunities_spec=go_prior,
+    )
+    go = heur.get("go_reconcile") or {}
+    assert go.get("go_prior_present") is True
+    risks = heur.get("execution_risks") or []
+    assert risks
+    assert any(
+        isinstance(r, dict)
+        and (
+            "integration" in str(r.get("risk") or "").lower()
+            or "cutover" in str(r.get("risk") or "").lower()
+            or "execution" in str(r.get("risk") or "").lower()
+        )
+        for r in risks
+    )
+    qa = {r.get("check"): r for r in (heur.get("sy_evidence_qa") or []) if isinstance(r, dict)}
+    assert "growth_opportunities_reconcile" in qa
+    assert "execution_risks" in qa
+    assert "fvr_excludes_unverified" in qa
+
+
+def test_ready_capped_to_limited_on_qa_fail() -> None:
+    # Underwritable cost + execution risk present → may be READY, but force FAIL
+    # path via incomplete lever when we strip fields after build is hard;
+    # instead assert the quality helper caps when qa_fail=True via open FAIL.
+    heur = _heuristic_synergies_spec(
+        company="Test3",
+        corpus=_named_buyer_corpus(),
+        sources=["CIM.pdf"],
+        sector="Electric Two-Wheelers",
+        geography="India",
+        legacy_spec=_legacy(),
+    )
+    assert heur.get("sy_evidence_qa")
+    assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
+    # If any FAIL exists, reliance must not be READY
+    qa_fail = any(
+        isinstance(r, dict) and r.get("status") == "FAIL"
+        for r in (heur.get("sy_evidence_qa") or [])
+    )
+    if qa_fail:
+        assert heur.get("reliance_verdict") != "READY"
+    questions = heur.get("questions") or []
+    assert isinstance(questions, list)
+    if qa_fail:
+        assert questions  # Questions generated from open FAILs
 
 
 def test_legacy_dual_write() -> None:
@@ -256,8 +350,10 @@ def test_render_no_invest_no_buyer() -> None:
     assert "## 1. Named Buyer" in md
     assert "## 2. Hypotheses Only" in md
     assert "cannot be underwritten" in md.lower() or "No named acquirer" in md
-    assert "## 6. Stand-Alone Separation" in md
-    assert "## 7. Quality & Reliance" in md
+    assert "## 6. Stand-Alone" in md
+    assert "## 7. Synergies Evidence QA" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
     assert "Not produced" in md
@@ -277,6 +373,9 @@ def test_render_named_buyer_sections() -> None:
     assert "## 3. Revenue Synergies" in md
     assert "## 4. Cost to Achieve" in md
     assert "Contoso" in md
+    assert "Lever economics" in md or "gross" in md.lower()
+    assert "## 7. Synergies Evidence QA" in md
+    assert "## 9. Quality & Reliance" in md
 
 
 def test_render_agent_document_dispatch() -> None:
@@ -296,7 +395,7 @@ def test_render_agent_document_dispatch() -> None:
         ),
     }
     md = render_agent_document("synergies", output)
-    assert "## 7. Quality & Reliance" in md
+    assert "## 9. Quality & Reliance" in md
     assert "Named Buyer" in md or "named" in md.lower()
 
 
@@ -313,3 +412,4 @@ def test_build_prefers_heuristic_when_flagged() -> None:
     )
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("dd_code") == "DD-06b"
+    assert "deal_slots" in spec

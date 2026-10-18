@@ -8,7 +8,12 @@ from agetic_cdd_api.agent_document_market_pricing import (
     render_market_pricing_markdown,
 )
 from agetic_cdd_api.agent_document_render import render_agent_document
-from agetic_cdd_api.prompt_book import agent_prompt, compose_system, listed_agents
+from agetic_cdd_api.prompt_book import (
+    agent_prompt,
+    compose_system,
+    listed_agents,
+    questions_complete,
+)
 
 
 class _FakeDeal:
@@ -40,6 +45,8 @@ def test_market_pricing_prompt_book_listed() -> None:
     assert "realised" in system.lower()
     assert "unnamed" in system.lower()
     assert "percentage-point" in system.lower() or "percentage point" in system.lower()
+    assert "questions" in system.lower()
+    assert "[DEAL_PERIMETER]" in system or "Deal perimeter" in system
     body = agent_prompt("market_pricing")
     assert "Ola" not in body and "SoftBank" not in body
 
@@ -77,7 +84,9 @@ def test_market_pricing_markdown_follows_prompt_book() -> None:
     assert "## 3. Price–Volume–Mix" in md or "## 3. Price" in md
     assert "## 4. Observed Response" in md
     assert "## 5. Contract Escalators" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Cross-Checks" in md
+    assert "## 7. Questions" in md
+    assert "## 8. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "percentage-point" in md.lower() or "percentage point" in md.lower()
     comps = heur.get("competitor_comparisons") or []
@@ -90,6 +99,12 @@ def test_market_pricing_markdown_follows_prompt_book() -> None:
     assert "elasticity" not in str((heur.get("observed_response") or [{}])[0].get("label", "")).lower() or "not elasticity" in str(
         (heur.get("observed_response") or [{}])[0].get("label", "")
     ).lower()
+    assert heur.get("price_normalisation")
+    assert heur.get("cross_checks")
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    legs = {r.get("leg") for r in (heur.get("pvm_bridge") or []) if isinstance(r, dict)}
+    assert "cost" in legs or "price" in legs
     assert heur.get("quality_verdict") in {"PASS", "REWORK"}
     assert heur.get("reliance_verdict") in {"READY", "LIMITED", "BLOCKED"}
 
@@ -127,7 +142,7 @@ def test_render_agent_document_market_pricing() -> None:
             "# Market Pricing\n\n"
             "## 1. Realised Net Price\n\n"
             "Seeded.\n\n"
-            "## 6. Quality & Reliance\n\n"
+            "## 8. Quality & Reliance\n\n"
             "**Quality:** PASS\n"
         ),
         "spec": {},
@@ -157,8 +172,27 @@ def test_build_market_pricing_from_corpus() -> None:
     md = render_market_pricing_markdown("Market Pricing", spec)
     assert "## 1. Realised" in md
     assert "## 5. Contract Escalators" in md
+    assert "## 7. Questions" in md
+    assert "## 8. Quality & Reliance" in md
     assert "## Sources" in md
     assert spec.get("composer") == "heuristic_v1"
+    assert spec.get("questions")
+    assert questions_complete(spec["questions"])
+
+
+def test_thin_corpus_emits_pricing_questions() -> None:
+    heur = _heuristic_market_pricing_spec(
+        company="ThinCo",
+        corpus="No usable pricing language here.",
+        sources=["empty.pdf"],
+    )
+    assert heur.get("questions")
+    assert questions_complete(heur["questions"])
+    assert any(
+        "realised" in q.get("question", "").lower()
+        or "competitor" in q.get("question", "").lower()
+        for q in heur["questions"]
+    )
 
 
 def test_asp_skips_intermediate_year() -> None:

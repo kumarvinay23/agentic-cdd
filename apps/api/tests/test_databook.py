@@ -1393,7 +1393,12 @@ def test_merge_promoted_does_not_mutate_input_spec(tmp_path: Path) -> None:
         assert nested_note == ["keep"]
         assert original_spec["performance_metrics"]["x"] == 1.0
         assert merged["performance_metrics"]["revenue_fy2022"] == 2000.0
-        assert merged["pl_lines"][0]["fy2022_value"] == 2000.0
+        rev = next(
+            r
+            for r in (merged.get("pl_lines") or [])
+            if isinstance(r, dict) and r.get("metric_key") == "revenue"
+        )
+        assert rev["fy2022_value"] == 2000.0
     finally:
         store.databook_dir = original
 
@@ -1476,7 +1481,12 @@ def test_merge_promoted_into_historical_spec(tmp_path: Path) -> None:
             {"pl_lines": [{"line_item": "Revenue", "fy2024_value": 4900.0}], "empty": False},
         )
         assert merged["databook_promoted"] is True
-        assert merged["pl_lines"][0]["fy2024_value"] == 3140.0
+        rev = next(
+            r
+            for r in (merged.get("pl_lines") or [])
+            if isinstance(r, dict) and r.get("metric_key") == "revenue"
+        )
+        assert rev["fy2024_value"] == 3140.0
         assert "commercial.xlsx" in merged["sources"]
     finally:
         store.databook_dir = original
@@ -3128,36 +3138,48 @@ def test_ops_kpi_caps_latest_even_when_plan_years_mis_tagged_actual() -> None:
     assert "13.0%" in str(yoy.yoy) or "13%" in str(yoy.yoy)
 
 
-def test_sanitize_dc_contract_framing_rewrites_4m_as_current() -> None:
+def test_coerce_percent_points_for_retention_and_margins() -> None:
+    from agetic_cdd_api.report_builder_base import coerce_percent_points
+    from agetic_cdd_api.report_ops_dashboard import _format_display
+
+    assert abs(coerce_percent_points(0.872743, family="grr", unit="%") - 87.2743) < 1e-6
+    assert abs(coerce_percent_points(1.0656, family="nrr", unit="%") - 106.56) < 1e-6
+    assert abs(coerce_percent_points(0.15063, family="ebitda_margin", unit="%") - 15.063) < 1e-3
+    assert abs(coerce_percent_points(87.27, family="grr", unit="%") - 87.27) < 1e-6
+    assert "87.27%" in _format_display(0.872743, "%", "grr")
+    assert "0.872743%" not in _format_display(0.872743, "%", "grr")
+
+
+def test_sanitize_dc_contract_framing_is_structural_only() -> None:
+    """Must not invent deal-specific $ / home figures — only repair structure in-place."""
     from agetic_cdd_api.report_builder_base import sanitize_dc_contract_framing
 
+    # Leave figures as written in the source string (no $4.0M → $3.0M rewrite).
     raw = (
         "from 12,000 active homes today to 30,000-60,000 homes by 2030, "
         "increasing municipal contract revenue potential from $4.0M to $10.4M-$22.2M."
     )
     fixed = sanitize_dc_contract_framing(raw)
-    assert "$4.0M to $10.4M" not in fixed
-    assert "$3.0M (FY2025A)" in fixed
+    assert "$4.0M" in fixed
     assert "$10.4M-$22.2M" in fixed
+    assert "$3.0M" not in fixed  # must not invent baseline
 
-    assert "FY2025A" in sanitize_dc_contract_framing(
-        "representing $4.0M in current annual revenue under the DC contract"
-    )
     untouched = "Plan bridge uses $4.0M FY2026P municipal revenue toward $10.4M."
     assert sanitize_dc_contract_framing(untouched) == untouched
 
-
-def test_sanitize_dc_homes_expansion_injects_baseline_and_potential() -> None:
-    from agetic_cdd_api.report_builder_base import sanitize_dc_contract_framing
-
-    raw = (
-        "Expansion of the anchor D.C. municipal contract from ~12,000 homes today "
-        "to 30,000 homes by 2030, contributing up to $10.41M in recurring collection revenue."
+    # Typo repair only.
+    assert "revenuely" not in sanitize_dc_contract_framing(
+        "$3.0M FY2025A municipal revenuely under the contract"
     )
-    fixed = sanitize_dc_contract_framing(raw)
-    assert "$3.0M FY2025A" in fixed
-    assert "$22.2M full-contract potential" in fixed
-    assert "$10.41M" in fixed
+
+    nested = (
+        "12,000 active homes ($3.0M FY2025A municipal revenue) to "
+        "30,000–60,000 homes ($10.4M (vs $22.2M full-contract potential) revenue) by 2030"
+    )
+    clean = sanitize_dc_contract_framing(nested)
+    assert "(vs $22.2M full-contract potential) revenue)" not in clean
+    assert "$10.4M" in clean and "$22.2M" in clean
+    assert "30,000" in clean and "60,000" in clean
 
 
 def test_sanitize_report_prose_strips_boilerplate_and_inc() -> None:
@@ -3168,19 +3190,72 @@ def test_sanitize_report_prose_strips_boilerplate_and_inc() -> None:
         "(registered under Maryland and District of Columbia securities exemptions)."
     )
     assert "registered under" not in sanitize_report_prose(garbled, company="Compost Crew")
-    assert "Inc." not in sanitize_report_prose(
-        "Compost Crew Inc. is a D.C. Metro region organics platform.",
+    # Cap table title evidences Inc. / Benefit Corporation — keep them.
+    kept = sanitize_report_prose(
+        "Compost Crew Inc., A Benefit Corporation is a D.C. Metro organics platform.",
         company="Compost Crew",
     )
+    assert "Inc" in kept
+    assert "Benefit Corporation" in kept
+    # Ledger Job Titles already in the text are kept (not stripped, not invented).
+    assert "Commercial Driver" in sanitize_report_prose(
+        "Tiffany Williams (Commercial Driver, 2,070 shares) holds common stock.",
+        company="Acme Organics",
+    )
+
+    # Thin one-holder line must NOT invent peers / totals from another deal.
+    thin_own = (
+        "Common shares outstanding include 10,000,010 shares held by "
+        "founder/CEO Michael Benjamin Parry (CS-01, issued March 29, 2022)."
+    )
+    thin_fixed = sanitize_report_prose(thin_own, company="Acme Organics")
+    assert "Dan Israel" not in thin_fixed
+    assert "Tiffany Williams" not in thin_fixed
+
+    # Figure-less CIM marketing must NOT be replaced with invented contract dollars.
+    cim = (
+        "[Hypothesis] Metro Region's closed-loop composting leader … "
+        "path to a $50 million business by 2030 anchored by long-term…"
+    )
+    cim_fixed = sanitize_report_prose(cim, company="Acme Organics")
+    assert "$3.0M" not in cim_fixed
+    assert "$10.4M" not in cim_fixed
+    assert "$22.2M" not in cim_fixed
+
     owned = (
-        "Ownership: Total evidenced common equity/option shares: 10,202,561 "
-        "(10,000,010 + 200,000 + 2,070 + 481). "
-        "Ownership: Total evidenced common equity/option shares: 10,202,561 "
-        "(10,000,010 + 200,000 + 2,070 + 481)."
+        "Ownership: Total evidenced common equity/option shares: 10,294,861 "
+        "(10,000,010 + 292,300 + 2,070 + 481). "
+        "Ownership: Total evidenced common equity/option shares: 10,294,861 "
+        "(10,000,010 + 292,300 + 2,070 + 481)."
     )
     cleaned = sanitize_report_prose(owned)
     assert cleaned.count("Total evidenced") == 1
     assert not cleaned.startswith("Ownership:")
+
+    # Re-sum from components present in the string — do not invent missing certs.
+    stale = (
+        "Total evidenced common equity/option shares: 10,202,561 "
+        "(10,000,010 + 200,000 + 2,070 + 481). "
+        "Ben Parry 10,000,010; Dan Israel 200,000; "
+        "Tiffany Williams 2,070; Timothy Jenkins 481."
+    )
+    fixed_own = sanitize_report_prose(stale)
+    assert "10,202,561" in fixed_own
+    assert "10,000,010" in fixed_own
+    assert "200,000" in fixed_own
+    # Without CS-06/CS-07 in the text, must not invent 292,300 / 10,294,861.
+    assert "292,300" not in fixed_own or "200,000" in fixed_own
+
+    # Missing controlling holder — do not invent them; recompute from what is present.
+    missing_ctrl = (
+        "Total evidenced common equity/option shares: 202,551 "
+        "(200,000 + 2,070 + 481). Dan Israel 200,000; "
+        "Tiffany Williams 2,070; Timothy Jenkins 481."
+    )
+    fixed_missing = sanitize_report_prose(missing_ctrl)
+    assert "Ben Parry" not in fixed_missing
+    assert "10,000,010" not in fixed_missing
+    assert "Dan Israel" in fixed_missing
 
 
 def test_upgrade_generic_doc_cites() -> None:
@@ -3188,8 +3263,12 @@ def test_upgrade_generic_doc_cites() -> None:
 
     raw = "Food scrap collection services. (DOC: data room financials)"
     fixed = upgrade_generic_doc_cites(raw, ["a.pdf", "b.xlsx", "c.pptx"])
-    assert "(DOC: [1], DOC: [2], DOC: [3])" in fixed
+    assert "(DOC: a.pdf, DOC: b.xlsx, DOC: c.pptx)" in fixed
     assert "data room financials" not in fixed
+    assert "DOC: [1]" not in fixed
+    bare = upgrade_generic_doc_cites("See DOC: data room financials", ["pack.xlsx"])
+    assert "DOC: pack.xlsx" in bare
+    assert "data room financials" not in bare
 
 
 def test_approx_equal_flags_qbo_model_variance() -> None:

@@ -7,7 +7,9 @@ from typing import Any
 
 from agetic_cdd_api.verdict_risks import prepare_verdict_risk_text
 
-STAGE_C_SLUGS: frozenset[str] = frozenset({"ic_synthesis", "recommendation"})
+STAGE_C_SLUGS: frozenset[str] = frozenset(
+    {"ic_synthesis", "recommendation", "appendices"}
+)
 
 _OVERALL_RATING_RE = re.compile(
     r"(?i)OVERALL\s+([\d.]+)\s*/\s*5\s+([A-Za-z][A-Za-z\s—\-]+?)(?:\s+Disclaimer|\s*$)"
@@ -1097,6 +1099,26 @@ def findings_from_verdict_synthesis_spec(slug: str, spec: dict[str, Any]) -> lis
         ]
         if open_block:
             out.append(f"OPEN BLOCKER: {str(open_block[0].get('item') or '')[:120]}")
+        qv, rv = spec.get("quality_verdict"), spec.get("reliance_verdict")
+        if qv or rv:
+            out.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")
+    elif slug == "appendices":
+        metrics = spec.get("metrics") if isinstance(spec.get("metrics"), dict) else {}
+        if metrics.get("claim_count"):
+            out.append(f"Claims: {metrics['claim_count']}")
+        if metrics.get("source_count"):
+            out.append(f"Sources: {metrics['source_count']}")
+        cite = (
+            spec.get("citation_check")
+            if isinstance(spec.get("citation_check"), dict)
+            else {}
+        )
+        summary = cite.get("summary") if isinstance(cite.get("summary"), dict) else {}
+        if summary:
+            out.append(
+                f"Citation: supports={summary.get('supports', 0)} "
+                f"unverified={summary.get('unverified', 0)}"
+            )
         qv, rv = spec.get("quality_verdict"), spec.get("reliance_verdict")
         if qv or rv:
             out.append(f"Quality {qv or '—'} · Reliance {rv or '—'}")

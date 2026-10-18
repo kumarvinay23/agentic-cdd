@@ -414,7 +414,13 @@ def _extract_survey_assessment(corpus: str) -> dict[str, Any]:
         ),
         "score_definition": score_def,
         "scores_from_valid_only": (
-            True if "valid" in score_def.lower() else _info_request("confirm scores use valid responses only")
+            True
+            if (
+                "valid" in score_def.lower()
+                and "request" not in score_def.lower()
+                and score_def != _NA
+            )
+            else _info_request("confirm scores use valid responses only")
         ),
         "inaccessible_file_note": _INACCESSIBLE_RULE if inaccessible else "",
         "information_request": info,
@@ -686,6 +692,304 @@ def _quality_reliance(
     )
 
 
+def _valid_responses_confirmed(survey: dict[str, Any]) -> bool:
+    flag = survey.get("scores_from_valid_only")
+    if flag is True:
+        return True
+    if isinstance(flag, str) and "valid" in flag.lower() and "request" not in flag.lower():
+        return True
+    score_def = str(survey.get("score_definition") or "").lower()
+    return "valid" in score_def and "request" not in score_def
+
+
+def _survey_evidence_qa(
+    survey: dict[str, Any],
+    *,
+    association: dict[str, Any],
+    reviews: dict[str, Any],
+    insight: str = "",
+    notes: list[str] | None = None,
+) -> list[dict[str, str]]:
+    """Explicit PASS/FAIL QA for survey evidence discipline."""
+    rows: list[dict[str, str]] = []
+    design_ok = (
+        bool(survey.get("present"))
+        and _is_filled(survey.get("date"))
+        and _is_filled(survey.get("sample_size"))
+        and _is_filled(survey.get("response_rate"))
+    )
+    rows.append({
+        "check": "survey_metadata_complete",
+        "status": "PASS" if design_ok else "FAIL",
+        "finding": (
+            "Survey date, sample size and response rate evidenced"
+            if design_ok
+            else _info_request("survey date, sample size and response rate")
+        ),
+        "action": (
+            "Metadata supports representativeness assessment"
+            if design_ok
+            else "Do not treat headline NPS/CSAT as diligence-grade until metadata is complete"
+        ),
+    })
+
+    valid_ok = _valid_responses_confirmed(survey)
+    rows.append({
+        "check": "scores_from_valid_responses_only",
+        "status": "PASS" if valid_ok else "FAIL",
+        "finding": (
+            "Scores calculated from valid responses only"
+            if valid_ok
+            else _info_request("confirmation that NPS/CSAT use valid responses only")
+        ),
+        "action": (
+            "Valid-response rule stated with score definition"
+            if valid_ok
+            else "Withhold or null NPS/CSAT until valid-response rule is confirmed"
+        ),
+    })
+
+    inaccessible = bool(survey.get("inaccessible_file_note"))
+    corpus_bits = " ".join(
+        [
+            str(insight or ""),
+            " ".join(n for n in (notes or []) if isinstance(n, str)),
+            str(survey.get("inaccessible_file_note") or ""),
+        ]
+    ).lower()
+    poor_focus_inferred = (
+        inaccessible
+        and "poor" in corpus_bits
+        and "focus" in corpus_bits
+        and "information gap" not in corpus_bits
+        and "does not imply" not in corpus_bits
+        and "does **not** imply" not in corpus_bits
+    )
+    if inaccessible and not poor_focus_inferred:
+        rows.append({
+            "check": "no_poor_focus_from_missing_file",
+            "status": "PASS",
+            "finding": "Inaccessible survey treated as information gap, not poor customer focus",
+            "action": _INACCESSIBLE_RULE,
+        })
+    elif poor_focus_inferred:
+        rows.append({
+            "check": "no_poor_focus_from_missing_file",
+            "status": "FAIL",
+            "finding": "Missing survey file was framed as poor customer focus",
+            "action": "Rewrite as information gap — never infer poor focus from inaccessible file",
+        })
+    else:
+        rows.append({
+            "check": "no_poor_focus_from_missing_file",
+            "status": "PASS",
+            "finding": "No inaccessible-survey poor-focus inference detected",
+            "action": "Keep inaccessible files as gaps only",
+        })
+
+    assoc_ok = bool(association.get("association_only", True))
+    rows.append({
+        "check": "association_not_causation",
+        "status": "PASS" if assoc_ok else "FAIL",
+        "finding": (
+            "Service↔churn framed as association (not Stickiness causation)"
+            if assoc_ok
+            else "Causation claimed without support — soften to association"
+        ),
+        "action": _ASSOCIATION_RULE,
+    })
+
+    reviews_ok = str(reviews.get("treated_as") or "") == "self_selected_signal"
+    rows.append({
+        "check": "public_reviews_self_selected",
+        "status": "PASS" if reviews_ok else "FAIL",
+        "finding": (
+            "Public reviews labelled self-selected signal"
+            if reviews_ok
+            else "Public reviews must not be treated as research"
+        ),
+        "action": _REVIEWS_RULE,
+    })
+    return rows
+
+
+def _questions_from_sat_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    survey = (
+        spec.get("survey_assessment")
+        if isinstance(spec.get("survey_assessment"), dict)
+        else {}
+    )
+    qa = (
+        spec.get("survey_evidence_qa")
+        if isinstance(spec.get("survey_evidence_qa"), list)
+        else []
+    )
+    ops = (
+        spec.get("operational_signals")
+        if isinstance(spec.get("operational_signals"), list)
+        else []
+    )
+    research = (
+        spec.get("research_design")
+        if isinstance(spec.get("research_design"), dict)
+        else {}
+    )
+    assoc = (
+        spec.get("churn_association")
+        if isinstance(spec.get("churn_association"), dict)
+        else {}
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    if survey.get("inaccessible_file_note") or (
+        not survey.get("present") and not ops and not assoc.get("comparable")
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide an accessible customer survey pack "
+                        "(or confirm none exists for the perimeter)"
+                    ),
+                    "required_records": (
+                        "Survey file with date, population, sample, response rate and wording"
+                    ),
+                    "decision_effect": (
+                        "Sentiment representativeness cannot be assessed; "
+                        "missing file is a gap not poor focus"
+                    ),
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "Accessible survey OR written confirmation none exists",
+                    "interim_treatment": _INACCESSIBLE_RULE,
+                }
+            )
+        )
+
+    if _qa_fail("survey_metadata_complete"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Complete survey metadata: date, sample size and response rate",
+                    "required_records": "Survey methodology / fieldwork note",
+                    "decision_effect": "Headline NPS/CSAT cannot be assessed for bias",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "survey_metadata_complete QA status PASS",
+                    "interim_treatment": "LIMITED reliance on any quoted scores",
+                }
+            )
+        )
+
+    if _qa_fail("scores_from_valid_responses_only"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Confirm NPS/CSAT are calculated from valid responses only",
+                    "required_records": "Score definition and valid-response rule",
+                    "decision_effect": "Unvalidated scores must not be quoted across agents",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "scores_from_valid_responses_only QA status PASS",
+                    "interim_treatment": "Null / withhold NPS and CSAT until confirmed",
+                }
+            )
+        )
+
+    if not ops:
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Provide operational service measures "
+                        "(complaints, missed/late service, defects, resolution times)"
+                    ),
+                    "required_records": "Support / ops quality dashboard for the review period",
+                    "decision_effect": "Harder evidence of service quality is missing",
+                    "priority": "signing_condition",
+                    "owner": "operations / commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 operational signal with measure and value",
+                    "interim_treatment": "Do not rest diligence on survey alone",
+                }
+            )
+        )
+
+    if not assoc.get("comparable"):
+        out.append(
+            normalize_question(
+                {
+                    "question": (
+                        "Link service failures to subsequent cancellations "
+                        "(association only — not Stickiness causation)"
+                    ),
+                    "required_records": "Churn cohort tagged with preceding service events",
+                    "decision_effect": "Service↔churn link remains untested",
+                    "priority": "signing_condition",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "churn_association.comparable = true; association_only = true",
+                    "interim_treatment": "Association withheld; do not infer Stickiness causation",
+                }
+            )
+        )
+
+    if research.get("needed"):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Commission the proposed research design (population, sample, method, timing)",
+                    "required_records": "Approved research brief matching research_design fields",
+                    "decision_effect": "Thin sentiment evidence stays unrepresentative until fielded",
+                    "priority": "residual_uncertainty",
+                    "owner": "commercial diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "Fieldwork complete or research_design.needed = false after new packs",
+                    "interim_treatment": "BLOCKED / LIMITED reliance until study returns",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": (
+                        "No material customer-satisfaction inputs are missing "
+                        "for the stated perimeter"
+                    ),
+                    "required_records": "N/A — survey, ops and association publishable",
+                    "decision_effect": "None — satisfaction evidence publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "commercial diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if survey file or ops period changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
+
+
 # ---------------------------------------------------------------------------
 # heuristic / LLM / normalise / build / render
 # ---------------------------------------------------------------------------
@@ -721,6 +1025,16 @@ def _heuristic_customer_satisfaction_spec(
     drivers = _extract_churn_drivers(corpus_full)
     ops = _extract_operational_signals(corpus_full)
     association = _extract_churn_association(corpus_full)
+    association["related_agent"] = "customer_stickiness"
+    association["association_only"] = True if association.get("association_only", True) else False
+    if association.get("comparable"):
+        association["association_only"] = True
+        notes_a = str(association.get("notes") or "")
+        if "stickiness" not in notes_a.lower():
+            association["notes"] = (
+                f"{_clean(notes_a, 280)} {_ASSOCIATION_RULE} "
+                "Not Stickiness causation."
+            ).strip()
     reviews = _extract_public_reviews(corpus_full)
     research = _extract_research_design(survey=survey, ops=ops, association=association)
 
@@ -736,6 +1050,13 @@ def _heuristic_customer_satisfaction_spec(
     if csat is not None and not csat_ok and legacy.get("service_satisfaction_pct") is not None:
         csat_ok, csat_note = True, "Score retained from prior extract with pack citation pending."
 
+    valid_ok = _valid_responses_confirmed(survey)
+    if not valid_ok:
+        nps_ok = False
+        csat_ok = False
+        nps_note = "Withheld — valid-response rule not confirmed."
+        csat_note = "Withheld — valid-response rule not confirmed."
+
     notes: list[str] = []
     if survey.get("inaccessible_file_note"):
         notes.append(survey["inaccessible_file_note"])
@@ -747,27 +1068,18 @@ def _heuristic_customer_satisfaction_spec(
         notes.append("Research design proposed — sentiment evidence is thin.")
 
     legacy_out = _legacy_fields(
-        nps=nps if nps_ok else nps,  # still dual-write numeric when evidenced
+        nps=nps if nps_ok else nps,
         peer_nps=peers,
         csat=csat if csat_ok else csat,
         drivers=drivers,
         legacy=legacy,
         notes=notes,
     )
-    # If truly untraceable and not in legacy, null the quote
-    if nps is not None and not nps_ok and legacy.get("nps") is None:
+    # Untraceable / unvalidated scores are not quoted
+    if nps is not None and not nps_ok:
         legacy_out["nps"] = None
-    if csat is not None and not csat_ok and legacy.get("service_satisfaction_pct") is None:
+    if csat is not None and not csat_ok:
         legacy_out["service_satisfaction_pct"] = None
-
-    quality, reliance, rationale = _quality_reliance(
-        survey=survey,
-        ops_count=len(ops),
-        association=association,
-        nps_traceable=nps_ok and legacy_out.get("nps") is not None,
-        csat_traceable=csat_ok and legacy_out.get("service_satisfaction_pct") is not None,
-        research_needed=bool(research.get("needed")),
-    )
 
     bits = [f"Customer Satisfaction for {company}:"]
     if legacy_out.get("nps") is not None:
@@ -785,7 +1097,30 @@ def _heuristic_customer_satisfaction_spec(
         bits.append("research design proposed")
     insight = _soften_invest(" ".join(bits) + f" {_DOC_CITE}")
 
-    return {
+    survey_qa = _survey_evidence_qa(
+        survey,
+        association=association,
+        reviews=reviews,
+        insight=insight,
+        notes=notes,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in survey_qa)
+
+    quality, reliance, rationale = _quality_reliance(
+        survey=survey,
+        ops_count=len(ops),
+        association=association,
+        nps_traceable=nps_ok and legacy_out.get("nps") is not None,
+        csat_traceable=csat_ok and legacy_out.get("service_satisfaction_pct") is not None,
+        research_needed=bool(research.get("needed")),
+    )
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale = (
+            "Survey evidence QA has open FAILs — reliance limited. " + rationale
+        )
+
+    out = {
         "insight_snapshot": insight,
         "survey_assessment": survey,
         "nps": legacy_out["nps"],
@@ -797,6 +1132,7 @@ def _heuristic_customer_satisfaction_spec(
         "churn_association": association,
         "public_reviews": reviews,
         "research_design": research,
+        "survey_evidence_qa": survey_qa,
         "score_traceability": {
             "nps_traceable": bool(nps_ok and legacy_out.get("nps") is not None),
             "csat_traceable": bool(csat_ok and legacy_out.get("service_satisfaction_pct") is not None),
@@ -816,6 +1152,8 @@ def _heuristic_customer_satisfaction_spec(
             and not ops
         ),
     }
+    out["questions"] = _questions_from_sat_gaps(out)
+    return out
 
 
 def _llm_customer_satisfaction_spec(
@@ -826,6 +1164,11 @@ def _llm_customer_satisfaction_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -838,6 +1181,12 @@ def _llm_customer_satisfaction_spec(
             sector=sector,
             geography=geography,
             materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
         )
     except KeyError:
         return None
@@ -857,17 +1206,24 @@ def _llm_customer_satisfaction_spec(
         "churn_drivers: [{driver, contribution_pct, severity}],\n"
         "satisfaction_notes: [string],\n"
         "operational_signals: [{signal_type, measure, value, trend, source}],\n"
-        "churn_association: {comparable, association_only, service_failure, subsequent_cancellation, "
-        "notes, source, information_request},\n"
+        "churn_association: {comparable, association_only, related_agent (customer_stickiness), "
+        "service_failure, subsequent_cancellation, notes, source, information_request},\n"
         "public_reviews: {treated_as, notes, source} — treated_as must be self_selected_signal,\n"
         "research_design: {needed, population, sample, method, questions, timing, rationale},\n"
+        "survey_evidence_qa: [{check, status (PASS|FAIL), finding, action}] — include "
+        "survey_metadata_complete, scores_from_valid_responses_only, no_poor_focus_from_missing_file, "
+        "association_not_causation, public_reviews_self_selected,\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "score_traceability: {nps_traceable, csat_traceable, notes},\n"
         "quality_verdict (PASS|REWORK), reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
         "Never quote a satisfaction score another agent cannot trace. "
         "Never infer poor customer focus from an inaccessible survey file. "
         "Public reviews are self-selected signals, not research. "
-        "Service failure vs churn is association unless causation is evidenced. "
+        "Service failure vs churn is association unless causation is evidenced — "
+        "not Stickiness causation. "
+        "Include Questions for every material gap. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -902,7 +1258,7 @@ def _normalise_llm_spec(
         survey = base
     llm["survey_assessment"] = survey
 
-    # Scores — prefer LLM then heuristic; enforce traceability
+    # Scores — prefer LLM then heuristic; enforce traceability + valid responses
     nps = _num(llm.get("nps"))
     if nps is None:
         nps = heur.get("nps")
@@ -915,9 +1271,15 @@ def _normalise_llm_spec(
     csat_ok, csat_note = _score_is_traceable(
         csat, corpus=corpus, definition=str(survey.get("score_definition") or ""), source=_DOC_CITE
     )
-    if nps is not None and not nps_ok and legacy.get("nps") is None:
+    valid_ok = _valid_responses_confirmed(survey)
+    if not valid_ok:
+        nps_ok = False
+        csat_ok = False
+        nps_note = "Withheld — valid-response rule not confirmed."
+        csat_note = "Withheld — valid-response rule not confirmed."
+    if nps is not None and not nps_ok:
         nps = None
-    if csat is not None and not csat_ok and legacy.get("service_satisfaction_pct") is None:
+    if csat is not None and not csat_ok:
         csat = None
     llm["nps"] = nps
     llm["service_satisfaction_pct"] = csat
@@ -961,7 +1323,8 @@ def _normalise_llm_spec(
         base = dict(heur["churn_association"])
         base.update({k: v for k, v in assoc.items() if v is not None})
         assoc = base
-    assoc["association_only"] = _association_only(str(assoc.get("notes") or ""))
+    assoc["association_only"] = True
+    assoc["related_agent"] = "customer_stickiness"
     if assoc.get("comparable") and "association" not in str(assoc.get("notes") or "").lower():
         assoc["notes"] = f"{_clean(assoc.get('notes'), 280)} {_ASSOCIATION_RULE}".strip()
     llm["churn_association"] = assoc
@@ -989,6 +1352,21 @@ def _normalise_llm_spec(
         "notes": f"NPS: {nps_note} CSAT: {csat_note}",
     }
 
+    insight = _soften_invest(llm.get("insight_snapshot") or heur.get("insight_snapshot") or "")
+    if survey.get("inaccessible_file_note") and "information gap" not in insight.lower():
+        insight = f"{insight} {_INACCESSIBLE_RULE}".strip()
+    llm["insight_snapshot"] = insight
+
+    survey_qa = _survey_evidence_qa(
+        survey,
+        association=assoc,
+        reviews=reviews,
+        insight=insight,
+        notes=notes,
+    )
+    llm["survey_evidence_qa"] = survey_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in survey_qa)
+
     quality, reliance, rationale = _quality_reliance(
         survey=survey,
         ops_count=len(ops),
@@ -1006,14 +1384,27 @@ def _normalise_llm_spec(
         if str(llm.get("quality_reliance_rationale") or "").strip()
         else rationale
     )
+    if qa_fail and llm["reliance_verdict"] == "READY":
+        llm["reliance_verdict"] = "LIMITED"
+        llm["quality_reliance_rationale"] = (
+            "Survey evidence QA has open FAILs — reliance limited. "
+            + _clean(llm.get("quality_reliance_rationale"), 300)
+        )
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_sat_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw_q in llm.get("questions") or []:
+            q = normalize_question(raw_q)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_sat_gaps(llm)
 
     for dead in ("recommendation", "confidence", "investment_verdict", "verdict", "invest_recommendation"):
         llm.pop(dead, None)
-
-    insight = _soften_invest(llm.get("insight_snapshot") or heur.get("insight_snapshot") or "")
-    if survey.get("inaccessible_file_note") and "information gap" not in insight.lower():
-        insight = f"{insight} {_INACCESSIBLE_RULE}".strip()
-    llm["insight_snapshot"] = insight
 
     llm["primary_sources"] = list(sources or [])[:16]
     llm["composer"] = "llm_v1"
@@ -1073,22 +1464,31 @@ def build_customer_satisfaction_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
+            out = _normalise_llm_spec(
                 llm,
                 sources=sources,
                 legacy_spec=legacy_spec,
                 corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_customer_satisfaction_spec(
+    heur = _heuristic_customer_satisfaction_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_customer_satisfaction_markdown(
@@ -1212,6 +1612,7 @@ def render_customer_satisfaction_markdown(
         [
             ["Comparable", "Yes" if assoc.get("comparable") else "No"],
             ["Association only", "Yes" if assoc.get("association_only", True) else "Causation claimed with support"],
+            ["Related agent", _clean(assoc.get("related_agent") or "customer_stickiness", 40)],
             ["Service failure", _clean(assoc.get("service_failure"), 220)],
             ["Subsequent cancellation", _clean(assoc.get("subsequent_cancellation"), 220)],
             ["Notes", _clean(assoc.get("notes"), 320)],
@@ -1265,7 +1666,58 @@ def render_customer_satisfaction_markdown(
     parts.append("---\n\n")
 
     # 6
-    parts.append("## 6. Quality & Reliance\n\n")
+    survey_qa = (
+        spec.get("survey_evidence_qa")
+        if isinstance(spec.get("survey_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 6. Survey Evidence QA\n\n")
+    parts.append(
+        "QA enforces valid-response-only scores, inaccessible-file as gap (not poor focus), "
+        "association≠causation with Stickiness, and self-selected public reviews.\n\n"
+    )
+    parts.append(
+        _table(
+            ["Check", "Status", "Finding", "Action"],
+            [
+                [
+                    _clean(r.get("check"), 60),
+                    _clean(r.get("status"), 20),
+                    _clean(r.get("finding"), 220),
+                    _clean(r.get("action"), 180),
+                ]
+                for r in survey_qa
+                if isinstance(r, dict)
+            ],
+        )
+        or f"{_info_request('survey evidence QA rows')}\n\n"
+    )
+    parts.append("---\n\n")
+
+    # 7
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 7. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material customer-satisfaction gaps')}\n\n")
+    parts.append("---\n\n")
+
+    # 8
+    parts.append("## 8. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

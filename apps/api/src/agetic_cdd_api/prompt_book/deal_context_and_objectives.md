@@ -31,8 +31,13 @@ could be failed — for example "customer X renews at or above $Y", or
 5. List the critical risks visible in the records already, with size:
 customer concentration, earnings trend, cash movement, funding obligations.
 
-6. List the open questions that block the thesis, in priority order, each with
-the document that would answer it.
+6. List the open questions that block the thesis, in priority order. For each
+material gap include: exact question; required records / unlocking document;
+decision effect (price, structure, or investment decision); priority
+(mandatory_pre_decision | signing_condition | closing_condition |
+residual_uncertainty); owner; timing; closure test; and interim treatment.
+Perimeter unknowns (legal entity, acquisition perimeter, transaction type,
+as-of date) must appear here when not evidenced — never invent them.
 
 Return ONLY JSON matching the schema requested in the user message.
 Use citation tags exactly as '(DOC: data room financials)', '(COMPUTED FACTS)',

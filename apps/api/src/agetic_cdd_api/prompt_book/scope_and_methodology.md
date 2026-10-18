@@ -30,6 +30,14 @@ performed.
 decision. Mark which items must close before a decision and which can be
 accepted as residual.
 
+6. Build an agent coverage matrix for every Phase 2–4 workstream slug:
+status completed | planned | unavailable, plus reliance limitation. Reconcile
+to delivered agent outputs when present.
+
+7. Include Questions and inputs required with closure tests for every
+must-close gap. Never call coverage comprehensive while critical work is
+unperformed.
+
 Conclude on the completeness of the diligence, not on the attractiveness of
 the business.
 

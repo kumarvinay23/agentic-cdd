@@ -1,16 +1,20 @@
 """Compose DiligenceIQ Executive Summary (IC Synthesis FV-06).
 
-Committee page from the fact register only: business, earnings, what the case
-depends on, blockers, and a recommendation proportionate to the evidence.
+Committee page from the fact register only: business, earnings, 3–5 thesis
+points with evidence + counter-evidence, blockers (owner/effect), decision
+supportable today + prerequisites, and a recommendation proportionate to
+the evidence. Pipeline catalog may label this agent "Executive Summary"
+or "IC Synthesis" — same slug `ic_synthesis`.
 
 No number appears that is not in the fact register. No conclusion appears that
-its source agent did not support. If a material workstream is blocked, the
-recommendation is to proceed with diligence on stated conditions — not to
-invest.
+its source agent did not support. Forecasts cannot stand in for achieved
+results. If a material workstream is blocked, the recommendation is to
+proceed with diligence on stated conditions — not to invest.
 
 Dual-writes legacy FV-06 fields (verdict_narrative / investment_pillars /
 primary_risks / strengths / concerns / go_no_go / confidence).
 
+Code-enforced QA + Questions; READY→LIMITED on open QA FAILs.
 No company hardcoding.
 """
 
@@ -50,8 +54,8 @@ _FIN_RULE = (
     "If earnings have fallen, the summary says so in the first paragraph."
 )
 _DEPENDS_RULE = (
-    "Give the two or three things the investment case depends on, each with "
-    "the evidence status behind it."
+    "Give three to five thesis points the investment case depends on, each "
+    "with supporting evidence, counter-evidence, and evidence status."
 )
 _BLOCKER_RULE = (
     "Give the blockers: what is unresolved, what it could change, and who "
@@ -62,6 +66,30 @@ _REC_RULE = (
     "decision stage. If a material workstream is blocked, the recommendation "
     "is to proceed with diligence on stated conditions, not to invest."
 )
+_DECISION_RULE = (
+    "State whether a decision is supportable today and list prerequisites "
+    "(owner + effect) that must clear before it is."
+)
+_FORECAST_RULE = (
+    "Forecasts cannot stand in for achieved results — estimate / budget "
+    "periods must be labelled explicitly."
+)
+_NO_BID_RULE = (
+    "Executive Summary / IC Synthesis does not issue an invest endorsement — "
+    "proceed-with-diligence vocabulary and Quality/Reliance only."
+)
+_GO_BID_RE = re.compile(
+    r"(?i)\b(?:go\s+(?:decision|vote)|bid\s+(?:now|at)|submit\s+(?:a\s+)?bid|"
+    r"recommend(?:ed)?\s+(?:to\s+)?(?:invest|pass|bid|buy)|"
+    r"we\s+(?:should|must)\s+(?:bid|invest|pass)|"
+    r"invest\s+recommended:\s*yes)\b"
+)
+_ACHIEVED_CLAIM_RE = re.compile(
+    r"(?i)\b(?:achieved|actual\s+results?|audited\s+results?|delivered)\b"
+)
+_FORECAST_LABEL_RE = re.compile(
+    r"(?i)\b(?:FY\d{2,4}E|budget|forecast|estimate|projected|guidance)\b"
+)
 
 _UPSTREAM_SLUGS: tuple[str, ...] = (
     "company_background",
@@ -69,18 +97,20 @@ _UPSTREAM_SLUGS: tuple[str, ...] = (
     "historical_performance",
     "revenue_quality",
     "cost_structure",
+    "cash_flow",
     "market_risk",
     "internal_risk",
     "competitive_differentiation",
     "market_share_strategy",
     "growth_opportunities",
     "valuation_modeling",
-    "recommendation",
     "swot_analysis",
     "synergies",
     "capital_structure",
     "customer_stickiness",
     "regulatory_compliance",
+    # Soft-load only if already produced (downstream of IC); never invent
+    "recommendation",
 )
 
 _FOUNDATION_SLUG_BY_CODE = {
@@ -284,24 +314,107 @@ def _financial_picture(agents: dict[str, dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _case_depends_on(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def _counter_evidence_for(
+    agents: dict[str, dict[str, Any]],
+    *,
+    agent: str,
+    pillar: str,
+) -> str:
+    """Register counter-evidence for a thesis pillar — never invent."""
+    swot = _spec_of(agents.get("swot_analysis"))
+    for w in _as_list(swot.get("weaknesses"))[:4]:
+        text = w.get("statement") if isinstance(w, dict) else w
+        if isinstance(text, str) and text.strip():
+            return f"SWOT weakness: {_clean(text, 120)} [swot_analysis]"
+    for b in _as_list(swot.get("open_blockers"))[:2]:
+        text = b if isinstance(b, str) else str(b)
+        if text.strip():
+            return f"Open blocker: {_clean(text, 120)} [swot_analysis]"
+
+    mr = _spec_of(agents.get("market_risk"))
+    for row in _as_list(mr.get("downside_cases"))[:2]:
+        if isinstance(row, dict) and row.get("bound"):
+            return f"Sized downside: {_clean(row.get('bound'), 120)} [market_risk]"
+
+    ir = _spec_of(agents.get("internal_risk"))
+    for row in _as_list(ir.get("key_person_exposure"))[:1]:
+        if isinstance(row, dict) and row.get("person"):
+            return (
+                f"Key-person: {row.get('person')} — "
+                f"{_clean(row.get('what_depends') or 'continuity', 80)} [internal_risk]"
+            )
+
+    cd = _spec_of(agents.get("competitive_differentiation"))
+    for test in _as_list(cd.get("advantage_tests")):
+        if not isinstance(test, dict):
+            continue
+        if str(test.get("test_result") or "").upper() == "FAIL":
+            claim = str(test.get("claim") or "advantage test").strip()
+            return f"Advantage test FAIL: {_clean(claim, 100)} [competitive_differentiation]"
+
+    go = _spec_of(agents.get("growth_opportunities"))
+    for opt in _as_list(go.get("options")):
+        if not isinstance(opt, dict):
+            continue
+        evid = str(opt.get("evidence_class") or opt.get("status") or "").lower()
+        if "hypothesis" in evid:
+            name = str(opt.get("option") or opt.get("name") or "growth option")
+            return f"Hypothesis-only growth: {_clean(name, 80)} [growth_opportunities]"
+
+    rq = _spec_of(agents.get("revenue_quality"))
+    rm = rq.get("retention_metrics") if isinstance(rq.get("retention_metrics"), dict) else {}
+    try:
+        if rm.get("nrr_pct") is not None and float(rm["nrr_pct"]) < 90:
+            return f"NRR {rm['nrr_pct']}% below durability threshold [revenue_quality]"
+    except (TypeError, ValueError):
+        pass
+
+    if agent == "cost_structure":
+        cm = _spec_of(agents.get("cost_structure")).get("cost_metrics")
+        if isinstance(cm, dict) and cm.get("gross_margin_pct") is not None:
+            try:
+                if float(cm["gross_margin_pct"]) < 20:
+                    return (
+                        f"Gross margin {cm['gross_margin_pct']}% remains thin "
+                        f"[cost_structure]"
+                    )
+            except (TypeError, ValueError):
+                pass
+
+    fin = _spec_of(agents.get("historical_performance"))
+    if "loss" in str(fin.get("trend_headline") or "").lower() or "trough" in str(
+        fin.get("trend_headline") or ""
+    ).lower():
+        return (
+            f"Direction risk: {_clean(fin.get('trend_headline'), 100)} "
+            f"[historical_performance]"
+        )
+
+    return f"Counter-evidence not yet sized in register for '{_clean(pillar, 40)}'"
+
+
+def _thesis_points(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """3–5 thesis points with evidence + counter-evidence from the register."""
     rows: list[dict[str, Any]] = []
 
-    def add(pillar: str, finding: str, agent: str, status: str) -> None:
-        if len(rows) >= 3:
+    def add(pillar: str, evidence: str, agent: str, status: str) -> None:
+        if len(rows) >= 5:
             return
-        if not finding.strip():
+        if not evidence.strip():
             return
         rows.append(
             {
                 "pillar": _soften(_clean(pillar, 80)),
-                "finding": _soften(_clean(finding, 220)),
+                "finding": _soften(_clean(evidence, 220)),
+                "evidence": _soften(_clean(evidence, 220)),
+                "counter_evidence": _soften(
+                    _clean(_counter_evidence_for(agents, agent=agent, pillar=pillar), 200)
+                ),
                 "source_agent": agent,
                 "evidence_status": status,
             }
         )
 
-    # Growth evidenced options
     go = _spec_of(agents.get("growth_opportunities"))
     go_status = _evidence_status(go, agents.get("growth_opportunities") or {})
     for opt in _as_list(go.get("options"))[:2]:
@@ -317,7 +430,6 @@ def _case_depends_on(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
                 go_status,
             )
 
-    # Competitive differentiation PASS tests
     cd = _spec_of(agents.get("competitive_differentiation"))
     cd_status = _evidence_status(cd, agents.get("competitive_differentiation") or {})
     for test in _as_list(cd.get("advantage_tests")):
@@ -327,9 +439,13 @@ def _case_depends_on(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         claim = str(test.get("claim") or "").strip()
         if claim:
-            add("Demonstrated advantage", f"Test PASS: {claim}", "competitive_differentiation", cd_status)
+            add(
+                "Demonstrated advantage",
+                f"Test PASS: {claim}",
+                "competitive_differentiation",
+                cd_status,
+            )
 
-    # Cost / margin path from cost_structure + growth unit economics
     cost = _spec_of(agents.get("cost_structure"))
     cm = cost.get("cost_metrics") if isinstance(cost.get("cost_metrics"), dict) else {}
     if cm.get("gross_margin_pct") is not None:
@@ -340,7 +456,6 @@ def _case_depends_on(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
             _evidence_status(cost, agents.get("cost_structure") or {}),
         )
 
-    # Revenue quality if NRR present
     rq = _spec_of(agents.get("revenue_quality"))
     rm = rq.get("retention_metrics") if isinstance(rq.get("retention_metrics"), dict) else {}
     if rm.get("nrr_pct") is not None:
@@ -351,14 +466,12 @@ def _case_depends_on(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
             _evidence_status(rq, agents.get("revenue_quality") or {}),
         )
 
-    # Deal context hypotheses only if framed as thesis drivers with evidence
     deal = _spec_of(agents.get("deal_context_and_objectives"))
     for hyp in _as_list(deal.get("hypotheses"))[:2]:
-        if len(rows) >= 3:
+        if len(rows) >= 5:
             break
         text = hyp.get("hypothesis") if isinstance(hyp, dict) else hyp
-        if isinstance(text, str) and text.strip() and len(rows) < 3:
-            # Only if not already covered
+        if isinstance(text, str) and text.strip():
             add(
                 "Thesis driver",
                 text.strip(),
@@ -366,7 +479,37 @@ def _case_depends_on(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
                 _evidence_status(deal, agents.get("deal_context_and_objectives") or {}),
             )
 
-    return rows[:3]
+    # Ensure at least direction/financial thesis when thin
+    if len(rows) < 3:
+        hist = _spec_of(agents.get("historical_performance"))
+        headline = str(hist.get("trend_headline") or "").strip()
+        if headline:
+            add(
+                "Financial direction",
+                headline,
+                "historical_performance",
+                _evidence_status(hist, agents.get("historical_performance") or {}),
+            )
+    if len(rows) < 3:
+        val = _spec_of(agents.get("valuation_modeling"))
+        earn = val.get("earnings_basis") if isinstance(val.get("earnings_basis"), dict) else {}
+        if earn.get("amount") is not None:
+            add(
+                "Earnings basis",
+                (
+                    f"{earn.get('metric')} {earn.get('amount')} "
+                    f"{earn.get('unit')} ({earn.get('period')})"
+                ),
+                "valuation_modeling",
+                _evidence_status(val, agents.get("valuation_modeling") or {}),
+            )
+
+    return rows[:5]
+
+
+def _case_depends_on(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Legacy alias — thesis points without dropping counter-evidence fields."""
+    return _thesis_points(agents)
 
 
 def _blockers(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -532,6 +675,318 @@ def _proportionate_recommendation(
     }
 
 
+def _decision_support(
+    *,
+    blockers: list[dict[str, Any]],
+    thesis: list[dict[str, Any]],
+    financial: dict[str, Any],
+) -> dict[str, Any]:
+    blocking = [b for b in blockers if isinstance(b, dict) and b.get("blocks_decision")]
+    prerequisites: list[dict[str, str]] = []
+    for b in blocking[:6]:
+        prerequisites.append({
+            "item": _clean(b.get("item"), 160),
+            "owner": _clean(b.get("owner") or "Deal team", 60),
+            "effect": _clean(b.get("could_change") or "Decision readiness", 140),
+        })
+    supportable = not blocking and len(thesis) >= 3
+    if supportable:
+        rationale = (
+            f"Decision supportable today for diligence framing — "
+            f"{len(thesis)} thesis point(s), no material blockers."
+        )
+    elif blocking:
+        rationale = (
+            f"Decision not supportable today — {len(blocking)} material blocker(s) "
+            f"must clear first."
+        )
+    else:
+        rationale = (
+            f"Decision not supportable today — thesis thin ({len(thesis)} point(s)); "
+            f"need 3–5 register-backed points."
+        )
+    if financial.get("earnings_fallen_or_negative"):
+        rationale = "Earnings negative/troughing (stated). " + rationale
+    return {
+        "supportable_today": supportable,
+        "rationale": _soften(rationale),
+        "prerequisites": prerequisites,
+        "notes": _DECISION_RULE,
+    }
+
+
+def _opening_forecast_as_achieved(opening: list[str]) -> bool:
+    """True if opening claims 'achieved/actual' without forecast labelling."""
+    blob = " ".join(str(x) for x in opening)
+    if not _ACHIEVED_CLAIM_RE.search(blob):
+        return False
+    # Achieved claim OK only if no forecast period is mixed in as achieved
+    if _FORECAST_LABEL_RE.search(blob):
+        return True  # saying "achieved FY2024E" is the anti-pattern
+    return True
+
+
+def _ic_synthesis_evidence_qa(
+    *,
+    opening: list[str],
+    financial: dict[str, Any],
+    thesis: list[dict[str, Any]],
+    blockers: list[dict[str, Any]],
+    decision_support: dict[str, Any],
+    recommendation: dict[str, Any],
+    corpus_bits: str,
+) -> list[dict[str, str]]:
+    qa: list[dict[str, str]] = []
+
+    opening_ok = bool(opening) and all(
+        isinstance(x, str) and x.strip() for x in opening[:3]
+    )
+    qa.append({
+        "check": "opening_register_only",
+        "status": "PASS" if opening_ok else "FAIL",
+        "finding": (
+            f"{len(opening)} opening line(s) from register"
+            if opening_ok
+            else "Opening incomplete — register figures missing"
+        ),
+        "action": _OPEN_RULE,
+    })
+
+    direction_ok = bool(financial.get("direction")) and str(
+        financial.get("direction")
+    ) != "direction of travel not stated"
+    # Also PASS if fallen stated in opening
+    if financial.get("earnings_fallen_or_negative"):
+        direction_ok = True
+    qa.append({
+        "check": "direction_of_travel_explicit",
+        "status": "PASS" if direction_ok else "FAIL",
+        "finding": (
+            str(financial.get("direction") or "Direction stated via earnings fall")
+            if direction_ok
+            else "Direction of travel not explicit"
+        ),
+        "action": _FIN_RULE,
+    })
+
+    n = len(thesis)
+    count_ok = 3 <= n <= 5
+    qa.append({
+        "check": "thesis_count_3_to_5",
+        "status": "PASS" if count_ok else "FAIL",
+        "finding": (
+            f"{n} thesis point(s)"
+            if count_ok
+            else f"Need 3–5 thesis points; have {n}"
+        ),
+        "action": _DEPENDS_RULE,
+    })
+
+    with_counter = [
+        t for t in thesis
+        if isinstance(t, dict)
+        and _is_filled_counter(t.get("counter_evidence"))
+    ]
+    counter_ok = bool(thesis) and len(with_counter) == len(
+        [t for t in thesis if isinstance(t, dict)]
+    )
+    qa.append({
+        "check": "thesis_has_counter_evidence",
+        "status": "PASS" if counter_ok else "FAIL",
+        "finding": (
+            f"{len(with_counter)}/{n} thesis point(s) carry counter-evidence"
+            if thesis
+            else "No thesis points for counter-evidence"
+        ),
+        "action": _DEPENDS_RULE,
+    })
+
+    incomplete_blockers = [
+        b for b in blockers
+        if isinstance(b, dict)
+        and (not b.get("owner") or not b.get("could_change"))
+    ]
+    blocker_ok = (not blockers) or not incomplete_blockers
+    qa.append({
+        "check": "blockers_owner_effect",
+        "status": "PASS" if blocker_ok else "FAIL",
+        "finding": (
+            f"{len(blockers)} blocker(s) with owner + effect"
+            if blocker_ok
+            else f"{len(incomplete_blockers)} blocker(s) missing owner/effect"
+        ),
+        "action": _BLOCKER_RULE,
+    })
+
+    ds_ok = (
+        isinstance(decision_support, dict)
+        and "supportable_today" in decision_support
+        and isinstance(decision_support.get("prerequisites"), list)
+    )
+    qa.append({
+        "check": "decision_supportable_stated",
+        "status": "PASS" if ds_ok else "FAIL",
+        "finding": (
+            (
+                f"Supportable today: {decision_support.get('supportable_today')}; "
+                f"{len(decision_support.get('prerequisites') or [])} prerequisite(s)"
+            )
+            if ds_ok
+            else "Decision supportable / prerequisites not stated"
+        ),
+        "action": _DECISION_RULE,
+    })
+
+    forecast_bad = _opening_forecast_as_achieved(opening)
+    # Soft PASS when opening labels FY*E / forecast without "achieved"
+    blob = " ".join(str(x) for x in opening)
+    if _FORECAST_LABEL_RE.search(blob) and not _ACHIEVED_CLAIM_RE.search(blob):
+        forecast_bad = False
+    if not _ACHIEVED_CLAIM_RE.search(blob):
+        forecast_bad = False
+    qa.append({
+        "check": "no_forecast_as_achieved",
+        "status": "PASS" if not forecast_bad else "FAIL",
+        "finding": (
+            "Forecast / estimate periods labelled — not presented as achieved"
+            if not forecast_bad
+            else "Opening treats forecast/estimate as achieved results"
+        ),
+        "action": _FORECAST_RULE,
+    })
+
+    invest = bool(recommendation.get("invest_recommended"))
+    bid_lang = bool(_GO_BID_RE.search(corpus_bits or "")) or bool(
+        _INVEST_LANG.search(corpus_bits or "")
+    )
+    qa.append({
+        "check": "no_invest_endorsement",
+        "status": "PASS" if (not invest and not bid_lang) else "FAIL",
+        "finding": (
+            "No invest endorsement — diligence stance only"
+            if not invest and not bid_lang
+            else "Invest language / invest_recommended present"
+        ),
+        "action": _NO_BID_RULE,
+    })
+
+    return qa
+
+
+def _is_filled_counter(v: Any) -> bool:
+    if v is None:
+        return False
+    s = str(v).strip()
+    return bool(s) and s != _NA and not s.lower().startswith("counter-evidence not yet")
+
+
+def _questions_from_ic_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    qa = (
+        spec.get("ic_synthesis_evidence_qa")
+        if isinstance(spec.get("ic_synthesis_evidence_qa"), list)
+        else []
+    )
+
+    def _qa_fail(check: str) -> bool:
+        return any(
+            isinstance(r, dict) and r.get("check") == check and r.get("status") == "FAIL"
+            for r in qa
+        )
+
+    out: list[dict[str, str]] = []
+    if _qa_fail("opening_register_only"):
+        out.append(normalize_question({
+            "question": "Complete register-only opening (business / earnings / proposed)",
+            "required_records": "company_background + historical_performance + deal overview",
+            "decision_effect": "Committee page cannot invent facts outside the register",
+            "priority": "mandatory_pre_decision",
+            "owner": "Deal lead",
+            "timing": "before IC",
+            "closure_test": "opening_register_only QA PASS",
+            "interim_treatment": "REWORK until opening traced",
+        }))
+    if _qa_fail("direction_of_travel_explicit"):
+        out.append(normalize_question({
+            "question": "State direction of travel plainly in the financial position",
+            "required_records": "historical_performance.trend_headline",
+            "decision_effect": "Hidden trough/decline misleads the committee",
+            "priority": "mandatory_pre_decision",
+            "owner": "Financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "direction_of_travel_explicit QA PASS",
+            "interim_treatment": "LIMITED until direction stated",
+        }))
+    if _qa_fail("thesis_count_3_to_5"):
+        out.append(normalize_question({
+            "question": "Establish 3–5 register-backed thesis points",
+            "required_records": "Growth / CD / cost / RQ / deal hypotheses",
+            "decision_effect": "Case dependencies too thin for IC framing",
+            "priority": "mandatory_pre_decision",
+            "owner": "Deal lead",
+            "timing": "before IC",
+            "closure_test": "thesis_count_3_to_5 QA PASS",
+            "interim_treatment": "LIMITED until 3–5 points present",
+        }))
+    if _qa_fail("thesis_has_counter_evidence"):
+        out.append(normalize_question({
+            "question": "Attach counter-evidence to each thesis point from the register",
+            "required_records": "SWOT weaknesses / market downside / IR / CD FAIL",
+            "decision_effect": "One-sided thesis overstates conviction",
+            "priority": "mandatory_pre_decision",
+            "owner": "Deal lead",
+            "timing": "before IC",
+            "closure_test": "thesis_has_counter_evidence QA PASS",
+            "interim_treatment": "LIMITED until counter-evidence attached",
+        }))
+    if _qa_fail("blockers_owner_effect"):
+        out.append(normalize_question({
+            "question": "Complete blocker rows with owner and what each could change",
+            "required_records": "Blocker register",
+            "decision_effect": "Ownerless blockers cannot be closed",
+            "priority": "mandatory_pre_decision",
+            "owner": "Deal lead",
+            "timing": "before IC",
+            "closure_test": "blockers_owner_effect QA PASS",
+            "interim_treatment": "LIMITED until owners assigned",
+        }))
+    if _qa_fail("decision_supportable_stated"):
+        out.append(normalize_question({
+            "question": "State whether a decision is supportable today and list prerequisites",
+            "required_records": "Blockers + thesis completeness",
+            "decision_effect": "Committee cannot tell if a decision is premature",
+            "priority": "mandatory_pre_decision",
+            "owner": "Deal lead",
+            "timing": "before IC",
+            "closure_test": "decision_supportable_stated QA PASS",
+            "interim_treatment": "LIMITED until stated",
+        }))
+    if _qa_fail("no_forecast_as_achieved"):
+        out.append(normalize_question({
+            "question": "Relabel forecast/estimate figures — do not present as achieved",
+            "required_records": "Historical period labels (actual / LTM / forecast)",
+            "decision_effect": "Forecasts standing in for results overstate the track record",
+            "priority": "mandatory_pre_decision",
+            "owner": "Financial diligence lead",
+            "timing": "before IC",
+            "closure_test": "no_forecast_as_achieved QA PASS",
+            "interim_treatment": "REWORK until labelled",
+        }))
+    if _qa_fail("no_invest_endorsement"):
+        out.append(normalize_question({
+            "question": "Remove invest endorsement — use proceed-with-diligence vocabulary",
+            "required_records": "Executive Summary recommendation block",
+            "decision_effect": "Invest language here bypasses Recommendations / decision stage",
+            "priority": "mandatory_pre_decision",
+            "owner": "Deal lead",
+            "timing": "before IC",
+            "closure_test": "no_invest_endorsement QA PASS",
+            "interim_treatment": "REWORK until endorsement removed",
+        }))
+    return [q for q in out if q]
+
+
 def _quality_reliance(
     *,
     opening: list[str],
@@ -539,6 +994,7 @@ def _quality_reliance(
     blockers: list[dict[str, Any]],
     agents_used: int,
     invented_numbers: bool,
+    qa_fail: bool = False,
 ) -> tuple[str, str, str]:
     if invented_numbers:
         return (
@@ -560,16 +1016,20 @@ def _quality_reliance(
             f"PASS: summary traced to {agents_used} upstream agent(s). "
             f"Material blocker(s) present — recommendation is proceed-with-diligence, not invest."
         )
-    elif not depends:
+    elif not depends or len(depends) < 3:
         reliance = "LIMITED"
-        rationale = f"PASS: opening traced; case dependencies thin ({len(depends)})."
+        rationale = f"PASS: opening traced; thesis thin ({len(depends)} point(s); need 3–5)."
     else:
-        reliance = "LIMITED"  # committee summary at diligence stage is never READY-to-invest
+        reliance = "READY"
         rationale = (
-            f"PASS: opening, {len(depends)} dependency(ies), {len(blockers)} blocker row(s) "
-            f"traced. Diligence-stage stance only."
+            f"PASS: opening, {len(depends)} thesis point(s), {len(blockers)} blocker row(s) "
+            f"traced. Diligence-stage stance only — not an invest endorsement."
         )
-    return quality, reliance, rationale
+    if qa_fail and reliance == "READY":
+        reliance = "LIMITED"
+        rationale += " Open IC Synthesis QA FAILs cap READY → LIMITED."
+    bits = [rationale, _NO_BID_RULE, _FORECAST_RULE]
+    return quality, reliance, " ".join(bits)
 
 
 def _heuristic_ic_synthesis_spec(
@@ -580,9 +1040,11 @@ def _heuristic_ic_synthesis_spec(
     sector: str | None = None,
     geography: str | None = None,
     legacy_spec: dict[str, Any] | None = None,
+    deal_slots: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     agents = prior_agents if isinstance(prior_agents, dict) else {}
     legacy = legacy_spec if isinstance(legacy_spec, dict) else {}
+    slots = deal_slots if isinstance(deal_slots, dict) else {}
 
     opening = _business_lines(agents, company)
     financial = _financial_picture(agents)
@@ -599,13 +1061,16 @@ def _heuristic_ic_synthesis_spec(
             opening[2] if len(opening) > 2 else opening[-1],
         ][:3]
 
-    depends = _case_depends_on(agents)
+    thesis = _thesis_points(agents)
+    depends = thesis  # dual-write alias
     blockers = _blockers(agents)
+    decision_support = _decision_support(
+        blockers=blockers, thesis=thesis, financial=financial
+    )
     recommendation = _proportionate_recommendation(
         blockers=blockers, depends=depends, financial=financial
     )
 
-    # Build narrative for dual-write (no invent, no invest)
     narrative_parts = list(opening)
     if financial.get("supporting_figures"):
         narrative_parts.append(
@@ -613,24 +1078,44 @@ def _heuristic_ic_synthesis_spec(
         )
     verdict_narrative = _soften(" ".join(narrative_parts))
 
-    # Legacy pillars from depends
     investment_pillars = [
         {
             "name": d["pillar"],
-            "detail": f"{d['finding']} ({d['evidence_status']}) [{d['source_agent']}]",
+            "detail": (
+                f"{d['finding']} ({d['evidence_status']}) [{d['source_agent']}] "
+                f"| Counter: {d.get('counter_evidence') or '—'}"
+            ),
         }
         for d in depends
     ]
-    primary_risks = [
-        {
-            "risk": b["item"],
-            "probability": "Unresolved",
-            "impact": b["could_change"],
-            "mitigation": f"Owner: {b['owner']}",
-        }
-        for b in blockers
-        if b.get("blocks_decision")
-    ][:6]
+    primary_risks = []
+    for b in blockers:
+        if not b.get("blocks_decision"):
+            continue
+        finding = str(b.get("source_finding") or "").strip()
+        item = str(b.get("item") or "").strip()
+        # Key-person rows: keep the retention / succession condition visible.
+        if "key-person" in item.lower() or "key person" in item.lower():
+            mitigation = (
+                f"Retention / succession condition — {finding}"
+                if finding
+                else "Retention / succession agreement as condition precedent"
+            )
+            mitigation = f"{mitigation} (owner: {b.get('owner') or 'Deal team'})"
+        else:
+            mitigation = f"Owner: {b.get('owner') or 'Deal team'}"
+            if finding and finding.lower() not in item.lower():
+                mitigation = f"{finding} · {mitigation}"
+        primary_risks.append(
+            {
+                "risk": item,
+                "probability": "Unresolved",
+                "impact": b.get("could_change"),
+                "mitigation": mitigation,
+            }
+        )
+        if len(primary_risks) >= 6:
+            break
     concerns = [
         f"{b['item']} — could change {b['could_change']} (owner: {b['owner']}) [{b['source_agent']}]"
         for b in blockers
@@ -639,24 +1124,20 @@ def _heuristic_ic_synthesis_spec(
         f"{d['pillar']}: {d['finding']} [{d['source_agent']}]" for d in depends
     ]
 
-    # go_no_go dual-write: proportionate stance only — never "Invest"
     go = recommendation["stance"]
     confidence = "blocked" if recommendation.get("invest_recommended") is False and any(
         b.get("blocks_decision") for b in blockers
     ) else "limited"
 
-    quality, reliance, rationale = _quality_reliance(
-        opening=opening,
-        depends=depends,
-        blockers=blockers,
-        agents_used=len(agents),
-        invented_numbers=False,
-    )
-
     bits = [
         f"Executive Summary for {company}",
-        f"{len(depends)} case dependenc(ies)",
+        f"{len(thesis)} thesis point(s)",
         f"{len(blockers)} blocker row(s)",
+        (
+            "decision supportable today"
+            if decision_support.get("supportable_today")
+            else "decision not supportable today"
+        ),
         recommendation["stance"][:80],
     ]
     if financial.get("earnings_fallen_or_negative"):
@@ -669,12 +1150,33 @@ def _heuristic_ic_synthesis_spec(
             if isinstance(s, str) and s and s not in srcs:
                 srcs.append(s)
 
+    ic_qa = _ic_synthesis_evidence_qa(
+        opening=opening,
+        financial=financial,
+        thesis=thesis,
+        blockers=blockers,
+        decision_support=decision_support,
+        recommendation=recommendation,
+        corpus_bits=snapshot,
+    )
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in ic_qa)
+    quality, reliance, rationale = _quality_reliance(
+        opening=opening,
+        depends=depends,
+        blockers=blockers,
+        agents_used=len(agents),
+        invented_numbers=False,
+        qa_fail=qa_fail,
+    )
+
     empty = not agents
 
-    return {
-        "document": "Final Investment Memo (Go/No-Go)",
+    out = {
+        "document": "Executive Summary (IC Synthesis)",
         "fv_code": _FV_CODE,
         "slug": _AGENT_KEY,
+        "ui_name": "Executive Summary",
+        "also_known_as": "IC Synthesis",
         "insight_snapshot": snapshot,
         "sector": sector or _NA,
         "geography": geography or _NA,
@@ -683,13 +1185,18 @@ def _heuristic_ic_synthesis_spec(
             "financial": _FIN_RULE,
             "depends": _DEPENDS_RULE,
             "blockers": _BLOCKER_RULE,
+            "decision": _DECISION_RULE,
             "recommendation": _REC_RULE,
+            "forecast": _FORECAST_RULE,
         },
         "opening_lines": opening,
         "financial_picture": financial,
+        "thesis_points": thesis,
         "case_depends_on": depends,
         "blockers": blockers,
+        "decision_support": decision_support,
         "recommendation": recommendation,
+        "ic_synthesis_evidence_qa": ic_qa,
         # Legacy dual-write
         "verdict_narrative": verdict_narrative,
         "value_creation_thesis": verdict_narrative,
@@ -699,7 +1206,7 @@ def _heuristic_ic_synthesis_spec(
         "concerns": concerns,
         "go_no_go": go,
         "confidence": confidence,
-        "overall_score_1_5": None,  # do not invent a score
+        "overall_score_1_5": None,
         "overall_label": go,
         "dimensions": legacy.get("dimensions") or [],
         "upstream_agents_used": sorted(agents.keys()),
@@ -717,8 +1224,14 @@ def _heuristic_ic_synthesis_spec(
             "risk_count": len(primary_risks),
             "blocker_count": len(blockers),
             "depends_count": len(depends),
+            "thesis_count": len(thesis),
+            "supportable_today": decision_support.get("supportable_today"),
         },
     }
+    if slots:
+        out["deal_slots"] = slots
+    out["questions"] = _questions_from_ic_gaps(out)
+    return out
 
 
 def _llm_ic_synthesis_spec(
@@ -729,6 +1242,11 @@ def _llm_ic_synthesis_spec(
     sector: str | None,
     geography: str | None,
     materiality: str | None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import generate_json
@@ -738,23 +1256,33 @@ def _llm_ic_synthesis_spec(
         sector=sector,
         geography=geography,
         materiality=materiality,
+        deal_perimeter=deal_perimeter,
+        transaction_type=transaction_type,
+        as_of_date=as_of_date,
+        review_periods=review_periods,
+        decision_stage=decision_stage,
     )
     src_lines = "\n".join(f"[{i}] {s}" for i, s in enumerate(sources[:12], start=1)) or "[1] (none)"
     user = (
         f"Company: {company}\n"
         f"Sector: {sector or 'unknown'}\n"
-        f"Geography: {geography or 'unknown'}\n\n"
+        f"Geography: {geography or 'unknown'}\n"
+        f"Decision stage: {decision_stage or 'diligence'}\n\n"
         "Fact register / upstream findings (ONLY source of numbers and conclusions):\n"
         f"{prior_digest[:12000]}\n\n"
         f"Sources:\n{src_lines}\n\n"
         "Return JSON with keys: insight_snapshot, opening_lines (3 strings), "
-        "financial_picture, case_depends_on (2-3), blockers, recommendation, "
-        "quality_verdict, reliance_verdict, quality_reliance_rationale.\n"
-        "Each depends item: pillar, finding, source_agent, evidence_status.\n"
+        "financial_picture, thesis_points (3-5), case_depends_on, blockers, "
+        "decision_support, recommendation, quality_verdict, reliance_verdict, "
+        "quality_reliance_rationale.\n"
+        "Each thesis item: pillar, finding, evidence, counter_evidence, source_agent, "
+        "evidence_status.\n"
         "Each blocker: item, could_change, owner, source_agent, source_finding, blocks_decision.\n"
+        "decision_support: {supportable_today, rationale, prerequisites:[{item,owner,effect}]}.\n"
         "recommendation: stance, rationale, proportionate_to, invest_recommended=false.\n"
-        "No number not in the register. No invest recommendation. If blocked workstream: "
-        "proceed with diligence on stated conditions."
+        "No number not in the register. No invest recommendation. Forecasts cannot stand "
+        "in for achieved results. If blocked workstream: proceed with diligence on "
+        "stated conditions."
     )
     try:
         return generate_json(system=system, user=user)
@@ -773,17 +1301,27 @@ def _normalise_llm_spec(raw: dict[str, Any], *, heur: dict[str, Any]) -> dict[st
         if lines:
             out["opening_lines"] = lines[:3]
 
-    if isinstance(raw.get("case_depends_on"), list) and raw["case_depends_on"]:
+    thesis_src = raw.get("thesis_points") or raw.get("case_depends_on")
+    if isinstance(thesis_src, list) and thesis_src:
         deps: list[dict[str, Any]] = []
-        for row in raw["case_depends_on"]:
+        for row in thesis_src:
             if not isinstance(row, dict):
                 continue
-            if not row.get("finding") or not row.get("source_agent"):
+            finding = row.get("finding") or row.get("evidence")
+            if not finding or not row.get("source_agent"):
                 continue  # reject untraced
             deps.append(
                 {
                     "pillar": _soften(_clean(row.get("pillar") or "Dependency", 80)),
-                    "finding": _soften(_clean(row.get("finding"), 220)),
+                    "finding": _soften(_clean(finding, 220)),
+                    "evidence": _soften(_clean(row.get("evidence") or finding, 220)),
+                    "counter_evidence": _soften(
+                        _clean(
+                            row.get("counter_evidence")
+                            or "Counter-evidence not yet sized in register",
+                            200,
+                        )
+                    ),
                     "source_agent": str(row.get("source_agent")),
                     "evidence_status": str(
                         row.get("evidence_status") or "Upstream evidence status not upgraded"
@@ -791,7 +1329,8 @@ def _normalise_llm_spec(raw: dict[str, Any], *, heur: dict[str, Any]) -> dict[st
                 }
             )
         if deps:
-            out["case_depends_on"] = deps[:3]
+            out["thesis_points"] = deps[:5]
+            out["case_depends_on"] = deps[:5]
 
     if isinstance(raw.get("blockers"), list) and raw["blockers"]:
         blockers: list[dict[str, Any]] = []
@@ -859,20 +1398,42 @@ def _normalise_llm_spec(raw: dict[str, Any], *, heur: dict[str, Any]) -> dict[st
     out["overall_label"] = out["go_no_go"]
     out["overall_score_1_5"] = None  # never invent
 
+    # Prefer heuristic decision_support / QA when agents known
+    out["decision_support"] = heur.get("decision_support") or _decision_support(
+        blockers=out.get("blockers") or [],
+        thesis=out.get("thesis_points") or out.get("case_depends_on") or [],
+        financial=out.get("financial_picture") or heur.get("financial_picture") or {},
+    )
+    out.setdefault("thesis_points", out.get("case_depends_on") or [])
+    ic_qa = heur.get("ic_synthesis_evidence_qa") or _ic_synthesis_evidence_qa(
+        opening=out.get("opening_lines") or [],
+        financial=out.get("financial_picture") or {},
+        thesis=out.get("thesis_points") or [],
+        blockers=out.get("blockers") or [],
+        decision_support=out["decision_support"],
+        recommendation=out["recommendation"],
+        corpus_bits=str(out.get("insight_snapshot") or ""),
+    )
+    out["ic_synthesis_evidence_qa"] = ic_qa
+    qa_fail = any(isinstance(r, dict) and r.get("status") == "FAIL" for r in ic_qa)
     q, r, rationale = _quality_reliance(
         opening=out.get("opening_lines") or [],
         depends=out.get("case_depends_on") or [],
         blockers=out.get("blockers") or [],
         agents_used=len(heur.get("upstream_agents_used") or []),
         invented_numbers=False,
+        qa_fail=qa_fail,
     )
     order = {"BLOCKED": 0, "LIMITED": 1, "READY": 2}
     heur_r = str(heur.get("reliance_verdict") or "LIMITED")
     out["reliance_verdict"] = r if order.get(r, 9) <= order.get(heur_r, 9) else heur_r
+    if qa_fail and out["reliance_verdict"] == "READY":
+        out["reliance_verdict"] = "LIMITED"
     out["quality_verdict"] = "REWORK" if heur.get("quality_verdict") == "REWORK" else q
     out["quality_reliance_rationale"] = rationale
     if raw.get("insight_snapshot"):
         out["insight_snapshot"] = _soften(_clean(raw["insight_snapshot"], 400))
+    out["questions"] = _questions_from_ic_gaps(out)
     out["composer"] = "llm_ic_synthesis_v1"
     out["empty"] = not (out.get("opening_lines") or out.get("case_depends_on"))
     return out
@@ -900,6 +1461,7 @@ def build_ic_synthesis_spec(
     if isinstance(sector, str) and sector.strip().lower() in {"generic", "unknown", ""}:
         sector = None
 
+    slots = {k: v for k, v in vars_.items() if v}
     agents = _collect_agents(
         deal, prior=prior, foundation=foundation, findings_store=findings_store
     )
@@ -910,6 +1472,7 @@ def build_ic_synthesis_spec(
         sector=str(sector) if sector else None,
         geography=str(geography) if geography else None,
         legacy_spec=legacy_spec,
+        deal_slots=slots,
     )
     if prefer_heuristic:
         return heur
@@ -932,10 +1495,17 @@ def build_ic_synthesis_spec(
         sector=str(sector) if sector else None,
         geography=str(geography) if geography else None,
         materiality=vars_.get("materiality"),
+        deal_perimeter=vars_.get("deal_perimeter"),
+        transaction_type=vars_.get("transaction_type"),
+        as_of_date=vars_.get("as_of_date"),
+        review_periods=vars_.get("review_periods"),
+        decision_stage=vars_.get("decision_stage"),
     )
     if not llm_raw:
         return heur
-    return _normalise_llm_spec(llm_raw, heur=heur)
+    out = _normalise_llm_spec(llm_raw, heur=heur)
+    out["deal_slots"] = slots
+    return out
 
 
 def render_ic_synthesis_markdown(
@@ -976,9 +1546,9 @@ def render_ic_synthesis_markdown(
         parts.append("\n")
     parts.append("---\n\n")
 
-    parts.append("## 3. What the Case Depends On\n\n")
+    parts.append("## 3. Thesis Points (Evidence · Counter-Evidence)\n\n")
     parts.append(f"{_DEPENDS_RULE}\n\n")
-    deps = spec.get("case_depends_on") or []
+    deps = spec.get("thesis_points") or spec.get("case_depends_on") or []
     if not deps:
         parts.append(f"_{_NA}_\n\n")
     else:
@@ -987,7 +1557,9 @@ def render_ic_synthesis_markdown(
                 continue
             parts.append(
                 f"- **{_clean(d.get('pillar'), 80)}** — {_clean(d.get('finding'), 200)}\n"
-                f"  - Evidence: {_clean(d.get('evidence_status'), 80)} "
+                f"  - Evidence: {_clean(d.get('evidence') or d.get('finding'), 160)}\n"
+                f"  - Counter-evidence: {_clean(d.get('counter_evidence') or _NA, 160)}\n"
+                f"  - Status: {_clean(d.get('evidence_status'), 80)} "
                 f"(`{d.get('source_agent')}`)\n"
             )
         parts.append("\n")
@@ -1013,7 +1585,34 @@ def render_ic_synthesis_markdown(
         parts.append("\n")
     parts.append("---\n\n")
 
-    parts.append("## 5. Recommendation (Proportionate)\n\n")
+    parts.append("## 5. Decision Supportable Today\n\n")
+    parts.append(f"{_DECISION_RULE}\n\n")
+    ds = (
+        spec.get("decision_support")
+        if isinstance(spec.get("decision_support"), dict)
+        else {}
+    )
+    parts.append(
+        f"**Supportable today:** "
+        f"{'Yes' if ds.get('supportable_today') else 'No'}  \n"
+        f"**Rationale:** {_clean(ds.get('rationale') or _NA, 320)}\n\n"
+    )
+    prereqs = ds.get("prerequisites") if isinstance(ds.get("prerequisites"), list) else []
+    if prereqs:
+        parts.append("**Prerequisites:**\n\n")
+        for p in prereqs:
+            if not isinstance(p, dict):
+                continue
+            parts.append(
+                f"- **{_clean(p.get('item'), 160)}** — owner: {_clean(p.get('owner'), 60)}; "
+                f"effect: {_clean(p.get('effect'), 140)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append("No open prerequisites — or none recorded.\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 6. Recommendation (Proportionate)\n\n")
     parts.append(f"{_REC_RULE}\n\n")
     rec = spec.get("recommendation") if isinstance(spec.get("recommendation"), dict) else {}
     parts.append(f"**Stance:** {_clean(rec.get('stance') or _NA, 200)}  \n")
@@ -1031,12 +1630,63 @@ def render_ic_synthesis_markdown(
     else:
         parts.append(f"{_NA}\n\n")
     parts.append("---\n\n")
-    parts.append("## Quality & Reliance\n\n")
+
+    ic_qa = (
+        spec.get("ic_synthesis_evidence_qa")
+        if isinstance(spec.get("ic_synthesis_evidence_qa"), list)
+        else []
+    )
+    parts.append("## 7. IC Synthesis Evidence QA\n\n")
+    parts.append(
+        "QA enforces register-only opening, direction of travel, thesis 3–5 with "
+        "counter-evidence, blockers owner/effect, decision supportable stated, "
+        "no forecast-as-achieved, and no invest endorsement.\n\n"
+    )
+    if ic_qa:
+        parts.append("| Check | Status | Finding | Action |\n| --- | --- | --- | --- |\n")
+        for r in ic_qa:
+            if not isinstance(r, dict):
+                continue
+            parts.append(
+                f"| {_clean(r.get('check'), 48)} | {_clean(r.get('status'), 12)} | "
+                f"{_clean(r.get('finding'), 120)} | {_clean(r.get('action'), 100)} |\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append("_Information request: IC Synthesis evidence QA rows_\n\n")
+    parts.append("---\n\n")
+
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(
+            "None are missing — material Executive Summary gaps are closed, "
+            "or no Questions were generated from open QA FAILs.\n\n"
+        )
+    parts.append("---\n\n")
+
+    parts.append("## 9. Quality & Reliance\n\n")
     parts.append(
         f"**Quality:** {_clean(spec.get('quality_verdict') or 'REWORK', 16)}  \n"
         f"**Reliance:** {_clean(spec.get('reliance_verdict') or 'LIMITED', 16)}  \n"
         f"{_clean(spec.get('quality_reliance_rationale'), 400)}\n\n"
-        "*This is the committee summary. It does not recommend invest. "
+        "*This is the committee summary (Executive Summary / IC Synthesis). "
+        "It does not recommend invest. Open QA FAILs cap READY → LIMITED. "
         "If a material workstream is blocked, the stance is proceed with diligence "
         "on stated conditions.*\n\n"
     )

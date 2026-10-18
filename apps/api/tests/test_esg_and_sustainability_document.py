@@ -20,6 +20,12 @@ class _FakeDeal:
     company = "Test3"
     sector = "Electric Two-Wheelers"
     geography = "India"
+    metadata = {
+        "deal_perimeter": "standalone ops",
+        "transaction_type": "majority buyout",
+        "as_of_date": "2024-12-31",
+        "decision_stage": "IC",
+    }
 
 
 def _esg_corpus() -> str:
@@ -66,7 +72,15 @@ def _legacy() -> dict:
 
 
 def test_esg_prompt_book_listed() -> None:
-    system = compose_system("esg_and_sustainability", sector="EV", geography="India")
+    system = compose_system(
+        "esg_and_sustainability",
+        sector="EV",
+        geography="India",
+        deal_perimeter="standalone ops",
+        transaction_type="majority buyout",
+        as_of_date="2024-12-31",
+        decision_stage="IC",
+    )
     assert "esg_and_sustainability" in listed_agents()
     assert "material" in system.lower()
     body = agent_prompt("esg_and_sustainability")
@@ -74,6 +88,8 @@ def test_esg_prompt_book_listed() -> None:
     assert "threshold" in body.lower()
     assert "footprint" in body.lower()
     assert "invest" in body.lower() or "pass" in body.lower()
+    assert "questions" in body.lower()
+    assert "regulatory" in body.lower()
 
 
 def test_esg_not_company_hardcoded() -> None:
@@ -272,10 +288,52 @@ def test_render_no_invest() -> None:
     assert "## 3. Measured Metrics" in md
     assert "## 4. Workforce" in md or "Workforce & Safety" in md
     assert "## 5. Consequences" in md
-    assert "## 6. Quality & Reliance" in md
+    assert "## 6. Regulatory Compliance Cross-Check" in md
+    assert "## 7. ESG Evidence QA" in md
+    assert "## 8. Questions and Inputs Required" in md
+    assert "## 9. Quality & Reliance" in md
     assert "**Recommendation:**" not in md
     assert "we recommend invest" not in md.lower()
     assert "Management target" in md or "management target" in md.lower()
+
+
+def test_esg_qa_regulatory_cross_check() -> None:
+    heur = _heuristic_esg_and_sustainability_spec(
+        company="Test3",
+        corpus=_esg_corpus(),
+        sources=["06_Legal_Due_Diligence.pdf", "10_HR_Organizational_Due_Diligence.pdf"],
+        sector="Electric Two-Wheelers",
+        geography="India",
+        legacy_spec=_legacy(),
+        regulatory_spec={
+            "permit_register": [
+                {"identifier": "Environmental Clearance (Factory)", "holder": "Target"},
+            ],
+            "obligations": [
+                {"obligation": "Labor Law Compliance (Factories Act)", "tested": "Untested"},
+            ],
+        },
+    )
+    assert (heur.get("regulatory_cross_check") or {}).get("regulatory_prior_present") is True
+    qa = heur.get("esg_evidence_qa") or []
+    checks = {r.get("check") for r in qa if isinstance(r, dict)}
+    for need in (
+        "materiality_screen",
+        "product_vs_footprint_split",
+        "metric_boundary_method_baseline",
+        "targets_vs_measured",
+        "workforce_safety_where_material",
+        "consequence_column",
+        "regulatory_cross_check",
+        "no_emissions_from_revenue_sites",
+    ):
+        assert need in checks
+    infer_qa = next(r for r in qa if r.get("check") == "no_emissions_from_revenue_sites")
+    assert infer_qa.get("status") == "PASS"
+    questions = heur.get("questions") or []
+    assert isinstance(questions, list)
+    if any(isinstance(r, dict) and r.get("status") == "FAIL" for r in qa):
+        assert heur.get("reliance_verdict") != "READY" or questions
 
 
 def test_render_agent_document_dispatch() -> None:
@@ -295,7 +353,7 @@ def test_render_agent_document_dispatch() -> None:
         ),
     }
     md = render_agent_document("esg_and_sustainability", output)
-    assert "## 6. Quality & Reliance" in md
+    assert "## 9. Quality & Reliance" in md or "## 6. Quality & Reliance" in md
     assert "Material" in md
 
 
@@ -312,3 +370,5 @@ def test_build_prefers_heuristic_when_flagged() -> None:
     )
     assert spec.get("composer") == "heuristic_v1"
     assert spec.get("role_code") == "F-ESG" or spec.get("dd_code") == "F-ESG"
+    assert isinstance(spec.get("deal_slots"), dict)
+    assert spec.get("esg_evidence_qa")

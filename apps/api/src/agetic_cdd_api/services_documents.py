@@ -380,9 +380,36 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Cost the replacement or upgrade the plan requires at {subject}, "
-                    f"and say when it must happen. If another agent claims an IP-based "
+                    f"and say when it must happen. Run a moat test (proprietary + "
+                    f"economic + hard to replicate). If another agent claims an IP-based "
                     f"advantage, either evidence it here or contradict it here — using "
                     f"technology is not owning intellectual property."
+                ),
+            },
+            "cyber_checklist": {
+                "title": "Cyber Checklist",
+                "icon": "risks",
+                "prompt": (
+                    f"Complete the systems / cyber / incident / restore-test checklist "
+                    f"for {subject}, or register open items."
+                ),
+            },
+            "ip_evidence_qa": {
+                "title": "IP Evidence QA",
+                "icon": "risks",
+                "prompt": (
+                    f"Run IP & Technology QA for {subject}: asset map, register verify, "
+                    f"CoC transfer, cyber/restore checklist, moat discipline, replacement "
+                    f"cost, Competitive Differentiation cross-check, and omitted software "
+                    f"metrics."
+                ),
+            },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions for every material IP & Technology gap at {subject} "
+                    f"(or state none are missing)."
                 ),
             },
             "quality_reliance": {
@@ -390,7 +417,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s IP & Technology. No invest or pass."
+                    f"{subject}'s IP & Technology. Open QA FAILs cap READY → LIMITED. "
+                    f"No invest or pass."
                 ),
             },
         }
@@ -442,7 +470,34 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"State the transaction implications for {subject}: consents required, "
                     f"notifications, conditions precedent, and any exposure that should "
-                    f"be indemnified."
+                    f"be indemnified. Quantify only when supported. Flag critical permits "
+                    f"for Recommendations."
+                ),
+            },
+            "counsel_closure": {
+                "title": "Counsel Closure",
+                "icon": "risks",
+                "prompt": (
+                    f"Confirm counsel letter / legal opinion closing the litigation "
+                    f"register for {subject}. Absence is an open gap, not clearance."
+                ),
+            },
+            "rc_evidence_qa": {
+                "title": "Regulatory Evidence QA",
+                "icon": "risks",
+                "prompt": (
+                    f"Run Regulatory Compliance QA for {subject}: entity/site register, "
+                    f"permit CoC fields, litigation fields, counsel-letter closure, "
+                    f"quantification discipline, IP cross-check, and no invented "
+                    f"laws/cases/probabilities."
+                ),
+            },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions for every material Regulatory Compliance gap at "
+                    f"{subject} (or state none are missing)."
                 ),
             },
             "quality_reliance": {
@@ -450,8 +505,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s Regulatory Compliance. Untested is not compliant. No "
-                    f"invest or pass."
+                    f"{subject}'s Regulatory Compliance. Open QA FAILs and an OPEN counsel "
+                    f"letter cap READY → LIMITED. Untested is not compliant. No invest or pass."
                 ),
             },
         }
@@ -501,7 +556,25 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                     f"cost, a permit condition, a customer requirement, or a reporting "
                     f"obligation with its threshold and date. Where there is no financial "
                     f"or regulatory consequence, say so and keep the section short. Do not "
-                    f"apply reporting regimes below threshold."
+                    f"apply reporting regimes below threshold. Cross-check Regulatory "
+                    f"Compliance."
+                ),
+            },
+            "esg_evidence_qa": {
+                "title": "ESG Evidence QA",
+                "icon": "risks",
+                "prompt": (
+                    f"Run ESG QA for {subject}: materiality, product-vs-footprint, metric "
+                    f"fields, targets vs measured, workforce/safety, consequences, "
+                    f"Regulatory cross-check, and no emissions from revenue/sites."
+                ),
+            },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions for every material ESG gap at {subject} "
+                    f"(or state none are missing)."
                 ),
             },
             "quality_reliance": {
@@ -509,7 +582,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s ESG & Sustainability. No invest or pass."
+                    f"{subject}'s ESG & Sustainability. Open QA FAILs cap READY → LIMITED. "
+                    f"Do not infer emissions from revenue or site count. No invest or pass."
                 ),
             },
         }
@@ -546,15 +620,34 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "growth",
                 "prompt": (
                     f"For each initiative at {subject}: investment, capacity or hiring, "
-                    f"dependencies, owner, timing, and the on-track milestone."
+                    f"dependencies, owner, timing, on-track milestone, and stand-alone "
+                    f"vs synergy / buyer-dependent flag."
                 ),
             },
             "funding": {
                 "title": "Funding",
                 "icon": "risks",
                 "prompt": (
-                    f"Reconcile {subject}'s plan funding to available cash and debt capacity. "
+                    f"Reconcile {subject}'s plan funding to available cash and debt capacity "
+                    f"and cross-check Cash Flow / Capital Structure. "
                     f"Keep stand-alone growth separate from buyer-contributed funding."
+                ),
+            },
+            "sd_evidence_qa": {
+                "title": "Strategic Direction Evidence QA",
+                "icon": "risks",
+                "prompt": (
+                    f"Run Strategic Direction QA for {subject}: three-case separation, bridge "
+                    f"drivers, plan-vs-actual, initiatives, funding vs CF/CS, synergy vs "
+                    f"stand-alone, and no high-confidence while funding/capacity untested."
+                ),
+            },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions for every material Strategic Direction gap at {subject} "
+                    f"(or state none are missing)."
                 ),
             },
             "quality_reliance": {
@@ -562,8 +655,9 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s Strategic Direction. Do not give high confidence while funding "
-                    f"or capacity assumptions remain untested. No invest or pass."
+                    f"{subject}'s Strategic Direction. Open QA FAILs cap READY → LIMITED. "
+                    f"Do not give high confidence while funding or capacity assumptions remain "
+                    f"untested. No invest or pass."
                 ),
             },
         }
@@ -1521,8 +1615,9 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Identify the external risks that matter for {subject}'s business and "
-                    f"geography. For each: the mechanism, the revenue or margin exposed in "
-                    f"dollars, and the time over which it would act. No invest or pass."
+                    f"geography. For each row: trigger, population, timing, mechanism, "
+                    f"mitigation, and the revenue or margin exposed in dollars. Reject "
+                    f"unnamed threats. No invest or pass."
                 ),
             },
             "likelihood_evidence": {
@@ -1558,7 +1653,25 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Separate risks that change price from those that change structure for "
                     f"{subject} — escrow, earn-out, specific indemnity, or condition "
-                    f"precedent. Report unsized risks with what would size them."
+                    f"precedent. Report unsized risks with what would size them. Keep "
+                    f"Internal Risk items out of this register."
+                ),
+            },
+            "mr_evidence_qa": {
+                "title": "Market Risk Evidence QA",
+                "icon": "risks",
+                "prompt": (
+                    f"Run Market Risk QA for {subject}: row schema, dollar exposure, "
+                    f"evidence-based likelihood, early warnings, price vs structure, "
+                    f"Internal Risk non-overlap, and unnamed-threat rejection."
+                ),
+            },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions for every material Market Risk gap at {subject} "
+                    f"(or state none are missing)."
                 ),
             },
             "quality_reliance": {
@@ -1566,7 +1679,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s Market Risk. No invest or pass."
+                    f"{subject}'s Market Risk. Open QA FAILs cap READY → LIMITED. No invest "
+                    f"or pass."
                 ),
             },
         }
@@ -1588,7 +1702,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Assess financial strain for {subject} from the records: cash trend, "
                     f"liquidity headroom, covenant position, creditor days versus terms, "
-                    f"and any distributions made while earnings were weak."
+                    f"and any distributions made while earnings were weak. Cross-check "
+                    f"Cash Flow and Capital Structure."
                 ),
             },
             "control_governance": {
@@ -1607,15 +1722,34 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Size the remediation for each material internal risk at {subject}: "
                     f"what it would cost, how long it would take, and whether it is a "
-                    f"pre-completion condition or a post-close action."
+                    f"pre-decision / pre-completion condition or a post-close action."
                 ),
             },
             "ranked_effects": {
                 "title": "Price / Structure / 100 Days",
                 "icon": "risks",
                 "prompt": (
-                    f"Rank internal risks for {subject} by effect on price, structure, "
-                    f"or the first hundred days."
+                    f"Build the risk register for {subject} (root cause, event, exposure, "
+                    f"controls, residual, owner, action), label known vs uncertainty, "
+                    f"reconcile conflicts, then rank by price, structure, or first hundred "
+                    f"days. Do not label blockers as manageable risk."
+                ),
+            },
+            "ir_evidence_qa": {
+                "title": "Internal Risk Evidence QA",
+                "icon": "risks",
+                "prompt": (
+                    f"Run Internal Risk QA for {subject}: upstream registers, row schema, "
+                    f"known vs uncertainty, quantification, conflict reconcile, "
+                    f"pre- vs post-close, and no manageable-risk silence of blockers."
+                ),
+            },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions for every material Internal Risk gap at {subject} "
+                    f"(or state none are missing)."
                 ),
             },
             "quality_reliance": {
@@ -1623,7 +1757,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s Internal Risk. Untested is not failed. No invest or pass."
+                    f"{subject}'s Internal Risk. Open QA FAILs cap READY → LIMITED. "
+                    f"Untested is not failed. No invest or pass."
                 ),
             },
         }
@@ -1637,7 +1772,7 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                     f"List growth options actually available to {subject}: more customers "
                     f"in the current footprint, adjacent geography, adjacent service, "
                     f"price, acquisition. Reject options that do not fit the operating "
-                    f"model. No invest or pass."
+                    f"model. Cross-check Synergies / Strategic Direction. No invest or pass."
                 ),
             },
             "size_options": {
@@ -1653,9 +1788,9 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "title": "Requirements & Timing",
                 "icon": "market",
                 "prompt": (
-                    f"State what each growth option at {subject} requires — capital, "
-                    f"hiring, capacity, permits, systems — and how long before it "
-                    f"contributes."
+                    f"State what each growth option at {subject} requires — capex, opex, "
+                    f"working capital, hiring, capacity, permits, systems — plus "
+                    f"addressability and regulatory deps, and how long before it contributes."
                 ),
             },
             "achievability_evidence": {
@@ -1673,8 +1808,26 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "growth",
                 "prompt": (
                     f"Separate what is already inside the plan for {subject} from what "
-                    f"would be additional, so nothing is counted twice. Rank by evidence "
-                    f"and size, and say which options the buyer would have to fund."
+                    f"would be additional, so nothing is counted twice. Rank by net value, "
+                    f"payback and feasibility, and say which options the buyer would fund."
+                ),
+            },
+            "go_evidence_qa": {
+                "title": "Growth Opportunities Evidence QA",
+                "icon": "risks",
+                "prompt": (
+                    f"Run Growth Opportunities QA for {subject}: inventory fit, economics, "
+                    f"capex/opex/WC/timing, addressability/regulatory, evidence vs "
+                    f"hypothesis, ranking, Synergies/Strategy anti-overlap, and no "
+                    f"arbitrary success probabilities."
+                ),
+            },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions for every material Growth Opportunities gap at "
+                    f"{subject} (or state none are missing)."
                 ),
             },
             "quality_reliance": {
@@ -1682,7 +1835,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s Growth Opportunities. No invest or pass."
+                    f"{subject}'s Growth Opportunities. Open QA FAILs cap READY → LIMITED. "
+                    f"No invest or pass."
                 ),
             },
         }
@@ -1695,7 +1849,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"State who the acquirer is for {subject} and what they bring. If no "
                     f"acquirer is named, return hypotheses only and state that synergies "
-                    f"cannot be underwritten — do not produce a number. No invest or pass."
+                    f"cannot be underwritten — do not produce a number. No uplift without "
+                    f"a buyer. No invest or pass."
                 ),
             },
             "cost_synergies": {
@@ -1704,8 +1859,9 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Build cost synergies for the named buyer of {subject} bottom-up: "
                     f"the specific role, contract, site or system, its current cost, the "
-                    f"saving, and who owns the action. Do not apply a percentage to a "
-                    f"cost base."
+                    f"saving, and who owns the action. For each lever state gross benefit, "
+                    f"overlap / double-count, cannibalisation, one-off costs, tax effect, "
+                    f"timing, and net cash. Do not apply a percentage to a cost base."
                 ),
             },
             "revenue_synergies": {
@@ -1723,7 +1879,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"State the cost to achieve synergies for {subject} — severance, "
                     f"systems, integration, advisory — and the phasing of both costs and "
-                    f"benefits by year until run rate. State year-one realised vs run-rate."
+                    f"benefits by year until run rate with an owner on each phase. State "
+                    f"year-one realised vs run-rate and execution risks."
                 ),
             },
             "net_seller_share": {
@@ -1732,7 +1889,9 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Present the net synergy effect by year and the run-rate figure for "
                     f"{subject}, and say what share of it the seller would expect to be "
-                    f"paid for. Keep synergies out of the stand-alone valuation."
+                    f"paid for. Reconcile Growth Opportunities / stand-alone so organic "
+                    f"upside is not double-counted. Keep synergies out of the stand-alone "
+                    f"valuation and exclude unverified amounts from Final Valuation Range."
                 ),
             },
             "quality_reliance": {
@@ -1740,7 +1899,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s Synergies. No invest or pass."
+                    f"{subject}'s Synergies. Open QA FAILs cap READY → LIMITED. No invest "
+                    f"or pass."
                 ),
             },
         }
@@ -1752,8 +1912,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "growth",
                 "prompt": (
                     f"Synthesise demonstrated strengths for {subject} from upstream "
-                    f"findings only. Trace each item to its source agent, number and "
-                    f"evidence status. No new claims. No invest or pass."
+                    f"findings only. Each item needs finding-ID, source agent, number "
+                    f"and evidence status. No new claims. No invest or pass."
                 ),
             },
             "demonstrated_weaknesses": {
@@ -1771,7 +1931,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Organise external possibilities (opportunities and threats) for "
                     f"{subject} from upstream agents. Rank by effect on the investment "
-                    f"case, not by category balance."
+                    f"case, not by category balance. For priority SO/ST/WO/WT combos, "
+                    f"state action rows with owner, timing and success measure."
                 ),
             },
             "information_gaps": {
@@ -1780,7 +1941,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"List unexamined areas for {subject} separately from proven "
                     f"weaknesses. An unexamined area is never a weakness. Where two "
-                    f"agents disagree, carry the item as unresolved and name both."
+                    f"agents disagree, carry the item as unresolved and name both. "
+                    f"Dedup conflicts; do not let positive tone override open blockers."
                 ),
             },
             "rank_thesis_effect": {
@@ -1798,13 +1960,23 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
-                    f"{subject}'s SWOT Analysis. No invest or pass."
+                    f"{subject}'s SWOT Analysis. Open QA FAILs cap READY → LIMITED; open "
+                    f"blockers keep BLOCKED. No invest or pass."
                 ),
             },
         }
 
     if agent_key == "recommendation":
         return {
+            "decision_stage": {
+                "title": "Decision Stage",
+                "icon": "business",
+                "prompt": (
+                    f"Frame the decision stage for {subject} as continue diligence, "
+                    f"conditional offer, pause / more evidence, decline on current terms, "
+                    f"or proceed to IC on stated conditions. Never invent invest or pass."
+                ),
+            },
             "price_actions": {
                 "title": "Price Adjustments",
                 "icon": "growth",
@@ -1812,7 +1984,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                     f"For each material finding on {subject}, state the price adjustment "
                     f"it implies. Quantify where the finding supports it; say plainly "
                     f"where it cannot be quantified yet and what would bound it. Every "
-                    f"action must name its finding. No invest or pass."
+                    f"action must name its finding. Reconcile Final Valuation Range. "
+                    f"No invest or pass."
                 ),
             },
             "structure_protections": {
@@ -1829,8 +2002,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"List conditions that must close before signing or completion for "
-                    f"{subject}, each with an owner and an acceptance test, tied to the "
-                    f"finding that justifies it."
+                    f"{subject}, each with evidence required, owner, deadline, acceptance "
+                    f"test and failure consequence, tied to the finding that justifies it."
                 ),
             },
             "first_hundred_days": {
@@ -1839,16 +2012,17 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Give the first hundred days for {subject} only where a finding "
                     f"requires it — an integration step, a control fix, or a key-person "
-                    f"retention action."
+                    f"retention action. Do not use post-close to disguise a pre-decision "
+                    f"unknown."
                 ),
             },
             "still_open": {
                 "title": "Still Open",
                 "icon": "risks",
                 "prompt": (
-                    f"State what is still open for {subject}, and whether the openness "
-                    f"blocks a decision or can be carried with a protection. No invest "
-                    f"or pass."
+                    f"State what is still open for {subject}, carry blocked workstreams, "
+                    f"and say whether openness blocks a decision or can be carried with "
+                    f"a protection. No invest or pass."
                 ),
             },
             "quality_reliance": {
@@ -1881,13 +2055,13 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                     f"paragraph. Registered figures only."
                 ),
             },
-            "case_depends_on": {
-                "title": "Case Dependencies",
+            "thesis_points": {
+                "title": "Thesis Points",
                 "icon": "market",
                 "prompt": (
-                    f"Give the two or three things the investment case for {subject} "
-                    f"depends on, each with the evidence status behind it from upstream "
-                    f"agents."
+                    f"Give three to five thesis points the investment case for {subject} "
+                    f"depends on, each with supporting evidence, counter-evidence, and "
+                    f"evidence status from upstream agents."
                 ),
             },
             "blockers": {
@@ -1896,6 +2070,14 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Give the blockers for {subject}: what is unresolved, what it could "
                     f"change, and who owns closing it."
+                ),
+            },
+            "decision_support": {
+                "title": "Decision Supportable",
+                "icon": "growth",
+                "prompt": (
+                    f"State whether a decision on {subject} is supportable today and list "
+                    f"prerequisites (owner + effect) that must clear before it is."
                 ),
             },
             "proportionate_recommendation": {
@@ -1907,12 +2089,73 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                     f"proceeding with diligence on stated conditions — not invest."
                 ),
             },
+            "questions": {
+                "title": "Questions",
+                "icon": "risks",
+                "prompt": (
+                    f"List Questions and inputs required for {subject}'s Executive Summary "
+                    f"gaps (exact records, decision effect, owner, timing, closure test)."
+                ),
+            },
             "quality_reliance": {
                 "title": "Quality & Reliance",
                 "icon": "risks",
                 "prompt": (
                     f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
                     f"{subject}'s Executive Summary. No invest or pass."
+                ),
+            },
+        }
+
+    if agent_key == "appendices":
+        return {
+            "claim_register": {
+                "title": "Claim Register",
+                "icon": "market",
+                "prompt": (
+                    f"Aggregate the claim register for {subject} from upstream agents. "
+                    f"Each claim needs ID, text, source category, locator, and strength. "
+                    f"Do not invent claims."
+                ),
+            },
+            "evidence_register": {
+                "title": "Evidence Register",
+                "icon": "business",
+                "prompt": (
+                    f"List VDR files, interviews and external URLs for {subject} with "
+                    f"version / as-of where known."
+                ),
+            },
+            "citation_check": {
+                "title": "Citation Check",
+                "icon": "risks",
+                "prompt": (
+                    f"Run bidirectional citation check for {subject}: claims→sources and "
+                    f"sources→claims. Record supports / unverified / does_not_support."
+                ),
+            },
+            "availability_vs_verification": {
+                "title": "Availability vs Verification",
+                "icon": "growth",
+                "prompt": (
+                    f"Distinguish availability vs verification for {subject}'s source "
+                    f"inventory — present in room is not the same as reopened/verified."
+                ),
+            },
+            "open_items": {
+                "title": "Open Items",
+                "icon": "risks",
+                "prompt": (
+                    f"Consolidate open requests, contradictions and exclusions for "
+                    f"{subject} from Scope and upstream Questions."
+                ),
+            },
+            "quality_reliance": {
+                "title": "Quality & Reliance",
+                "icon": "risks",
+                "prompt": (
+                    f"Update Quality (PASS/REWORK) and Reliance (READY/LIMITED/BLOCKED) for "
+                    f"{subject}'s Appendices. No invest or pass."
                 ),
             },
         }
@@ -1952,10 +2195,11 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "title": "Discounted Cash Flow",
                 "icon": "growth",
                 "prompt": (
-                    f"Where the forecast supports a DCF for {subject}: state the cash "
-                    f"flows, the discount rate with its build-up, the terminal assumption, "
-                    f"and the implied exit multiple as a sanity check against the "
-                    f"declared earnings figure."
+                    f"Where the Cash Flow bridge supports a DCF for {subject}: state the "
+                    f"cash flows, the discount rate with its build-up, the terminal "
+                    f"assumption, and the implied exit multiple as a sanity check against "
+                    f"the declared earnings figure. If the EBITDA-to-cash bridge is "
+                    f"incomplete, withhold DCF support and say what unblocks it."
                 ),
             },
             "reconcile": {
@@ -1963,9 +2207,9 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"Reconcile comps, precedents and DCF for {subject} on the declared "
-                    f"earnings basis. Where they disagree materially, explain why rather "
-                    f"than averaging them. Check every multiple arithmetically before "
-                    f"publishing."
+                    f"earnings basis. Treat trading comps and precedents as method inputs. "
+                    f"Where they disagree materially, explain why rather than averaging "
+                    f"them. Check every multiple arithmetically before publishing."
                 ),
             },
             "quality_reliance": {
@@ -1982,7 +2226,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "prompt": (
                     f"Rank the assumptions for {subject} by the value movement they cause, "
                     f"one at a time, over a range plausible given this company's own history. "
-                    f"No invest or pass."
+                    f"Do not call anything highly sensitive without a computed absolute move. "
+                    f"Bind to the valuation as-of / earnings basis. No invest or pass."
                 ),
             },
             "sens_grid": {
@@ -2009,19 +2254,22 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"State break-even conditions for {subject} in operating terms: the "
-                    f"growth rate, retention level or margin at which the return falls "
-                    f"below the hurdle. Label evidenced vs judgement."
+                    f"growth rate, retention level, margin, covenant headroom or cash "
+                    f"runway at which the case breaks the hurdle. Label evidenced vs "
+                    f"judgement."
                 ),
             },
             "final_range": {
                 "title": "Final Range",
                 "icon": "growth",
                 "prompt": (
-                    f"Present low, base and high enterprise value for {subject}, each "
-                    f"traceable to a method and assumption set, with implied multiples on "
-                    f"the declared earnings figure. If earnings quality, net debt or "
-                    f"working capital are not established, withhold the range and say "
-                    f"what is blocking it. No invest or pass."
+                    f"Present low, base and high enterprise value for {subject} on a "
+                    f"common as-of / earnings basis, each traceable to a method and "
+                    f"assumption set, with implied multiples on the declared earnings. "
+                    f"For comps/precedents, label LTM vs forward and state selection "
+                    f"rationale. If earnings quality, net debt or working capital are "
+                    f"not established, withhold the range and say what is blocking it. "
+                    f"No Go/bid / invest or pass."
                 ),
             },
             "walk_away": {
@@ -2029,7 +2277,8 @@ def _next_step_catalog(deal: Deal, *, agent_key: str | None = None) -> dict[str,
                 "icon": "risks",
                 "prompt": (
                     f"State the walk-away price for {subject} and check it sits above, "
-                    f"not below, the recommended range. Give the conditions that would "
+                    f"not below, the recommended high. Reconcile to any offer EV and "
+                    f"return hurdles from Sensitivity. Give the conditions that would "
                     f"justify moving it. Keep stand-alone separate from buyer synergies."
                 ),
             },
@@ -2307,6 +2556,11 @@ _IP_TECH_DEFAULT_NEXT_STEP_KEYS = (
     "tech_map",
     "ownership",
     "coc_transfer",
+    "system_fitness",
+    "upgrade_cost",
+    "cyber_checklist",
+    "ip_evidence_qa",
+    "questions",
     "quality_reliance",
 )
 
@@ -2314,6 +2568,11 @@ _REG_COMPLIANCE_DEFAULT_NEXT_STEP_KEYS = (
     "applicable_regime",
     "permit_register",
     "obligations_tested",
+    "litigation_register",
+    "transaction_implications",
+    "counsel_closure",
+    "rc_evidence_qa",
+    "questions",
     "quality_reliance",
 )
 
@@ -2321,6 +2580,10 @@ _ESG_DEFAULT_NEXT_STEP_KEYS = (
     "material_topics",
     "product_vs_footprint",
     "measured_metrics",
+    "workforce_safety",
+    "consequences",
+    "esg_evidence_qa",
+    "questions",
     "quality_reliance",
 )
 
@@ -2328,6 +2591,10 @@ _STRAT_DEFAULT_NEXT_STEP_KEYS = (
     "three_cases",
     "bridge",
     "plan_vs_actual",
+    "initiatives",
+    "funding",
+    "sd_evidence_qa",
+    "questions",
     "quality_reliance",
 )
 
@@ -2461,6 +2728,8 @@ _MARKET_RISK_DEFAULT_NEXT_STEP_KEYS = (
     "external_risks",
     "likelihood_evidence",
     "bounded_downside",
+    "mr_evidence_qa",
+    "questions",
     "quality_reliance",
 )
 
@@ -2468,6 +2737,8 @@ _INTERNAL_RISK_DEFAULT_NEXT_STEP_KEYS = (
     "key_person_exposure",
     "financial_strain",
     "control_governance",
+    "ir_evidence_qa",
+    "questions",
     "quality_reliance",
 )
 
@@ -2475,6 +2746,8 @@ _GROWTH_OPP_DEFAULT_NEXT_STEP_KEYS = (
     "available_options",
     "size_options",
     "achievability_evidence",
+    "go_evidence_qa",
+    "questions",
     "quality_reliance",
 )
 
@@ -2493,16 +2766,25 @@ _SWOT_DEFAULT_NEXT_STEP_KEYS = (
 )
 
 _REC_DEFAULT_NEXT_STEP_KEYS = (
+    "decision_stage",
     "price_actions",
     "structure_protections",
     "conditions_precedent",
-    "quality_reliance",
 )
 
 _IC_SYNTH_DEFAULT_NEXT_STEP_KEYS = (
     "opening",
     "financial_picture",
-    "case_depends_on",
+    "thesis_points",
+    "decision_support",
+    "quality_reliance",
+)
+
+_APPENDICES_DEFAULT_NEXT_STEP_KEYS = (
+    "claim_register",
+    "evidence_register",
+    "citation_check",
+    "availability_vs_verification",
     "quality_reliance",
 )
 
@@ -2650,82 +2932,110 @@ _CAP_STRUCT_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
 
 _MARKET_RISK_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
-        ("external", "mechanism", "exposure", "competitor", "customer loss", "subsidy", "cycle"),
-        ("likelihood_evidence", "bounded_downside", "early_warnings", "quality_reliance"),
+        ("external", "mechanism", "trigger", "population", "mitigation", "competitor", "customer loss", "subsidy", "cycle"),
+        ("likelihood_evidence", "bounded_downside", "early_warnings", "mr_evidence_qa"),
     ),
     (
         ("likelihood", "probability", "evidence", "renewal", "timetable", "policy"),
-        ("external_risks", "bounded_downside", "price_vs_structure", "quality_reliance"),
+        ("external_risks", "bounded_downside", "price_vs_structure", "mr_evidence_qa"),
     ),
     (
         ("downside", "ebitda", "bounded", "contract lost", "downturn", "volume fall"),
-        ("external_risks", "likelihood_evidence", "early_warnings", "quality_reliance"),
+        ("external_risks", "likelihood_evidence", "early_warnings", "questions"),
     ),
     (
         ("early warning", "early-warning", "monitor", "monthly", "watch"),
-        ("external_risks", "bounded_downside", "price_vs_structure", "quality_reliance"),
+        ("external_risks", "bounded_downside", "price_vs_structure", "mr_evidence_qa"),
     ),
     (
         ("price", "structure", "escrow", "earn-out", "earnout", "indemnit", "condition precedent"),
-        ("external_risks", "likelihood_evidence", "bounded_downside", "quality_reliance"),
+        ("external_risks", "likelihood_evidence", "bounded_downside", "questions"),
+    ),
+    (
+        ("internal risk", "non-overlap", "key-person", "governance", "unnamed", "generic threat"),
+        ("external_risks", "mr_evidence_qa", "questions", "quality_reliance"),
+    ),
+    (
+        ("qa", "evidence qa", "questions", "gap"),
+        ("external_risks", "mr_evidence_qa", "questions", "quality_reliance"),
     ),
     (
         ("quality", "reliance", "rework", "blocked", "unsized"),
-        ("external_risks", "likelihood_evidence", "bounded_downside", "price_vs_structure"),
+        ("external_risks", "mr_evidence_qa", "questions", "quality_reliance"),
     ),
 ]
 
 _INTERNAL_RISK_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
         ("key-person", "key person", "individual", "succession", "dependence", "left"),
-        ("financial_strain", "control_governance", "remediation", "quality_reliance"),
+        ("financial_strain", "control_governance", "remediation", "ir_evidence_qa"),
     ),
     (
         ("cash", "liquidity", "covenant", "creditor", "distribution", "strain"),
-        ("key_person_exposure", "control_governance", "remediation", "quality_reliance"),
+        ("key_person_exposure", "control_governance", "remediation", "questions"),
     ),
     (
         ("control", "governance", "reconcil", "approval", "untested", "tested", "audit"),
-        ("key_person_exposure", "financial_strain", "remediation", "quality_reliance"),
+        ("key_person_exposure", "financial_strain", "remediation", "ir_evidence_qa"),
     ),
     (
-        ("remediat", "cost", "duration", "pre-completion", "post-close", "condition"),
-        ("key_person_exposure", "financial_strain", "ranked_effects", "quality_reliance"),
+        ("remediat", "cost", "duration", "pre-completion", "pre-decision", "post-close", "condition"),
+        ("key_person_exposure", "financial_strain", "ranked_effects", "questions"),
+    ),
+    (
+        ("register", "root cause", "residual", "owner", "known weakness", "uncertainty", "conflict"),
+        ("ranked_effects", "ir_evidence_qa", "questions", "quality_reliance"),
+    ),
+    (
+        ("manageable", "blocker", "silence"),
+        ("ranked_effects", "ir_evidence_qa", "questions", "quality_reliance"),
     ),
     (
         ("price", "structure", "hundred days", "100 days", "first hundred", "rank"),
-        ("key_person_exposure", "financial_strain", "remediation", "quality_reliance"),
+        ("key_person_exposure", "financial_strain", "remediation", "ir_evidence_qa"),
+    ),
+    (
+        ("qa", "evidence qa", "questions", "gap"),
+        ("ir_evidence_qa", "questions", "quality_reliance", "ranked_effects"),
     ),
     (
         ("quality", "reliance", "rework", "blocked"),
-        ("key_person_exposure", "financial_strain", "control_governance", "ranked_effects"),
+        ("key_person_exposure", "ir_evidence_qa", "questions", "quality_reliance"),
     ),
 ]
 
 _GROWTH_OPP_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
         ("option", "available", "footprint", "geography", "adjacent", "acquisition", "operating model"),
-        ("size_options", "requirements_timing", "base_vs_upside", "quality_reliance"),
+        ("size_options", "requirements_timing", "base_vs_upside", "go_evidence_qa"),
     ),
     (
         ("size", "revenue", "margin", "calculation", "assumption", "unit economics"),
-        ("available_options", "requirements_timing", "achievability_evidence", "quality_reliance"),
+        ("available_options", "requirements_timing", "achievability_evidence", "questions"),
     ),
     (
-        ("capital", "hiring", "capacity", "permit", "systems", "timing", "require"),
-        ("available_options", "size_options", "achievability_evidence", "quality_reliance"),
+        ("capital", "capex", "opex", "working capital", "hiring", "capacity", "permit", "addressab", "timing", "require"),
+        ("available_options", "size_options", "achievability_evidence", "go_evidence_qa"),
     ),
     (
         ("evidence", "pipeline", "pilot", "hypothesis", "comparable", "achievab"),
-        ("available_options", "size_options", "base_vs_upside", "quality_reliance"),
+        ("available_options", "size_options", "base_vs_upside", "go_evidence_qa"),
     ),
     (
-        ("base case", "upside", "plan", "double count", "buyer fund", "rank"),
-        ("available_options", "size_options", "achievability_evidence", "quality_reliance"),
+        ("base case", "upside", "plan", "double count", "buyer fund", "rank", "payback", "feasibility", "net value"),
+        ("available_options", "size_options", "achievability_evidence", "questions"),
+    ),
+    (
+        ("synerg", "strategic direction", "anti-overlap", "overlap"),
+        ("available_options", "go_evidence_qa", "questions", "quality_reliance"),
+    ),
+    (
+        ("qa", "evidence qa", "questions", "gap", "probability"),
+        ("go_evidence_qa", "questions", "quality_reliance", "base_vs_upside"),
     ),
     (
         ("quality", "reliance", "rework", "blocked"),
-        ("available_options", "size_options", "achievability_evidence", "base_vs_upside"),
+        ("available_options", "go_evidence_qa", "questions", "quality_reliance"),
     ),
 ]
 
@@ -2810,30 +3120,65 @@ _REC_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     ),
 ]
 
-_IC_SYNTH_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
+_APPENDICES_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
-        ("open", "business", "earns", "proposed", "three lines"),
-        ("financial_picture", "case_depends_on", "blockers", "quality_reliance"),
+        ("claim", "register", "finding", "locator"),
+        ("evidence_register", "citation_check", "availability_vs_verification", "quality_reliance"),
     ),
     (
-        ("financial", "trend", "earnings", "fallen", "direction", "revenue", "ebitda"),
-        ("opening", "case_depends_on", "blockers", "quality_reliance"),
+        ("evidence", "vdr", "interview", "external", "url"),
+        ("claim_register", "citation_check", "open_items", "quality_reliance"),
     ),
     (
-        ("depend", "pillar", "thesis", "case", "evidence status"),
-        ("opening", "financial_picture", "blockers", "quality_reliance"),
+        ("citation", "cite", "bidirectional", "supports", "unverified"),
+        ("claim_register", "evidence_register", "availability_vs_verification", "quality_reliance"),
     ),
     (
-        ("blocker", "unresolved", "owner", "could change"),
-        ("opening", "case_depends_on", "proportionate_recommendation", "quality_reliance"),
+        ("available", "availability", "verification", "reopen", "verified"),
+        ("source_inventory", "citation_check", "evidence_register", "quality_reliance"),
     ),
     (
-        ("recommend", "stance", "diligence", "proportionate", "condition", "invest"),
-        ("opening", "blockers", "case_depends_on", "quality_reliance"),
+        ("open request", "contradiction", "exclusion", "gap", "question"),
+        ("claim_register", "citation_check", "availability_vs_verification", "quality_reliance"),
     ),
     (
         ("quality", "reliance", "rework", "blocked"),
-        ("opening", "financial_picture", "case_depends_on", "blockers"),
+        ("claim_register", "evidence_register", "citation_check", "open_items"),
+    ),
+]
+
+_IC_SYNTH_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
+    (
+        ("open", "business", "earns", "proposed", "three lines"),
+        ("financial_picture", "thesis_points", "blockers", "quality_reliance"),
+    ),
+    (
+        ("financial", "trend", "earnings", "fallen", "direction", "revenue", "ebitda"),
+        ("opening", "thesis_points", "blockers", "quality_reliance"),
+    ),
+    (
+        ("depend", "pillar", "thesis", "case", "evidence", "counter"),
+        ("opening", "financial_picture", "decision_support", "quality_reliance"),
+    ),
+    (
+        ("blocker", "unresolved", "owner", "could change"),
+        ("opening", "thesis_points", "decision_support", "quality_reliance"),
+    ),
+    (
+        ("decision", "supportable", "prerequisite", "today"),
+        ("blockers", "thesis_points", "proportionate_recommendation", "quality_reliance"),
+    ),
+    (
+        ("recommend", "stance", "diligence", "proportionate", "condition", "invest"),
+        ("opening", "blockers", "decision_support", "quality_reliance"),
+    ),
+    (
+        ("question", "gap", "input", "closure"),
+        ("thesis_points", "blockers", "decision_support", "quality_reliance"),
+    ),
+    (
+        ("quality", "reliance", "rework", "blocked"),
+        ("opening", "financial_picture", "thesis_points", "blockers"),
     ),
 ]
 
@@ -3222,108 +3567,124 @@ _MKT_DEF_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
 _STRAT_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
         ("ambition", "budget", "three case", "tested case", "approved"),
-        ("bridge", "plan_vs_actual", "initiatives", "funding"),
+        ("bridge", "plan_vs_actual", "initiatives", "funding", "sd_evidence_qa"),
     ),
     (
         ("bridge", "cagr", "driver", "price", "volume", "mix", "ebitda"),
-        ("three_cases", "plan_vs_actual", "initiatives", "funding"),
+        ("three_cases", "plan_vs_actual", "initiatives", "funding", "sd_evidence_qa"),
     ),
     (
         ("plan vs", "plan versus", "actual", "delivery", "target"),
-        ("three_cases", "bridge", "initiatives", "funding"),
+        ("three_cases", "bridge", "initiatives", "funding", "sd_evidence_qa"),
     ),
     (
-        ("initiative", "milestone", "owner", "hiring", "capacity", "investment required"),
-        ("three_cases", "bridge", "plan_vs_actual", "funding"),
+        ("initiative", "milestone", "owner", "hiring", "capacity", "investment required", "synerg"),
+        ("three_cases", "bridge", "plan_vs_actual", "funding", "sd_evidence_qa"),
     ),
     (
-        ("funding", "cash", "debt", "stand-alone", "standalone", "buyer"),
-        ("three_cases", "bridge", "plan_vs_actual", "initiatives"),
+        ("funding", "cash", "debt", "stand-alone", "standalone", "buyer", "capital structure"),
+        ("three_cases", "bridge", "plan_vs_actual", "initiatives", "sd_evidence_qa"),
+    ),
+    (
+        ("qa", "question", "evidence qa"),
+        ("three_cases", "bridge", "funding", "questions", "quality_reliance"),
     ),
     (
         ("quality", "reliance", "rework", "blocked", "assumption"),
-        ("three_cases", "bridge", "plan_vs_actual", "funding"),
+        ("three_cases", "bridge", "plan_vs_actual", "funding", "sd_evidence_qa", "questions"),
     ),
 ]
 
 _IP_TECH_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
         ("map", "scheduling", "telematics", "billing", "customer records", "plant", "proprietary"),
-        ("ownership", "coc_transfer", "system_fitness", "quality_reliance"),
+        ("ownership", "coc_transfer", "system_fitness", "ip_evidence_qa"),
     ),
     (
         ("owned", "licensed", "register", "patent", "trademark", "vendor", "tooling"),
-        ("tech_map", "coc_transfer", "upgrade_cost", "quality_reliance"),
+        ("tech_map", "coc_transfer", "upgrade_cost", "ip_evidence_qa"),
     ),
     (
         ("change of control", "change-of-control", "transfer", "consent", "novation"),
-        ("ownership", "system_fitness", "upgrade_cost", "quality_reliance"),
+        ("ownership", "system_fitness", "upgrade_cost", "cyber_checklist"),
     ),
     (
-        ("fitness", "capacity", "integration", "obsolescence", "backup", "access", "incident"),
-        ("tech_map", "ownership", "upgrade_cost", "quality_reliance"),
+        ("fitness", "capacity", "integration", "obsolescence", "backup", "access", "incident", "cyber"),
+        ("tech_map", "ownership", "cyber_checklist", "ip_evidence_qa"),
     ),
     (
         ("upgrade", "replacement", "cost", "advantage", "moat", "contradict"),
-        ("ownership", "coc_transfer", "system_fitness", "quality_reliance"),
+        ("ownership", "coc_transfer", "system_fitness", "questions"),
+    ),
+    (
+        ("qa", "question", "evidence qa", "metric"),
+        ("cyber_checklist", "questions", "quality_reliance"),
     ),
     (
         ("quality", "reliance", "rework", "blocked"),
-        ("tech_map", "ownership", "coc_transfer", "system_fitness"),
+        ("tech_map", "ownership", "ip_evidence_qa", "questions"),
     ),
 ]
 
 _REG_COMPLIANCE_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
         ("applicable", "regime", "law", "jurisdiction", "entity", "site", "activity"),
-        ("permit_register", "obligations_tested", "litigation_register", "quality_reliance"),
+        ("permit_register", "obligations_tested", "litigation_register", "rc_evidence_qa"),
     ),
     (
         ("permit", "licence", "license", "expiry", "renewal", "holder", "transfer"),
-        ("applicable_regime", "obligations_tested", "transaction_implications", "quality_reliance"),
+        ("applicable_regime", "obligations_tested", "transaction_implications", "rc_evidence_qa"),
     ),
     (
         ("obligation", "tested", "untested", "evidence", "award", "certification", "compliant"),
-        ("applicable_regime", "permit_register", "litigation_register", "quality_reliance"),
+        ("applicable_regime", "permit_register", "litigation_register", "rc_evidence_qa"),
     ),
     (
-        ("litigation", "claim", "counsel", "provision", "insurance", "probability"),
-        ("obligations_tested", "transaction_implications", "permit_register", "quality_reliance"),
+        ("litigation", "claim", "counsel", "provision", "insurance", "probability", "counsel letter"),
+        ("obligations_tested", "transaction_implications", "counsel_closure", "rc_evidence_qa"),
     ),
     (
         ("consent", "notification", "condition precedent", "indemnit", "escrow", "transaction"),
-        ("permit_register", "litigation_register", "obligations_tested", "quality_reliance"),
+        ("permit_register", "litigation_register", "counsel_closure", "questions"),
+    ),
+    (
+        ("qa", "question", "evidence qa", "ip cross"),
+        ("counsel_closure", "questions", "quality_reliance"),
     ),
     (
         ("quality", "reliance", "rework", "blocked"),
-        ("applicable_regime", "permit_register", "obligations_tested", "litigation_register"),
+        ("applicable_regime", "permit_register", "rc_evidence_qa", "questions"),
     ),
 ]
 
 _ESG_NEXT_STEP_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
         ("material", "topic", "pillar", "sector", "jurisdiction", "ownership"),
-        ("product_vs_footprint", "measured_metrics", "consequences", "quality_reliance"),
+        ("product_vs_footprint", "measured_metrics", "consequences", "esg_evidence_qa"),
     ),
     (
         ("product", "footprint", "operat", "use-phase", "sells"),
-        ("material_topics", "measured_metrics", "workforce_safety", "quality_reliance"),
+        ("material_topics", "measured_metrics", "workforce_safety", "esg_evidence_qa"),
     ),
     (
         ("metric", "measured", "baseline", "boundary", "denominator", "target"),
-        ("material_topics", "workforce_safety", "consequences", "quality_reliance"),
+        ("material_topics", "workforce_safety", "consequences", "esg_evidence_qa"),
     ),
     (
         ("workforce", "safety", "attrition", "turnover", "incident", "absence", "labour"),
-        ("measured_metrics", "consequences", "material_topics", "quality_reliance"),
+        ("measured_metrics", "consequences", "material_topics", "questions"),
     ),
     (
-        ("consequence", "permit", "customer", "reporting", "threshold", "csrd", "brsr"),
-        ("material_topics", "measured_metrics", "workforce_safety", "quality_reliance"),
+        ("consequence", "permit", "customer", "reporting", "threshold", "csrd", "brsr", "regulatory"),
+        ("material_topics", "measured_metrics", "esg_evidence_qa", "questions"),
+    ),
+    (
+        ("qa", "question", "evidence qa"),
+        ("esg_evidence_qa", "questions", "quality_reliance"),
     ),
     (
         ("quality", "reliance", "rework", "blocked"),
-        ("material_topics", "product_vs_footprint", "measured_metrics", "consequences"),
+        ("material_topics", "product_vs_footprint", "esg_evidence_qa", "questions"),
     ),
 ]
 
@@ -3508,6 +3869,9 @@ def build_contextual_next_steps(
     elif agent_key in {"ic_synthesis", "executive_summary"}:
         keys = _IC_SYNTH_DEFAULT_NEXT_STEP_KEYS
         rules = _IC_SYNTH_NEXT_STEP_RULES
+    elif agent_key == "appendices":
+        keys = _APPENDICES_DEFAULT_NEXT_STEP_KEYS
+        rules = _APPENDICES_NEXT_STEP_RULES
     elif agent_key == "valuation_modeling":
         keys = _VAL_MODEL_DEFAULT_NEXT_STEP_KEYS
         rules = _VAL_MODEL_NEXT_STEP_RULES

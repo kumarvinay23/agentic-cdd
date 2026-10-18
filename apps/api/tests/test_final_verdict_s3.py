@@ -172,6 +172,7 @@ def test_ic_synthesis_parses_test2_signals() -> None:
     )
     assert spec["empty"] is False
     assert spec["fv_code"] == "FV-06"
+    # Legacy VDR extract may still surface a score; findings must not invent invest language
     assert spec["overall_score_1_5"] == 3.2
     assert "Conditional Positive" in (spec.get("overall_label") or "")
     assert spec["go_no_go"] == "Conditional Go"
@@ -195,8 +196,11 @@ def test_ic_synthesis_parses_test2_signals() -> None:
     strengths = spec.get("strengths") or []
     assert not any(s.startswith(("execution_risk:", "precedent_transactions:", "valuation_modeling:")) for s in strengths)
     findings = findings_from_verdict_synthesis_spec("ic_synthesis", spec)
-    assert any("Conditional Go" in f for f in findings)
-    assert any("3.2/5" in f for f in findings)
+    # Findings emit Stance / Depends — not inventable score or invest endorsement
+    assert any(f.startswith("Stance:") for f in findings)
+    assert any(f.startswith("Depends:") for f in findings)
+    assert not any("3.2/5" in f for f in findings)
+    assert not any("we recommend invest" in f.lower() for f in findings)
 
 
 def test_recommendation_builds_structure_and_returns() -> None:
@@ -210,9 +214,27 @@ def test_recommendation_builds_structure_and_returns() -> None:
         "empty": False,
         "dcf": {
             "scenarios": [
-                {"label": "Bear Case", "equity_value_per_share_inr": 14.9, "premium_discount_vs_ipo_pct": -80.4},
-                {"label": "Base Case", "equity_value_per_share_inr": 34.9, "premium_discount_vs_ipo_pct": -54.1},
-                {"label": "Bull Case", "equity_value_per_share_inr": 86.5, "premium_discount_vs_ipo_pct": 13.8},
+                {
+                    "label": "Bear Case",
+                    "equity_value_per_share_inr": 14.9,
+                    "premium_discount_vs_ipo_pct": -80.4,
+                    "irr_pct": 8.0,
+                    "moic_x": 1.2,
+                },
+                {
+                    "label": "Base Case",
+                    "equity_value_per_share_inr": 34.9,
+                    "premium_discount_vs_ipo_pct": -54.1,
+                    "irr_pct": 18.5,
+                    "moic_x": 2.1,
+                },
+                {
+                    "label": "Bull Case",
+                    "equity_value_per_share_inr": 86.5,
+                    "premium_discount_vs_ipo_pct": 13.8,
+                    "irr_pct": 32.0,
+                    "moic_x": 3.4,
+                },
             ]
         },
     }
@@ -378,15 +400,28 @@ def test_final_verdict_s3_stage_c_integration() -> None:
             f"/api/v1/portfolios/{deal_id}/pipeline/agents/ic_synthesis/output",
             headers=headers,
         ).json()["data"]["file_output"]
-        assert ic_payload["spec"]["go_no_go"] == "Conditional Go"
-        assert ic_payload["spec"].get("overall_score_1_5") == 3.2
+        # Prompt-book Executive Summary: diligence stance, never invent a score / invest
+        go = str(ic_payload["spec"].get("go_no_go") or "")
+        assert "diligence" in go.lower() or "condition" in go.lower()
+        assert "invest" not in go.lower() or "not invest" in go.lower()
+        assert ic_payload["spec"].get("overall_score_1_5") is None
+        assert ic_payload["spec"].get("ui_name") == "Executive Summary" or (
+            "Executive Summary" in str(ic_payload["spec"].get("document") or "")
+        )
+        thesis = ic_payload["spec"].get("thesis_points") or ic_payload["spec"].get(
+            "case_depends_on"
+        ) or []
+        assert isinstance(thesis, list)
 
         rec_payload = client.get(
             f"/api/v1/portfolios/{deal_id}/pipeline/agents/recommendation/output",
             headers=headers,
         ).json()["data"]["file_output"]
-        assert "staged" in (rec_payload["spec"].get("deal_structure") or "").lower()
-        assert any("IRR" in f for f in rec_payload.get("findings") or [])
+        assert "staged" in (rec_payload["spec"].get("deal_structure") or "").lower() or (
+            rec_payload["spec"].get("decision_stage")
+        )
+        # Findings may be price/CP/structure — IRR only when evidenced on the pack
+        assert rec_payload.get("findings") or rec_payload["spec"].get("price_actions")
 
         store_path = ensure_deal_folder(deal_slug) / "library" / "verdict_store.json"
         assert store_path.is_file()

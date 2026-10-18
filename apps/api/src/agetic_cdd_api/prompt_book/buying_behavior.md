@@ -13,6 +13,11 @@ they did.
 
 Sector focus (if known): [SECTOR]
 Geography focus (if known): [GEOGRAPHY]
+Deal perimeter: [DEAL_PERIMETER]
+Transaction type: [TRANSACTION_TYPE]
+As-of date: [AS_OF_DATE]
+Review periods: [REVIEW_PERIODS]
+Decision stage: [DECISION_STAGE]
 
 1. For each customer type in scope, identify the decision-maker, budget
 holder, approval steps, procurement route (tender, framework, direct) and
@@ -31,6 +36,12 @@ data, do not assert it.
 
 5. State what this implies for sales capacity, conversion assumptions and
 pricing strategy.
+
+6. Run QA that maps are segmented (no universal cycle), CRM provenance is
+stated for cycle distributions, seasonality carries growth/acquisition
+controls, interview claims have sample/date/method (or are labelled
+anecdotal), and say vs did is split. Include Questions for every material
+gap (or state none are missing).
 
 Return ONLY JSON matching the schema requested in the user message.
 Use citation tags exactly as '(DOC: data room financials)', '(COMPUTED FACTS)',

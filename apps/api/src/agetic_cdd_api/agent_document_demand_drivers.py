@@ -1,7 +1,10 @@
 """Compose DiligenceIQ Demand Drivers — cause → customers → cash (prompt book).
 
-Drivers with mechanism/population/timing/size; instrument types do not stack;
-transmission path; counter-drivers; ranked contribution without double-count.
+Drivers with mechanism/population/timing/magnitude/persistence/evidence;
+instrument types do not stack; transmission to volume/price; counter-drivers
+and cyclicality; ranked contribution; anti-double-count vs Volume/Growth;
+regulatory cross-check; hypothesis register for untested drivers.
+No invest/pass.
 """
 
 from __future__ import annotations
@@ -486,6 +489,254 @@ def _rank_drivers(
     return rows[:6]
 
 
+def _regulatory_cross_check(
+    drivers: list[dict[str, str]],
+    corpus: str,
+) -> list[dict[str, str]]:
+    """Cross-check mandate/policy drivers against regulatory evidence in pack."""
+    rows: list[dict[str, str]] = []
+    reg_hits = _pick_sentences(
+        _sentences(corpus),
+        keywords=("regulation", "enacted", "compliance", "jurisdiction", "licence", "license"),
+        limit=3,
+    )
+    for d in drivers:
+        if not isinstance(d, dict):
+            continue
+        itype = str(d.get("instrument_type") or "")
+        if itype not in {"legal_mandate", "grant", "subsidy"}:
+            continue
+        name = str(d.get("driver") or "")
+        if name.startswith("Information"):
+            continue
+        dated = (
+            d.get("effective_date")
+            and not str(d["effective_date"]).startswith("Information")
+            and d["effective_date"] != _NA
+        )
+        rows.append({
+            "driver": _clean(name, 80),
+            "against_agent": "regulatory_compliance",
+            "status": "aligned_pending_confirm" if dated and reg_hits else "needs_reconcile",
+            "note": (
+                f"Enacted date {_clean(d.get('effective_date'), 40)}; "
+                f"regulatory text {'evidenced' if reg_hits else 'thin'} in pack — "
+                f"confirm jurisdiction/coverage with Regulatory Compliance {_DOC_CITE if reg_hits else ''}".strip()
+            ),
+        })
+    if not rows:
+        rows.append({
+            "driver": _info_request("policy / mandate driver"),
+            "against_agent": "regulatory_compliance",
+            "status": "n/a",
+            "note": "No mandate/grant/subsidy driver to cross-check yet",
+        })
+    return rows[:6]
+
+
+def _hypothesis_register(
+    drivers: list[dict[str, str]],
+    transmission: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Untested drivers / unproven transmission chains — what would close them."""
+    unproven_tx = {
+        str(t.get("driver") or "").lower()[:60]
+        for t in transmission
+        if isinstance(t, dict) and "Unproven" in str(t.get("chain_status") or "")
+    }
+    rows: list[dict[str, str]] = []
+    for d in drivers:
+        if not isinstance(d, dict):
+            continue
+        name = str(d.get("driver") or "")
+        if name.startswith("Information"):
+            continue
+        gaps: list[str] = []
+        if str(d.get("effective_date") or "").startswith("Information"):
+            gaps.append("effective date")
+        if str(d.get("customer_population_exposed") or "").startswith("Information"):
+            gaps.append("population exposed")
+        if str(d.get("expected_size") or "").startswith("Information"):
+            gaps.append("magnitude")
+        if name.lower()[:60] in unproven_tx or any(
+            name.lower()[:40] in u for u in unproven_tx
+        ):
+            gaps.append("transmission chain")
+        if not gaps:
+            continue
+        rows.append({
+            "hypothesis": _clean(name, 80),
+            "why_untested": f"Missing: {', '.join(gaps)}",
+            "closure_test": (
+                f"Evidence {_clean(', '.join(gaps), 120)} with locator on this geography"
+            ),
+            "interim_treatment": "Do not count in READY growth contribution until closed",
+        })
+    if not rows:
+        rows.append({
+            "hypothesis": "No untested drivers — all ranked items have minimum evidence",
+            "why_untested": "N/A",
+            "closure_test": "Re-open if new policy or geography expands the perimeter",
+            "interim_treatment": "None",
+        })
+    return rows[:8]
+
+
+def _volume_growth_anti_double_count(
+    ranked: list[dict[str, str]],
+) -> dict[str, str]:
+    """Same growth must not appear under Demand Drivers and Volume without reconcile."""
+    flagged = [
+        str(r.get("driver") or "")
+        for r in ranked
+        if isinstance(r, dict) and "FLAG" in str(r.get("double_count_check") or "").upper()
+    ]
+    return {
+        "against_agent": "market_volume_and_growth",
+        "status": "flagged" if flagged else "ok_pending_volume_reconcile",
+        "note": (
+            f"Internal double-count FLAG on: {', '.join(_clean(f, 40) for f in flagged[:3])}. "
+            f"Also reconcile attributed growth with Market Volume & Growth series "
+            f"so the same CAGR is not claimed twice."
+            if flagged
+            else (
+                "No internal double-count FLAG. Still reconcile driver-attributed growth "
+                "with Market Volume & Growth endpoint series before READY reliance."
+            )
+        ),
+    }
+
+
+def _questions_from_dd_gaps(spec: dict[str, Any]) -> list[dict[str, str]]:
+    from agetic_cdd_api.prompt_book import normalize_question
+
+    out: list[dict[str, str]] = []
+    drivers = spec.get("drivers") if isinstance(spec.get("drivers"), list) else []
+    named = [
+        d for d in drivers
+        if isinstance(d, dict)
+        and d.get("driver")
+        and not str(d["driver"]).startswith("Information")
+    ]
+    if not named:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Identify enacted demand drivers with dates for this geography",
+                    "required_records": "Policy / commercial pack with effective dates and coverage",
+                    "decision_effect": "Growth case lacks cause→cash chain",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "market diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "≥1 enacted driver with mechanism, population, date",
+                    "interim_treatment": "Do not invent industry themes as drivers",
+                }
+            )
+        )
+
+    for d in named:
+        if str(d.get("effective_date") or "").startswith("Information"):
+            out.append(
+                normalize_question(
+                    {
+                        "question": f"Provide effective date / coverage for {_clean(d.get('driver'), 60)}",
+                        "required_records": "Enacted policy text or commercial programme note",
+                        "decision_effect": "Timing of demand shift for volume/plan multiple",
+                        "priority": "mandatory_pre_decision",
+                        "owner": "market / regulatory lead",
+                        "timing": "before IC",
+                        "closure_test": "Dated enactment with geography coverage",
+                        "interim_treatment": "Treat timing as unknown; do not front-load growth",
+                    }
+                )
+            )
+            break
+
+    transmission = spec.get("transmission") if isinstance(spec.get("transmission"), list) else []
+    if all(
+        isinstance(t, dict) and "Unproven" in str(t.get("chain_status") or "")
+        for t in transmission
+    ) or not transmission:
+        out.append(
+            normalize_question(
+                {
+                    "question": "Evidence transmission from driver → customers → volume → revenue",
+                    "required_records": "Win data / volume bridge / ASP × units attributable to driver",
+                    "decision_effect": "Unproven chain cannot support pricing-led or volume-led plan",
+                    "priority": "mandatory_pre_decision",
+                    "owner": "commercial diligence lead",
+                    "timing": "before IC",
+                    "closure_test": "At least one driver with partially evidenced transmission",
+                    "interim_treatment": "Mark chain Unproven; exclude from READY contribution",
+                }
+            )
+        )
+
+    counters = spec.get("counter_drivers") if isinstance(spec.get("counter_drivers"), list) else []
+    if not any(
+        isinstance(c, dict)
+        and c.get("counter_driver")
+        and not str(c["counter_driver"]).startswith("Information")
+        for c in counters
+    ):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Document counter-drivers and cyclicality from company history",
+                    "required_records": "Downturn P&L history / seasonal volume / subsidy phase-out notes",
+                    "decision_effect": "One-sided driver list overstates durability of growth",
+                    "priority": "signing_condition",
+                    "owner": "market diligence lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "≥1 counter-driver with cyclicality or company history note",
+                    "interim_treatment": "Treat persistence as untested",
+                }
+            )
+        )
+
+    reg = spec.get("regulatory_cross_checks") if isinstance(spec.get("regulatory_cross_checks"), list) else []
+    if any(isinstance(r, dict) and r.get("status") == "needs_reconcile" for r in reg):
+        out.append(
+            normalize_question(
+                {
+                    "question": "Reconcile mandate/subsidy drivers with Regulatory Compliance",
+                    "required_records": "Regulatory memo with jurisdiction, coverage, effective date",
+                    "decision_effect": "Policy-driven demand may not apply as modelled",
+                    "priority": "signing_condition",
+                    "owner": "regulatory lead",
+                    "timing": "per deal timetable",
+                    "closure_test": "Same date/coverage as Demand Drivers or conflict logged",
+                    "interim_treatment": "LIMITED reliance on policy-driven volume",
+                }
+            )
+        )
+
+    seen: set[str] = set()
+    unique: list[dict[str, str]] = []
+    for q in out:
+        key = q.get("question", "").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(q)
+    if not unique:
+        unique.append(
+            normalize_question(
+                {
+                    "question": "No material demand-driver inputs are missing for the stated geography",
+                    "required_records": "N/A — current pack sufficient for ranked drivers",
+                    "decision_effect": "None — drivers publishable as shared basis",
+                    "priority": "residual_uncertainty",
+                    "owner": "market diligence lead",
+                    "timing": "n/a",
+                    "closure_test": "Re-run if geography or policy set changes",
+                    "interim_treatment": "None",
+                }
+            )
+        )
+    return unique[:12]
+
+
 def _quality_reliance(
     *,
     driver_count: int,
@@ -519,6 +770,11 @@ def _llm_demand_drivers_spec(
     sector: str | None = None,
     geography: str | None = None,
     materiality: str | None = None,
+    deal_perimeter: str | None = None,
+    transaction_type: str | None = None,
+    as_of_date: str | None = None,
+    review_periods: str | None = None,
+    decision_stage: str | None = None,
 ) -> dict[str, Any] | None:
     from agetic_cdd_api.prompt_book import compose_system
     from agetic_cdd_api.services_gemini import gemini_configured, generate_json
@@ -526,12 +782,21 @@ def _llm_demand_drivers_spec(
     if not gemini_configured() or not corpus.strip():
         return None
 
-    system = compose_system(
-        "demand_drivers",
-        sector=sector,
-        geography=geography,
-        materiality=materiality,
-    )
+    try:
+        system = compose_system(
+            "demand_drivers",
+            sector=sector,
+            geography=geography,
+            materiality=materiality,
+            target_company=company,
+            deal_perimeter=deal_perimeter,
+            transaction_type=transaction_type,
+            as_of_date=as_of_date,
+            review_periods=review_periods,
+            decision_stage=decision_stage,
+        )
+    except KeyError:
+        return None
     src_list = "\n".join(f"[{i}] {name}" for i, name in enumerate(sources[:12], start=1))
     user = (
         f"Target company / deal name: {company}\n"
@@ -541,18 +806,23 @@ def _llm_demand_drivers_spec(
         "Return JSON with keys:\n"
         "insight_snapshot (string),\n"
         "drivers: [{driver, mechanism, customer_population_exposed, effective_date, "
-        "expected_size, persistence, instrument_type, geography, notes}] "
+        "expected_size, persistence, instrument_type, geography, evidence, notes}] "
         "— instrument_type one of legal_mandate|grant|subsidy|voluntary_commitment|operating_saving; "
         "enacted policies with dates only (no placeholders),\n"
         "instrument_separation: [{instrument_type, drivers_in_type, behaviour, stacking_rule}],\n"
-        "transmission: [{driver, customers_won, volume, revenue, chain_status}] "
+        "transmission: [{driver, customers_won, volume, revenue, price_path, chain_status}] "
         "— say Unproven where the chain is not evidenced,\n"
         "counter_drivers: [{counter_driver, cyclicality, company_history, notes}],\n"
         "ranked_contribution: [{rank, driver, evidenced_contribution, double_count_check, instrument_type}] "
         "— do not attribute the same growth to two drivers,\n"
+        "regulatory_cross_checks: [{driver, against_agent, status, note}],\n"
+        "hypothesis_register: [{hypothesis, why_untested, closure_test, interim_treatment}],\n"
+        "questions: [{question, required_records, decision_effect, priority, "
+        "owner, timing, closure_test, interim_treatment}],\n"
         "quality_verdict (PASS|REWORK),\n"
         "reliance_verdict (READY|LIMITED|BLOCKED),\n"
         "quality_reliance_rationale (string)\n"
+        "Reconcile with Market Volume & Growth — same growth must not be claimed twice. "
         "Do NOT include recommendation, confidence, or investment verdict fields.\n"
     )
     parsed = generate_json(system=system, user=user, temperature=0.15)
@@ -580,6 +850,9 @@ def _heuristic_demand_drivers_spec(
     transmission = _transmission(drivers, corpus_full)
     counters = _counter_drivers(corpus_full)
     ranked = _rank_drivers(drivers, transmission)
+    regulatory = _regulatory_cross_check(drivers, corpus_full)
+    hypotheses = _hypothesis_register(drivers, transmission)
+    volume_reconcile = _volume_growth_anti_double_count(ranked)
 
     enacted = sum(
         1 for d in drivers
@@ -604,20 +877,27 @@ def _heuristic_demand_drivers_spec(
         transmission_proven=proven,
         has_counter=has_counter,
     )
+    if volume_reconcile.get("status") == "flagged" and reliance == "READY":
+        reliance = "LIMITED"
+        qr = f"{qr} Double-count FLAG vs Volume/Growth reconcile."
 
     insight = (
         f"Demand Drivers for {company}: {named_drivers} driver(s) with instrument types "
         f"separated (no stacking); transmission driver→customers→volume→revenue traced "
-        f"where evidenced; counter-drivers and ranking without double-counted growth."
+        f"where evidenced; counter-drivers and ranking without double-counted growth; "
+        f"regulatory cross-check and hypothesis register for untested items."
     )
 
-    return {
+    out: dict[str, Any] = {
         "insight_snapshot": insight,
         "drivers": drivers,
         "instrument_separation": instruments,
         "transmission": transmission,
         "counter_drivers": counters,
         "ranked_contribution": ranked,
+        "regulatory_cross_checks": regulatory,
+        "hypothesis_register": hypotheses,
+        "volume_growth_reconcile": volume_reconcile,
         "quality_verdict": quality,
         "reliance_verdict": reliance,
         "quality_reliance_rationale": qr,
@@ -639,6 +919,8 @@ def _heuristic_demand_drivers_spec(
         "consumes_ceiling": legacy.get("consumes_ceiling"),
         "ceiling_tam": legacy.get("ceiling_tam"),
     }
+    out["questions"] = _questions_from_dd_gaps(out)
+    return out
 
 
 def _normalise_llm_spec(
@@ -647,10 +929,12 @@ def _normalise_llm_spec(
     sources: list[str],
     geography: str | None,
     legacy_spec: dict[str, Any] | None,
+    corpus: str = "",
 ) -> dict[str, Any]:
     for key in (
         "drivers", "instrument_separation", "transmission",
         "counter_drivers", "ranked_contribution",
+        "regulatory_cross_checks", "hypothesis_register",
     ):
         if not isinstance(llm.get(key), list):
             llm[key] = []
@@ -685,6 +969,7 @@ def _normalise_llm_spec(
             row["chain_status"] = (
                 "Unproven — transmission chain not evidenced in the data room"
             )
+        row.setdefault("price_path", _info_request("price transmission path"))
 
     seen_growth: set[str] = set()
     for row in llm.get("ranked_contribution") or []:
@@ -699,10 +984,33 @@ def _normalise_llm_spec(
         if key:
             seen_growth.add(key)
 
+    if not llm.get("regulatory_cross_checks"):
+        llm["regulatory_cross_checks"] = _regulatory_cross_check(cleaned_drivers, corpus)
+    if not llm.get("hypothesis_register"):
+        llm["hypothesis_register"] = _hypothesis_register(
+            cleaned_drivers, llm.get("transmission") or []
+        )
+    if not isinstance(llm.get("volume_growth_reconcile"), dict):
+        llm["volume_growth_reconcile"] = _volume_growth_anti_double_count(
+            llm.get("ranked_contribution") or []
+        )
+
     qv = str(llm.get("quality_verdict") or "").upper()
     rv = str(llm.get("reliance_verdict") or "").upper()
     llm["quality_verdict"] = qv if qv in {"PASS", "REWORK"} else "PASS"
     llm["reliance_verdict"] = rv if rv in {"READY", "LIMITED", "BLOCKED"} else "LIMITED"
+
+    if not llm.get("questions"):
+        llm["questions"] = _questions_from_dd_gaps(llm)
+    else:
+        from agetic_cdd_api.prompt_book import normalize_question
+
+        filled_q: list[dict[str, str]] = []
+        for raw in llm.get("questions") or []:
+            q = normalize_question(raw)
+            if q.get("question"):
+                filled_q.append(q)
+        llm["questions"] = filled_q or _questions_from_dd_gaps(llm)
 
     for dead in ("recommendation", "confidence", "key_conditions"):
         llm.pop(dead, None)
@@ -773,19 +1081,32 @@ def build_demand_drivers_spec(
             sector=vars_.get("sector"),
             geography=geography,
             materiality=vars_.get("materiality"),
+            deal_perimeter=vars_.get("deal_perimeter"),
+            transaction_type=vars_.get("transaction_type"),
+            as_of_date=vars_.get("as_of_date"),
+            review_periods=vars_.get("review_periods"),
+            decision_stage=vars_.get("decision_stage"),
         )
         if llm:
-            return _normalise_llm_spec(
-                llm, sources=sources, geography=geography, legacy_spec=legacy_spec
+            out = _normalise_llm_spec(
+                llm,
+                sources=sources,
+                geography=geography,
+                legacy_spec=legacy_spec,
+                corpus=corpus,
             )
+            out["deal_slots"] = {k: v for k, v in vars_.items() if v}
+            return out
 
-    return _heuristic_demand_drivers_spec(
+    heur = _heuristic_demand_drivers_spec(
         company=target,
         corpus=corpus,
         sources=sources,
         geography=geography,
         legacy_spec=legacy_spec,
     )
+    heur["deal_slots"] = {k: v for k, v in vars_.items() if v}
+    return heur
 
 
 def render_demand_drivers_markdown(
@@ -807,13 +1128,30 @@ def render_demand_drivers_markdown(
         if isinstance(spec.get("ranked_contribution"), list)
         else []
     )
+    regulatory = (
+        spec.get("regulatory_cross_checks")
+        if isinstance(spec.get("regulatory_cross_checks"), list)
+        else []
+    )
+    hypotheses = (
+        spec.get("hypothesis_register")
+        if isinstance(spec.get("hypothesis_register"), list)
+        else []
+    )
+    volume_reconcile = (
+        spec.get("volume_growth_reconcile")
+        if isinstance(spec.get("volume_growth_reconcile"), dict)
+        else {}
+    )
+    questions = spec.get("questions") if isinstance(spec.get("questions"), list) else []
     srcs = sources or spec.get("primary_sources") or []
 
     parts: list[str] = [f"# {title}\n\n", _insight(spec.get("insight_snapshot"))]
 
     parts.append("## 1. Drivers That Apply\n\n")
     parts.append(
-        "Mechanism, exposed customer population, effective date, expected size and persistence. "
+        "Mechanism, exposed customer population, effective date, expected size (magnitude) "
+        "and persistence. "
         "**Enacted policies with dates and coverage only — no placeholder policies.**\n\n"
     )
     if drivers:
@@ -859,7 +1197,7 @@ def render_demand_drivers_markdown(
 
     parts.append("## 3. Transmission Path\n\n")
     parts.append(
-        "Driver → customers won → volume → revenue for this company. "
+        "Driver → customers won → volume → revenue (and price where relevant) for this company. "
         "**Marked Unproven if unevidenced in the data room.**\n\n"
     )
     if transmission:
@@ -900,7 +1238,8 @@ def render_demand_drivers_markdown(
     parts.append("## 5. Ranked Contribution to Growth Case\n\n")
     parts.append(
         "Rank by evidenced contribution. "
-        "**Do not let the same growth appear under two drivers.**\n\n"
+        "**Do not let the same growth appear under two drivers**, or under both "
+        "Demand Drivers and Market Volume & Growth without reconcile.\n\n"
     )
     if ranked:
         parts.append(_table(
@@ -916,6 +1255,50 @@ def render_demand_drivers_markdown(
                 for r in ranked if isinstance(r, dict)
             ],
         ))
+    if volume_reconcile:
+        parts.append(
+            f"**vs Market Volume & Growth:** {_clean(volume_reconcile.get('status'), 40)} — "
+            f"{_clean(volume_reconcile.get('note'), 280)}\n\n"
+        )
+    parts.append("---\n\n")
+
+    parts.append("## 6. Regulatory Cross-Check\n\n")
+    parts.append(
+        "Enacted mandate / grant / subsidy claims vs Regulatory Compliance "
+        "(dates, coverage, jurisdiction).\n\n"
+    )
+    if regulatory:
+        parts.append(_table(
+            ["Driver", "Against", "Status", "Note"],
+            [
+                [
+                    _clean(r.get("driver"), 60),
+                    _clean(r.get("against_agent"), 40),
+                    _clean(r.get("status"), 40),
+                    _clean(r.get("note"), 160),
+                ]
+                for r in regulatory if isinstance(r, dict)
+            ],
+        ))
+    parts.append("---\n\n")
+
+    parts.append("## 7. Hypothesis Register (Untested Drivers)\n\n")
+    parts.append(
+        "Drivers stated but not fully evidenced — what would close them.\n\n"
+    )
+    if hypotheses:
+        parts.append(_table(
+            ["Hypothesis", "Why Untested", "Closure Test", "Interim Treatment"],
+            [
+                [
+                    _clean(r.get("hypothesis"), 80),
+                    _clean(r.get("why_untested"), 100),
+                    _clean(r.get("closure_test"), 120),
+                    _clean(r.get("interim_treatment"), 100),
+                ]
+                for r in hypotheses if isinstance(r, dict)
+            ],
+        ))
     parts.append(
         "*This section does not recommend invest or pass. "
         "A growth case is only credible if drivers transmit to this company's revenue "
@@ -923,7 +1306,27 @@ def render_demand_drivers_markdown(
     )
     parts.append("---\n\n")
 
-    parts.append("## 6. Quality & Reliance\n\n")
+    parts.append("## 8. Questions and Inputs Required\n\n")
+    if questions:
+        for row in questions[:12]:
+            if not isinstance(row, dict):
+                continue
+            parts.append(
+                f"- **{_clean(row.get('question'), 200)}** — "
+                f"records: {_clean(row.get('required_records'), 120)}; "
+                f"effect: {_clean(row.get('decision_effect'), 120)}; "
+                f"priority: {_clean(row.get('priority'), 40)}; "
+                f"owner: {_clean(row.get('owner'), 40)}; "
+                f"timing: {_clean(row.get('timing'), 40)}; "
+                f"closure: {_clean(row.get('closure_test'), 120)}; "
+                f"interim: {_clean(row.get('interim_treatment'), 120)}\n"
+            )
+        parts.append("\n")
+    else:
+        parts.append(f"{_info_request('Questions for material demand-driver gaps')}\n\n")
+    parts.append("---\n\n")
+
+    parts.append("## 9. Quality & Reliance\n\n")
     parts.append(_table(
         ["Metric", "Verdict / Explanation"],
         [

@@ -125,6 +125,10 @@ def test_values_agree_tolerance() -> None:
     # Small EBITDA gaps must contradict (was swallowed by 0.05 abs floor).
     assert not values_agree(0.572, 0.565)
     assert not values_agree(7.558, 7.528)
+    # Ratio ↔ percent-points must not raise a false contradiction.
+    assert values_agree(0.762, 76.168)
+    assert values_agree(76.168, 0.762)
+    assert values_agree(0.8727, 87.27)
 
 
 def test_claim_id_is_uuid_hex() -> None:

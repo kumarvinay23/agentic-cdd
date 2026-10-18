@@ -13,43 +13,45 @@ For the full Google Cloud topology (Cloud Run vs GCE, storage, secrets, CI/CD), 
 
 ---
 
-## 1. Deploy a pre-compiled Docker container
+## 1. Local Docker — rebuild from current code and redeploy
 
-### A. Build once (or pull from Artifact Registry)
+After code changes, prefer the helper script. It rebuilds images from the
+working tree, force-recreates containers, and runs smoke tests:
 
 ```bash
-# From repo root
+# From repo root (once)
 cp .env.docker.example .env.docker
-# Edit .env.docker — set AGETIC_CDD_JWT_SECRET (and GCP_* if pushing)
+# Edit .env.docker — set AGETIC_CDD_JWT_SECRET (and WEB_PORT if 3000 is busy)
 
-# Build local images
-docker compose --env-file .env.docker build
-
-# Or pull already-published images from Artifact Registry
-# (set API_IMAGE / WEB_IMAGE in .env.docker to the full AR paths first)
-docker compose --env-file .env.docker pull
-```
-
-### B. Run the pre-built stack
-
-```bash
-docker compose --env-file .env.docker up -d
+chmod +x scripts/deploy-local-docker.sh
+./scripts/deploy-local-docker.sh              # api + web
+./scripts/deploy-local-docker.sh --api-only   # faster when only Python changed
+./scripts/deploy-local-docker.sh --no-cache   # ignore Docker layer cache
+./scripts/deploy-local-docker.sh --down       # stop
 ```
 
 Check:
 
 - API health: http://127.0.0.1:4600/api/v1/health  
-- Web UI: http://127.0.0.1:3000/login  
+- Web UI: http://127.0.0.1:3002/login (or `WEB_PORT` from `.env.docker`)
 
 Default seed admin (override in `.env.docker`): `admin@ageticcdd.com` / `adminpass`
 
-Stop:
+Deal / VDR files persist in the named volume `agetic_cdd_deals`.
+
+### Manual compose (equivalent)
 
 ```bash
-docker compose --env-file .env.docker down
+docker compose --env-file .env.docker up -d --build --force-recreate
 ```
 
-Deal / VDR files persist in the named volume `agetic_cdd_deals`.
+### Pull pre-built images from Artifact Registry
+
+```bash
+# Set API_IMAGE / WEB_IMAGE in .env.docker to the full AR paths first
+docker compose --env-file .env.docker pull
+docker compose --env-file .env.docker up -d --force-recreate
+```
 
 ### Run a single pre-compiled API container
 

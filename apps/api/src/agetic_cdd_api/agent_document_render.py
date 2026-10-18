@@ -408,9 +408,11 @@ def _render_market_pricing(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
         or "## 1. Realised Net Price" in existing
         or "## 5. Contract Escalators" in existing
+        or "## 7. Questions" in existing
     ):
         return existing if existing.endswith("\n") else existing + "\n"
 
@@ -515,9 +517,11 @@ def _render_demand_drivers(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
         or "## 1. Drivers That Apply" in existing
         or "## 3. Transmission Path" in existing
+        or "## 8. Questions" in existing
     ):
         return existing if existing.endswith("\n") else existing + "\n"
 
@@ -1007,7 +1011,9 @@ def _render_customer_stickiness(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 6. New-Logo Exclusion QA" in existing
         or "## 1. Population" in existing
         or "## 2. Retention Bridge" in existing
     ):
@@ -1019,6 +1025,8 @@ def _render_customer_stickiness(output: dict[str, Any], title: str) -> str:
         or spec.get("cohorts")
         or spec.get("retention_bridge")
         or spec.get("contract_protections")
+        or spec.get("new_logo_exclusion_qa")
+        or spec.get("questions")
     ):
         if not isinstance(spec.get("population_definition"), dict):
             metrics = spec.get("retention_metrics") if isinstance(spec.get("retention_metrics"), dict) else {}
@@ -1088,6 +1096,8 @@ def _render_customer_stickiness(output: dict[str, Any], title: str) -> str:
                     "distinction": "Customers who have stayed are not the same as customers who are contractually committed.",
                     "source": "(DOC: data room financials)",
                 },
+                "new_logo_exclusion_qa": spec.get("new_logo_exclusion_qa") or [],
+                "questions": spec.get("questions") or [],
                 "quality_verdict": spec.get("quality_verdict") or "PASS",
                 "reliance_verdict": spec.get("reliance_verdict") or "LIMITED",
                 "quality_reliance_rationale": spec.get("quality_reliance_rationale")
@@ -1151,6 +1161,8 @@ def _render_customer_stickiness(output: dict[str, Any], title: str) -> str:
             "distinction": "Customers who have stayed are not the same as customers who are contractually committed.",
             "source": "(DOC: data room financials)",
         },
+        "new_logo_exclusion_qa": [],
+        "questions": [],
         "stickiness_notes": [],
         "quality_verdict": "PASS",
         "reliance_verdict": "BLOCKED",
@@ -1169,7 +1181,9 @@ def _render_customer_satisfaction(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 6. Survey Evidence QA" in existing
         or "## 1. Survey" in existing
         or "## 2. Operational" in existing
     ):
@@ -1180,6 +1194,8 @@ def _render_customer_satisfaction(output: dict[str, Any], title: str) -> str:
         spec.get("survey_assessment")
         or spec.get("operational_signals")
         or spec.get("churn_association")
+        or spec.get("survey_evidence_qa")
+        or spec.get("questions")
         or spec.get("nps") is not None
         or spec.get("service_satisfaction_pct") is not None
         or spec.get("churn_drivers")
@@ -1209,6 +1225,8 @@ def _render_customer_satisfaction(output: dict[str, Any], title: str) -> str:
                     ),
                     "source": "(DOC: data room financials)",
                 },
+                "survey_evidence_qa": spec.get("survey_evidence_qa") or [],
+                "questions": spec.get("questions") or [],
                 "operational_signals": spec.get("operational_signals") or [],
                 "churn_association": spec.get("churn_association") or {
                     "comparable": False,
@@ -1285,9 +1303,12 @@ def _render_customer_satisfaction(output: dict[str, Any], title: str) -> str:
         "churn_drivers": [],
         "satisfaction_notes": [],
         "operational_signals": [],
+        "survey_evidence_qa": [],
+        "questions": [],
         "churn_association": {
             "comparable": False,
             "association_only": True,
+            "related_agent": "customer_stickiness",
             "service_failure": "N/A (data room did not provide it)",
             "subsequent_cancellation": "N/A (data room did not provide it)",
             "notes": "Information request: matched service-failure and subsequent-cancellation records",
@@ -1335,7 +1356,9 @@ def _render_buying_behavior(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 6. Buying Evidence QA" in existing
         or "## 1. Purchase" in existing
         or "## 2. Sales Cycle" in existing
     ):
@@ -1346,6 +1369,8 @@ def _render_buying_behavior(output: dict[str, Any], title: str) -> str:
         spec.get("purchase_maps")
         or spec.get("sales_cycles")
         or spec.get("switching")
+        or spec.get("buying_evidence_qa")
+        or spec.get("questions")
         or spec.get("buying_metrics")
         or spec.get("concentration_flags")
         or spec.get("behavior_notes")
@@ -1364,6 +1389,8 @@ def _render_buying_behavior(output: dict[str, Any], title: str) -> str:
                     or "Buying Behavior from deep-dive extract."
                 ),
                 "purchase_maps": [],
+                "buying_evidence_qa": spec.get("buying_evidence_qa") or [],
+                "questions": spec.get("questions") or [],
                 "sales_cycles": (
                     [
                         {
@@ -1454,6 +1481,8 @@ def _render_buying_behavior(output: dict[str, Any], title: str) -> str:
         ),
         "purchase_maps": [],
         "sales_cycles": [],
+        "buying_evidence_qa": [],
+        "questions": [],
         "switching": {
             "evidenced": False,
             "purchase_criteria": [
@@ -1526,7 +1555,9 @@ def _render_supplier_dependence(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 6. Supplier Evidence QA" in existing
         or "## 1. Supplier Spend" in existing
         or "## 2. Operational Criticality" in existing
     ):
@@ -1537,6 +1568,8 @@ def _render_supplier_dependence(output: dict[str, Any], title: str) -> str:
         spec.get("spend_by_supplier")
         or spec.get("operational_criticality")
         or spec.get("contract_terms")
+        or spec.get("supplier_evidence_qa")
+        or spec.get("questions")
         or spec.get("vendors")
         or spec.get("concentration_flags")
     ):
@@ -2134,9 +2167,13 @@ def _render_market_volume(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 1. Perimeter Binding" in existing
         or "## 1. Bottom-Up" in existing
+        or "## 2. Bottom-Up" in existing
         or "## 5. Plan vs Market" in existing
+        or "## 6. Plan vs Market" in existing
     ):
         return existing if existing.endswith("\n") else existing + "\n"
 
@@ -2250,7 +2287,8 @@ def _render_market_definition(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 7. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 7. Quality & Reliance" in existing
         or "## 1. Perimeter" in existing
         or "## 6. Approval Gate" in existing
     ):
@@ -2280,16 +2318,19 @@ def _render_market_definition(output: dict[str, Any], title: str) -> str:
                     "label": "Addressable",
                     "value": "Information request: addressable market from perimeter",
                     "basis": "N/A (data room did not provide it)",
+                    "formula": "Information request: formula for addressable market",
                     "source": "N/A (data room did not provide it)",
                 },
                 "obtainable_market": {
                     "label": "Obtainable",
                     "value": "Information request: obtainable market from perimeter",
                     "basis": "N/A (data room did not provide it)",
+                    "formula": "Information request: formula for obtainable market",
                     "source": "N/A (data room did not provide it)",
                 },
                 "assumptions": [],
                 "published_figures": [],
+                "right_to_win_deferred": True,
                 "industry_context_note": (
                     "Broader industry figures are context, not the market."
                 ),
@@ -2299,6 +2340,7 @@ def _render_market_definition(output: dict[str, Any], title: str) -> str:
                     "axes_evidenced": 0,
                     "note": "Approve perimeter before running other market agents.",
                 },
+                "questions": [],
                 "quality_verdict": "PASS",
                 "reliance_verdict": "LIMITED",
                 "quality_reliance_rationale": "Legacy extract present; perimeter axes incomplete.",
@@ -2335,6 +2377,7 @@ def _render_market_definition(output: dict[str, Any], title: str) -> str:
         },
         "assumptions": [],
         "published_figures": [],
+        "right_to_win_deferred": True,
         "industry_context_note": "Broader industry figures are context, not the market.",
         "approval_gate": {
             "status": "blocked",
@@ -2342,6 +2385,7 @@ def _render_market_definition(output: dict[str, Any], title: str) -> str:
             "axes_evidenced": 0,
             "note": "Perimeter incomplete — all other market agents stay blocked.",
         },
+        "questions": [],
         "quality_verdict": "PASS",
         "reliance_verdict": "BLOCKED",
         "quality_reliance_rationale": "No market packs resolved.",
@@ -2357,7 +2401,9 @@ def _render_strategic_direction(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 7. Quality & Reliance" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 7. Quality & Reliance" in existing
+        or "## 7. Strategic Direction Evidence QA" in existing
         or "## 2. Bridge" in existing
         or "## 1. Three Cases" in existing
     ):
@@ -2476,7 +2522,9 @@ def _render_management_quality(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 6. Management Quality Evidence QA" in existing
         or "## 2. Executive & Senior Operating Roster" in existing
         or "## 5. Vacancies, Capability Gaps" in existing
     ):
@@ -2488,6 +2536,7 @@ def _render_management_quality(output: dict[str, Any], title: str) -> str:
         or spec.get("key_persons")
         or spec.get("confirmed_vacancies") is not None
         or spec.get("c_suite")
+        or spec.get("mq_evidence_qa")
     ):
         if not spec.get("executives") and isinstance(spec.get("c_suite"), list):
             spec = {
@@ -2584,7 +2633,9 @@ def _render_ip_and_technology(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 7. IP & Technology Evidence QA" in existing
         or "## 1. Technology Map" in existing
         or "## 2. Owned IP" in existing
     ):
@@ -2751,7 +2802,9 @@ def _render_regulatory_compliance(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 7. Regulatory Compliance Evidence QA" in existing
         or "## 1. Applicable Laws" in existing
         or "## 2. Permit & Licence Register" in existing
     ):
@@ -2833,7 +2886,9 @@ def _render_esg_and_sustainability(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 7. ESG Evidence QA" in existing
         or "## 1. Material Topics" in existing
         or "## 2. Product Impact" in existing
     ):
@@ -3026,7 +3081,9 @@ def _render_revenue_quality(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 6. Revenue Quality Evidence QA" in existing
         or "## 1. Revenue Split" in existing
         or "## 3. Revenue Bridge" in existing
     ):
@@ -3042,6 +3099,7 @@ def _render_revenue_quality(output: dict[str, Any], title: str) -> str:
         or spec.get("retention_metrics")
         or spec.get("revenue_mix")
         or spec.get("quality_flags")
+        or spec.get("rq_evidence_qa")
     ):
         if not isinstance(spec.get("revenue_split"), list):
             thin = {
@@ -3085,6 +3143,74 @@ def _render_revenue_quality(output: dict[str, Any], title: str) -> str:
     return render_revenue_quality_markdown(title, thin, sources=sources)
 
 
+def _render_cash_flow(output: dict[str, Any], title: str) -> str:
+    """Prompt-book Cash Flow — EBITDA→cash bridge + liquidity (no invest)."""
+    from agetic_cdd_api.agent_document_cash_flow import (
+        _heuristic_cash_flow_spec,
+        render_cash_flow_markdown,
+    )
+
+    existing = output.get("document")
+    if isinstance(existing, str) and (
+        "## 7. Quality & Reliance" in existing
+        or "## 1. Opening → Closing Cash" in existing
+        or "## 2. EBITDA → OCF → FCF" in existing
+    ):
+        return existing if existing.endswith("\n") else existing + "\n"
+
+    spec = output.get("spec") if isinstance(output.get("spec"), dict) else {}
+    sources = [
+        s for s in (output.get("sources") or spec.get("primary_sources") or [])
+        if isinstance(s, str) and s.strip()
+    ]
+    if (
+        spec.get("cash_bridge")
+        or spec.get("ebitda_to_cash_bridge")
+        or spec.get("cash_metrics")
+        or spec.get("liquidity")
+    ):
+        if not isinstance(spec.get("cash_bridge"), list) and spec.get("cash_metrics"):
+            company = str(
+                output.get("target_company") or output.get("deal_name") or "Target"
+            )
+            thin_built = _heuristic_cash_flow_spec(
+                company=company,
+                corpus="",
+                sources=sources,
+                legacy_spec=spec,
+            )
+            merged = {**spec, **thin_built}
+            return render_cash_flow_markdown(title, merged, sources=sources)
+        return render_cash_flow_markdown(title, spec, sources=sources)
+
+    company = str(output.get("target_company") or output.get("deal_name") or "Target")
+    thin = {
+        "insight_snapshot": str(
+            output.get("summary")
+            or f"Cash Flow for {company} pending opened cash / treasury packs."
+        ),
+        "cash_bridge": [],
+        "ebitda_to_cash_bridge": [],
+        "capex_split": [],
+        "wc_days": [],
+        "financing_and_one_offs": [],
+        "liquidity": {
+            "pressure": "unavailable",
+            "notes": ["Liquidity inputs incomplete (missing ≠ distress)."],
+        },
+        "cash_metrics": {},
+        "liquidity_notes": [],
+        "questions": [],
+        "quality_verdict": "REWORK",
+        "reliance_verdict": "BLOCKED",
+        "quality_reliance_rationale": (
+            "No cash bridge opened — missing cash data cannot prove distress."
+        ),
+        "primary_sources": sources,
+    }
+    return render_cash_flow_markdown(title, thin, sources=sources)
+
+
 def _render_capital_structure(output: dict[str, Any], title: str) -> str:
     """Prompt-book Capital Structure — facilities / cash / net debt (no invest)."""
     from agetic_cdd_api.agent_document_capital_structure import (
@@ -3093,7 +3219,9 @@ def _render_capital_structure(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
+        "## 8. Quality & Reliance" in existing
+        or "## 6. Quality & Reliance" in existing
+        or "## 6. Capital Structure Evidence QA" in existing
         or "## 1. Facility Schedule" in existing
         or "## 5. Net Debt Bridge" in existing
     ):
@@ -3110,6 +3238,7 @@ def _render_capital_structure(output: dict[str, Any], title: str) -> str:
         or spec.get("debt_total_usd_m") is not None
         or spec.get("leverage_ratios")
         or spec.get("capital_notes")
+        or spec.get("cap_evidence_qa")
     ):
         if not isinstance(spec.get("facilities"), list):
             from agetic_cdd_api.agent_document_capital_structure import (
@@ -3180,9 +3309,12 @@ def _render_market_risk(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
-        or "## 1. External Risks" in existing
-        or "## 3. Bounded Downside" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 7. Market Risk Evidence QA" in existing
+        or (
+            "## 1. External Risks" in existing
+            and "## 8. Questions" in existing
+        )
     ):
         return existing if existing.endswith("\n") else existing + "\n"
 
@@ -3265,9 +3397,12 @@ def _render_internal_risk(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
-        or "## 1. Key-Person" in existing
-        or "## 2. Financial Strain" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 7. Internal Risk Evidence QA" in existing
+        or (
+            "## 1. Key-Person" in existing
+            and "## 8. Questions" in existing
+        )
     ):
         return existing if existing.endswith("\n") else existing + "\n"
 
@@ -3280,6 +3415,7 @@ def _render_internal_risk(output: dict[str, Any], title: str) -> str:
         spec.get("key_person_exposure")
         or spec.get("financial_strain")
         or spec.get("observed_weaknesses")
+        or spec.get("risk_register")
         or spec.get("tech_components")
         or spec.get("technical_risks")
     ):
@@ -3346,9 +3482,12 @@ def _render_growth_opportunities(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 6. Quality & Reliance" in existing
-        or "## 1. Available Options" in existing
-        or "## 2. Sized Revenue" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 7. Growth Opportunities Evidence QA" in existing
+        or (
+            "## 1. Available Options" in existing
+            and "## 8. Questions" in existing
+        )
     ):
         return existing if existing.endswith("\n") else existing + "\n"
 
@@ -3361,6 +3500,7 @@ def _render_growth_opportunities(output: dict[str, Any], title: str) -> str:
         spec.get("options")
         or spec.get("growth_levers")
         or spec.get("opportunity_notes")
+        or spec.get("go_evidence_qa")
     ):
         if not isinstance(spec.get("options"), list):
             from agetic_cdd_api.agent_document_growth_opportunities import (
@@ -3425,7 +3565,8 @@ def _render_synergies(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 7. Quality & Reliance" in existing
+        "## 9. Quality & Reliance" in existing
+        or "## 7. Synergies Evidence QA" in existing
         or "## 1. Named Buyer" in existing
         or "## 2. Hypotheses Only" in existing
         or "## 2. Cost Synergies" in existing
@@ -3520,7 +3661,9 @@ def _render_swot_analysis(output: dict[str, Any], title: str) -> str:
 
     existing = output.get("document")
     if isinstance(existing, str) and (
-        "## 1. Demonstrated Strengths" in existing
+        "## 10. Quality & Reliance" in existing
+        or "## 8. SWOT Evidence QA" in existing
+        or "## 1. Demonstrated Strengths" in existing
         or "## 5. Information Gaps" in existing
         or "## Open Blockers" in existing
     ):
@@ -3557,6 +3700,47 @@ def _render_swot_analysis(output: dict[str, Any], title: str) -> str:
     )
     merged = {**spec, **thin}
     return render_swot_analysis_markdown(title, merged, sources=sources)
+
+
+def _render_appendices(output: dict[str, Any], title: str) -> str:
+    """Prompt-book Appendices — claim / evidence / citation audit trail."""
+    from agetic_cdd_api.agent_document_appendices import (
+        render_appendices_markdown,
+    )
+
+    existing = output.get("document")
+    if isinstance(existing, str) and (
+        "## 1. Claim Register" in existing
+        or "## 5. Bidirectional Citation Check" in existing
+        or "## 7. Availability vs Verification" in existing
+    ):
+        return existing if existing.endswith("\n") else existing + "\n"
+
+    spec = output.get("spec") if isinstance(output.get("spec"), dict) else {}
+    sources = [
+        s for s in (output.get("sources") or spec.get("primary_sources") or [])
+        if isinstance(s, str) and s.strip()
+    ]
+    if (
+        spec.get("claim_register")
+        or spec.get("source_inventory")
+        or spec.get("citation_check")
+        or spec.get("upstream_agents_used")
+    ):
+        return render_appendices_markdown(title, spec, sources=sources)
+
+    from agetic_cdd_api.agent_document_appendices import (
+        _heuristic_appendices_spec,
+    )
+
+    company = str(output.get("target_company") or output.get("deal_name") or "Target")
+    thin = _heuristic_appendices_spec(
+        company=company,
+        prior_agents={},
+        sources=sources,
+    )
+    merged = {**spec, **thin}
+    return render_appendices_markdown(title, merged, sources=sources)
 
 
 def _render_recommendation(output: dict[str, Any], title: str) -> str:
@@ -3610,8 +3794,11 @@ def _render_ic_synthesis(output: dict[str, Any], title: str) -> str:
     existing = output.get("document")
     if isinstance(existing, str) and (
         "## 1. Opening" in existing
+        or "## 3. Thesis Points" in existing
         or "## 3. What the Case Depends On" in existing
+        or "## 5. Decision Supportable" in existing
         or "## 5. Recommendation (Proportionate)" in existing
+        or "## 6. Recommendation (Proportionate)" in existing
     ):
         return existing if existing.endswith("\n") else existing + "\n"
 
@@ -3622,7 +3809,9 @@ def _render_ic_synthesis(output: dict[str, Any], title: str) -> str:
     ]
     if (
         spec.get("opening_lines")
+        or spec.get("thesis_points")
         or spec.get("case_depends_on")
+        or spec.get("decision_support")
         or spec.get("recommendation")
         or spec.get("upstream_agents_used")
     ):
@@ -3779,6 +3968,8 @@ def render_agent_document(agent_key: str, output: dict[str, Any] | None) -> str:
         return _render_cost_structure(data, title)
     if agent_key == "historical_performance":
         return _render_historical_performance(data, title)
+    if agent_key == "cash_flow":
+        return _render_cash_flow(data, title)
     if agent_key == "revenue_quality":
         return _render_revenue_quality(data, title)
     if agent_key == "capital_structure":
@@ -3797,6 +3988,8 @@ def render_agent_document(agent_key: str, output: dict[str, Any] | None) -> str:
         return _render_recommendation(data, title)
     if agent_key in {"ic_synthesis", "executive_summary"}:
         return _render_ic_synthesis(data, title)
+    if agent_key == "appendices":
+        return _render_appendices(data, title)
     if agent_key == "valuation_modeling":
         return _render_valuation_modeling(data, title)
     return _render_generic(data, title)
