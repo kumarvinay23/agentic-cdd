@@ -1,0 +1,476 @@
+# Metric instances — the named measures the report is allowed to state.
+# ---------------------------------------------------------------------------
+# Why this file exists
+#   A 97-slide report states the same handful of numbers many times. Without a
+#   registry, TAM on slide 21 quietly disagrees with TAM on slide 37 and nobody
+#   notices until the IC does. Each Metric has:
+#     * exactly one record_module   -> resolves conflicts (R3, axiom A2)
+#     * a subject                   -> stops market data becoming target data (A3)
+#     * admissible_doc_types        -> stops a survey evidencing a valuation (R4)
+#     * aliases                     -> lets a prompt name it in plain English
+#   check_content.py enforces A7 (one value per metric per deck) over this list.
+#
+# unit_kind: currency | percent | count | ratio | score | years | label
+version: 2
+
+metrics:
+
+  # ---------------- market ----------------
+  mkt.tam:
+    label: Total addressable market
+    class: market
+    subject: market
+    unit_kind: currency
+    record_module: MVG
+    admissible_doc_types: [market_model, analyst, statistical_series, cim, web]
+    aliases: [TAM, total addressable market, total market size, overall market]
+  mkt.sam:
+    label: Serviceable addressable market
+    class: market
+    subject: market
+    unit_kind: currency
+    record_module: MVG
+    admissible_doc_types: [market_model, analyst, statistical_series, cim]
+    aliases: [SAM, serviceable addressable market, addressable market]
+  mkt.som:
+    label: Serviceable obtainable / served market
+    class: market
+    subject: market
+    unit_kind: currency
+    record_module: MVG
+    admissible_doc_types: [market_model, analyst, kpi_pack, cim]
+    aliases: [SOM, served market, obtainable market, serviceable obtainable market]
+  mkt.cagr:
+    label: Market growth rate (CAGR)
+    class: market
+    subject: market
+    unit_kind: percent
+    record_module: MVG
+    admissible_doc_types: [market_model, analyst, statistical_series, web]
+    aliases: [market CAGR, market growth, industry growth rate]
+  mkt.volume:
+    label: Addressable volume (units / tonnes / accounts)
+    class: market
+    subject: market
+    unit_kind: count
+    record_module: MVG
+    admissible_doc_types: [market_model, statistical_series, analyst, firmographic]
+    aliases: [addressable volume, market volume, unit volume, tonnage]
+  mkt.definition:
+    label: Market definition and boundary
+    class: market
+    subject: market
+    unit_kind: label
+    record_module: MDF
+    admissible_doc_types: [market_model, analyst, cim, web]
+    aliases: [market definition, market boundary, scope of the market, in-scope market]
+  mkt.segment_share:
+    label: Segment share of market
+    class: market
+    subject: market
+    unit_kind: percent
+    record_module: MVG
+    admissible_doc_types: [market_model, analyst, statistical_series]
+    aliases: [segment mix, share by segment, market split]
+  mkt.price_benchmark:
+    label: Market price benchmark
+    class: market
+    subject: market
+    unit_kind: currency
+    record_module: MPR
+    admissible_doc_types: [market_model, analyst, contract, marketing, interviews, web]
+    aliases: [price benchmark, market pricing, going rate, benchmark price]
+  mkt.demand_driver:
+    label: Demand driver and its magnitude
+    class: market
+    subject: market
+    unit_kind: label
+    record_module: DDR
+    admissible_doc_types: [analyst, statistical_series, interviews, survey, cim, web]
+    aliases: [demand driver, growth driver, what drives demand]
+  mkt.recession_sensitivity:
+    label: Downturn / recession sensitivity
+    class: market
+    subject: market
+    unit_kind: percent
+    record_module: MRK
+    admissible_doc_types: [statistical_series, analyst, market_model, interviews]
+    aliases: [recession resilience, downturn resilience, cyclicality]
+
+  # ---------------- financial (target) ----------------
+  fin.revenue:
+    label: Revenue
+    class: financial
+    subject: target
+    unit_kind: currency
+    record_module: HPF
+    fallback_record_module: RVQ
+    admissible_doc_types: [financials, kpi_pack, cim, projections]
+    aliases: [revenue, turnover, topline, sales]
+  fin.revenue_growth:
+    label: Revenue growth
+    class: financial
+    subject: target
+    unit_kind: percent
+    record_module: HPF
+    fallback_record_module: RVQ
+    admissible_doc_types: [financials, kpi_pack, cim, projections]
+    aliases: [revenue growth, topline growth, growth rate]
+  fin.gross_margin:
+    label: Gross margin
+    class: financial
+    subject: target
+    unit_kind: percent
+    record_module: CSC
+    fallback_record_module: HPF
+    admissible_doc_types: [financials, kpi_pack, cim]
+    aliases: [gross margin, GM, gross profit margin]
+  fin.ebitda:
+    label: EBITDA
+    class: financial
+    subject: target
+    unit_kind: currency
+    record_module: HPF
+    admissible_doc_types: [financials, kpi_pack, cim, projections]
+    aliases: [EBITDA, operating profit, adjusted EBITDA]
+  fin.ebitda_margin:
+    label: EBITDA margin
+    class: financial
+    subject: target
+    unit_kind: percent
+    record_module: HPF
+    admissible_doc_types: [financials, kpi_pack, cim, projections]
+    aliases: [EBITDA margin, operating margin]
+  fin.cost_base:
+    label: Cost structure / cost base
+    class: financial
+    subject: target
+    unit_kind: currency
+    record_module: CSC
+    admissible_doc_types: [financials, kpi_pack, cim]
+    aliases: [cost base, cost structure, opex, cost lines]
+  fin.cash_conversion:
+    label: Cash conversion
+    class: financial
+    subject: target
+    unit_kind: percent
+    record_module: CFL
+    admissible_doc_types: [financials, kpi_pack]
+    aliases: [cash conversion, FCF conversion, cash generation]
+  fin.net_debt:
+    label: Net debt
+    class: financial
+    subject: target
+    unit_kind: currency
+    record_module: CAP
+    admissible_doc_types: [financials, cap_table, cim]
+    aliases: [net debt, borrowings, leverage, debt]
+  fin.revenue_mix:
+    label: Revenue mix by line or segment
+    class: financial
+    subject: target
+    unit_kind: percent
+    record_module: RVQ
+    admissible_doc_types: [kpi_pack, financials, cim]
+    aliases: [revenue mix, revenue split, revenue by line, revenue by segment]
+  fin.recurring_share:
+    label: Contracted / recurring revenue share
+    class: financial
+    subject: target
+    unit_kind: percent
+    record_module: RVQ
+    admissible_doc_types: [kpi_pack, contract, financials, cim]
+    aliases: [recurring revenue, contracted revenue, ARR share, revenue quality]
+  fin.projection:
+    label: Management forecast
+    class: financial
+    subject: target
+    unit_kind: currency
+    record_module: HPF
+    fallback_record_module: FVR
+    admissible_doc_types: [projections, cim]
+    aliases: [forecast, plan, budget, management case, projections]
+
+  # ---------------- customer ----------------
+  cust.count:
+    label: Customer count
+    class: customer
+    subject: target
+    unit_kind: count
+    record_module: CSG
+    admissible_doc_types: [kpi_pack, cim, contract]
+    aliases: [customer count, number of customers, accounts, logos]
+  cust.segments:
+    label: Customer segmentation
+    class: customer
+    subject: customer
+    unit_kind: label
+    record_module: CSG
+    admissible_doc_types: [kpi_pack, cim, marketing, survey, interviews]
+    aliases: [segments, customer segmentation, ICP, customer types]
+  cust.concentration:
+    label: Customer concentration
+    class: customer
+    subject: target
+    unit_kind: percent
+    record_module: RVQ
+    fallback_record_module: CSG
+    admissible_doc_types: [kpi_pack, financials, contract, cim]
+    aliases: [customer concentration, top-10 share, concentration risk]
+  cust.retention:
+    label: Retention / renewal rate
+    class: customer
+    subject: target
+    unit_kind: percent
+    record_module: CST
+    admissible_doc_types: [kpi_pack, contract, survey]
+    aliases: [retention, renewal rate, logo retention, stickiness]
+  cust.churn:
+    label: Churn rate
+    class: customer
+    subject: target
+    unit_kind: percent
+    record_module: CST
+    admissible_doc_types: [kpi_pack, contract, survey]
+    aliases: [churn, attrition, defection, loss rate]
+  cust.tenure:
+    label: Average customer tenure
+    class: customer
+    subject: target
+    unit_kind: years
+    record_module: CST
+    admissible_doc_types: [kpi_pack, contract]
+    aliases: [tenure, average relationship length, years with the company]
+  cust.nps:
+    label: Net promoter score
+    class: customer
+    subject: customer
+    unit_kind: score
+    record_module: CSA
+    admissible_doc_types: [survey, interviews]
+    aliases: [NPS, net promoter, promoter score, advocacy]
+  cust.satisfaction:
+    label: Satisfaction rating
+    class: customer
+    subject: customer
+    unit_kind: score
+    record_module: CSA
+    admissible_doc_types: [survey, interviews]
+    aliases: [satisfaction, CSAT, customer sentiment]
+  cust.purchase_criteria:
+    label: Purchase criteria and their rank
+    class: customer
+    subject: customer
+    unit_kind: label
+    record_module: BBH
+    admissible_doc_types: [survey, interviews, contract, marketing, cim]
+    aliases: [purchase criteria, selection criteria, what buyers care about, decision criteria]
+  cust.decision_process:
+    label: Decision process and stakeholders
+    class: customer
+    subject: customer
+    unit_kind: label
+    record_module: BBH
+    admissible_doc_types: [survey, interviews, contract, cim]
+    aliases: [decision process, buying process, procurement cycle, stakeholders, DMU]
+  cust.switching_trigger:
+    label: Switching trigger and barrier
+    class: customer
+    subject: customer
+    unit_kind: label
+    record_module: BBH
+    fallback_record_module: CST
+    admissible_doc_types: [survey, interviews, contract]
+    aliases: [switching trigger, why they switch, switching barrier, entry trigger]
+  cust.wtp:
+    label: Willingness to pay
+    class: customer
+    subject: customer
+    unit_kind: currency
+    record_module: MPR
+    fallback_record_module: BBH
+    admissible_doc_types: [survey, interviews, market_model]
+    aliases: [willingness to pay, WTP, price sensitivity, what they will pay]
+
+  # ---------------- competitive ----------------
+  comp.set:
+    label: Competitor set
+    class: competitive
+    subject: competitor
+    unit_kind: label
+    record_module: CID
+    admissible_doc_types: [analyst, firmographic, interviews, cim, marketing, web]
+    aliases: [competitors, competitor set, the field, who else is in the market]
+  comp.archetypes:
+    label: Competitor archetypes
+    class: competitive
+    subject: competitor
+    unit_kind: label
+    record_module: CID
+    admissible_doc_types: [analyst, interviews, firmographic, web]
+    aliases: [archetypes, competitor types, player categories]
+  comp.share:
+    label: Market share
+    class: competitive
+    subject: market
+    unit_kind: percent
+    record_module: MSS
+    admissible_doc_types: [analyst, market_model, statistical_series, firmographic]
+    aliases: [market share, share of market, share position]
+  comp.differentiation:
+    label: Differentiator and its durability
+    class: competitive
+    subject: target
+    unit_kind: label
+    record_module: CDF
+    admissible_doc_types: [interviews, survey, cim, marketing, analyst]
+    aliases: [differentiation, USP, right to win, competitive advantage, moat]
+  comp.positioning:
+    label: Positioning on price / capability axes
+    class: competitive
+    subject: competitor
+    unit_kind: label
+    record_module: CDF
+    fallback_record_module: CID
+    admissible_doc_types: [interviews, survey, analyst, marketing]
+    aliases: [positioning, positioning map, where they sit, competitive position]
+  comp.barrier:
+    label: Barrier to replication / entry
+    class: competitive
+    subject: market
+    unit_kind: label
+    record_module: CDF
+    fallback_record_module: IPT
+    admissible_doc_types: [interviews, analyst, legal, cim]
+    aliases: [barriers to entry, barriers to replication, entry barriers, defensibility]
+
+  # ---------------- operational ----------------
+  ops.capacity:
+    label: Operating capacity and utilisation
+    class: operational
+    subject: target
+    unit_kind: percent
+    record_module: OPR
+    admissible_doc_types: [kpi_pack, cim, contract]
+    aliases: [capacity, utilisation, throughput]
+  ops.supplier_concentration:
+    label: Supplier concentration / dependence
+    class: operational
+    subject: target
+    unit_kind: percent
+    record_module: SUP
+    admissible_doc_types: [contract, kpi_pack, financials, cim]
+    aliases: [supplier dependence, supplier concentration, vendor risk]
+  ops.supply_resilience:
+    label: Supply-chain resilience rating
+    class: operational
+    subject: target
+    unit_kind: label
+    record_module: SCR
+    admissible_doc_types: [contract, interviews, cim, kpi_pack]
+    aliases: [supply chain resilience, supply risk, continuity]
+  ops.headcount:
+    label: Headcount
+    class: operational
+    subject: target
+    unit_kind: count
+    record_module: MGQ
+    admissible_doc_types: [kpi_pack, cim, financials]
+    aliases: [headcount, employees, FTE, staff]
+  ops.tech_stack:
+    label: Technology and IP position
+    class: operational
+    subject: target
+    unit_kind: label
+    record_module: IPT
+    admissible_doc_types: [cim, legal, interviews, marketing]
+    aliases: [technology, IP, tech stack, platform, patents]
+
+  # ---------------- valuation ----------------
+  val.range:
+    label: Valuation range
+    class: valuation
+    subject: target
+    unit_kind: currency
+    record_module: FVR
+    fallback_record_module: VAL
+    admissible_doc_types: [financials, projections, cim, analyst]
+    aliases: [valuation, valuation range, enterprise value, EV, price]
+  val.multiple:
+    label: Valuation multiple
+    class: valuation
+    subject: target
+    unit_kind: ratio
+    record_module: FVR
+    fallback_record_module: VAL
+    admissible_doc_types: [financials, projections, cim, analyst]
+    aliases: [multiple, EV/EBITDA, revenue multiple, entry multiple]
+  val.sensitivity:
+    label: Valuation sensitivity / scenario
+    class: valuation
+    subject: target
+    unit_kind: currency
+    record_module: SNS
+    admissible_doc_types: [projections, financials, market_model]
+    aliases: [sensitivity, scenario, downside case, upside case, stress test]
+  val.synergy:
+    label: Synergy value
+    class: valuation
+    subject: target
+    unit_kind: currency
+    record_module: SYN
+    admissible_doc_types: [financials, projections, cim]
+    aliases: [synergies, synergy value, cost savings, run-rate synergies]
+
+  # ---------------- esg / risk ----------------
+  esg.impact:
+    label: Impact / sustainability metric
+    class: esg
+    subject: target
+    unit_kind: count
+    record_module: ESG
+    admissible_doc_types: [esg, kpi_pack, cim]
+    aliases: [impact, ESG metrics, diversion, emissions avoided, sustainability]
+  risk.item:
+    label: Risk, impact and likelihood
+    class: risk
+    subject: target
+    unit_kind: score
+    record_module: MRK
+    fallback_record_module: IRK
+    admissible_doc_types: [interviews, analyst, legal, financials, kpi_pack, cim]
+    aliases: [risks, risk register, key risks, what could go wrong]
+  risk.regulatory:
+    label: Regulatory exposure
+    class: risk
+    subject: target
+    unit_kind: label
+    record_module: RCO
+    admissible_doc_types: [legal, analyst, cim, web]
+    aliases: [regulatory, compliance, licensing, permits, regulation]
+
+# ---------------------------------------------------------------------------
+# Suitability matrix shorthand (R4). A metric class may only be evidenced by
+# these doc types unless its own admissible_doc_types is wider.
+suitability_defaults:
+  financial:   [financials, kpi_pack, projections, cim, cap_table]
+  valuation:   [financials, projections, cim, analyst]
+  market:      [market_model, analyst, statistical_series, firmographic, web]
+  customer:    [survey, interviews, kpi_pack, contract, cim]
+  competitive: [analyst, interviews, survey, firmographic, marketing, web]
+  operational: [kpi_pack, contract, interviews, cim]
+  esg:         [esg, kpi_pack, cim]
+  risk:        [interviews, analyst, legal, financials, kpi_pack, cim]
+
+# Never admissible, whatever the module says. Violations raise E6-SUITABILITY at HIGH.
+hard_exclusions:
+  - {metric_class: valuation,  doc_type: survey,    reason: "A customer survey cannot evidence enterprise value or a multiple."}
+  - {metric_class: valuation,  doc_type: interviews,reason: "Interview opinion is not a valuation input."}
+  - {metric_class: financial,  doc_type: survey,    reason: "Survey respondents do not know the target's margins."}
+  - {metric_class: financial,  doc_type: web,       reason: "Open-web figures are not the target's accounts."}
+  - {metrics: [mkt.tam, mkt.sam, mkt.som, mkt.volume, mkt.cagr, mkt.segment_share],
+     doc_type: survey,
+     reason: "A survey sizes preference, never a market. R2. Qualitative market metrics
+              (definition, demand drivers, price benchmarks) may cite survey evidence when it is
+              attributed as such."}
+  - {metric_class: market,     doc_type: financials,reason: "The target's accounts are not the market's size."}

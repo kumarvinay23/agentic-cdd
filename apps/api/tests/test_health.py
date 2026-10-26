@@ -9,5 +9,5 @@ def test_health() -> None:
         assert response.status_code == 200
         body = response.json()
         assert body["ok"] is True
-        assert body["product"] == "Agentic CDD"
+        assert body["product"] == "DiligenceIQ"
         assert body["wave"] == "W5"

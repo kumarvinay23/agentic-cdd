@@ -221,8 +221,104 @@ def preview_pdf(path: Path, *, max_pages: int = 40) -> dict[str, Any]:
     }
 
 
-def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
-    """Structured slide preview that mirrors the Market Intel Deck layout.
+_V4_SECTIONS = (
+    "ENGAGEMENT OVERVIEW",
+    "BUSINESS INTRODUCTION",
+    "INVESTMENT HIGHLIGHTS",
+    "MARKET DYNAMICS",
+    "COMPETITIVE LANDSCAPE",
+    "GROWTH OPPORTUNITIES",
+    "APPENDIX A",
+    "APPENDIX B",
+)
+
+
+def _is_v4_section(text: str) -> bool:
+    up = text.strip().upper()
+    return up.startswith(_V4_SECTIONS)
+
+
+_KPI_VALUE = re.compile(r"^[+-]?(?:\$[\d,.]+[MBK]?|\d+(?:\.\d+)?%)$")
+
+
+def _chart_payload(shape) -> dict[str, Any] | None:
+    try:
+        chart = shape.chart
+        categories = [str(cat) for cat in chart.plots[0].categories]
+        series = []
+        for item in chart.series:
+            values = []
+            for raw in item.values:
+                try:
+                    values.append(round(float(raw), 2) if raw is not None else 0.0)
+                except (TypeError, ValueError):
+                    values.append(0.0)
+            series.append({"name": str(item.name or "Series"), "values": values})
+        if not categories or not series:
+            return None
+        return {"categories": categories[:12], "series": series[:4]}
+    except Exception:
+        return None
+
+
+def _layout_from_shapes(bodies: list[dict[str, Any]]) -> tuple[list[dict[str, str]], list[dict[str, Any]], set[str]]:
+    """KPI tiles and side-by-side columns. Returns the lines those layouts already show."""
+    used: set[str] = set()
+    kpis: list[dict[str, str]] = []
+    for body in bodies:
+        lines = body["lines"]
+        if len(lines) != 2 or int(body["width"]) > 3_600_000:
+            continue
+        if not _KPI_VALUE.match(lines[0].replace(" ", "")) and not _KPI_VALUE.match(lines[0]):
+            continue
+        if len(lines[1]) > 48:
+            continue
+        kpis.append({"value": lines[0], "label": lines[1]})
+        used.update(lines)
+    kpis = kpis[:6]
+
+    columns: list[dict[str, Any]] = []
+    groups: dict[int, list[dict[str, Any]]] = {}
+    for body in bodies:
+        if any(line in used for line in body["lines"]):
+            continue
+        if int(body["top"]) < 1_500_000:
+            continue
+        if str(body["lines"][0]).startswith("Source:"):
+            used.add(body["lines"][0])
+            continue
+        bucket = int(body["left"]) // 500_000
+        groups.setdefault(bucket, []).append(body)
+    if 1 <= len(groups) <= 6:
+        for bucket in sorted(groups):
+            parts = sorted(groups[bucket], key=lambda item: item["top"])
+            heading = ""
+            items: list[str] = []
+            for part in parts:
+                line = part["lines"][0]
+                if not heading and len(part["lines"]) == 1 and len(line) <= 42:
+                    heading = line
+                    continue
+                if heading:
+                    items.extend(part["lines"])
+            if heading and items:
+                columns.append({
+                    "heading": heading,
+                    "items": items[:6],
+                    "left": int(parts[0]["left"]),
+                })
+                used.add(heading)
+                used.update(items)
+        if not columns:
+            used = {line for kpi in kpis for line in (kpi["value"], kpi["label"])}
+            for body in bodies:
+                if str(body["lines"][0]).startswith("Source:"):
+                    used.add(body["lines"][0])
+    return kpis, columns[:6], used
+
+
+def preview_pptx(path: Path, *, max_slides: int = 80) -> dict[str, Any]:
+    """Structured slide preview for CDD and Market Intel decks.
 
     Returns both:
     - ``slides``: per-slide payloads for the deck-frame UI
@@ -240,7 +336,6 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
         "MARKET INTEL DECK ·",
         "CDD DECK ·",
         "STRICTLY PRIVATE",
-        "AGENTIC CDD ·",
         "DILIGENCEIQ ·",
         "Workflow:",
         "Source:",
@@ -251,6 +346,11 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
         if not t:
             return True
         if re.match(r"^\d{1,2}\s*/\s*\d{1,2}$", t):
+            return True
+        upper = t.upper()
+        if upper.startswith("DILIGENCEIQ"):
+            return True
+        if "© DILIGENCEIQ" in upper or "© AGENTIC CDD" in upper:
             return True
         if t.startswith(chrome_prefixes):
             return True
@@ -272,6 +372,8 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
 
         texts_pos: list[tuple[int, int, str]] = []
         tables: list[list[list[str]]] = []
+        bodies: list[dict[str, Any]] = []
+        chart: dict[str, Any] | None = None
         has_full_navy = False
 
         for shape in slide.shapes:
@@ -299,6 +401,15 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
             except Exception:
                 pass
 
+            if getattr(shape, "has_chart", False) and chart is None:
+                chart = _chart_payload(shape)
+                if chart is not None:
+                    try:
+                        chart["left"] = int(shape.left or 0)
+                    except Exception:
+                        chart["left"] = 0
+                continue
+
             if getattr(shape, "has_table", False):
                 tbl = shape.table
                 rows: list[list[str]] = []
@@ -315,14 +426,26 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
                 left = int(shape.left or 0)
             except Exception:
                 left = 0
+            lines = []
             for para in shape.text_frame.paragraphs:
                 t = (para.text or "").strip()
                 if t:
                     texts_pos.append((top, left, t))
+                    lines.append(t)
+            if lines and not any(_is_chrome(line) for line in lines):
+                try:
+                    width = int(shape.width or 0)
+                except Exception:
+                    width = 0
+                bodies.append({"top": top, "left": left, "width": width, "lines": lines})
 
         texts_pos.sort(key=lambda x: (x[0], x[1]))
         ordered = [t for _, _, t in texts_pos]
-        content = [t for t in ordered if not _is_chrome(t)]
+        footer_top = int(prs.slide_height * 0.9)
+        content = [
+            t for top, _, t in texts_pos
+            if not _is_chrome(t) and not (re.fullmatch(r"\d{2}", t) and top >= footer_top)
+        ]
 
         kind = "content"
         joined = " | ".join(content[:8])
@@ -359,56 +482,102 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
         eyebrow = ""
         title = f"Slide {i + 1}"
         subtitle = ""
-        for t in content:
-            up = t.upper()
-            if up.startswith(("SECTION 0", "DOCUMENT OVERVIEW", "WORKFLOW ANALYSIS", "CLOSING SUMMARY")):
-                eyebrow = t
-                continue
-            if t in {"01", "02", "03", "04", "05", "06", "07"} and kind == "divider":
-                continue
-            if (
-                t.startswith((
-                    "1.", "2.", "3.", "4.", "Agenda", "Appendix", "Key Findings",
-                    "Market Intel", "INVESTMENT", "DEAL POSITION", "DILIGENCE WORKFLOW",
-                    "Engagement overview", "Basis of preparation", "Scope & research",
-                    "Business introduction", "Market primer", "Market sizing",
-                    "Growth trajectory", "Competitor universe", "Positioning",
-                    "Strategic differentiators", "SWOT", "Customer segmentation",
-                    "Stickiness", "Operations & supply", "Risk register",
-                    "Historical performance", "Capital structure", "Executive summary",
-                    "Recommendation", "CDD Deck",
-                ))
-                or "MARKET DEFINITION" in t
-                or t in {"Market Analysis", "Competitive Landscape", "Summary", "Key Findings",
-                         "Engagement & Scope", "Business & Market", "Customer & Commercial",
-                         "Operations & Risk", "Financials & Valuation", "IC Decision"}
-                or any(
-                    k in t
-                    for k in (
-                        "TAM", "SWOT", "Competitive", "CAGR", "Pricing", "Demand",
-                        "battlecard", "moat", "taxonomy", "Historical", "Sustainability",
-                        "positioning", "capability", "Differentiation", "Direct &",
-                        "valuation", "go/no-go", "monitoring",
+        chapter_titles = (
+            "Business Introduction & Market Primer",
+            "Investment Highlights",
+            "Market Dynamics & Opportunity",
+            "Competitive Landscape",
+            "Growth Opportunities",
+            "Appendix A - Market Sizing Methodology",
+            "Appendix B - Evidence & Audit Trail",
+        )
+        v4_section = next((t for t in content if _is_v4_section(t)), "")
+        title_locked = False
+        if any("Commercial Due Diligence" in t for t in content[:6]):
+            kind = "cover"
+            title = next(t for t in content if "Commercial Due Diligence" in t)
+            subtitle = next(
+                (t for t in content if t not in {title, "DiligenceIQ", "Commercial due diligence"}),
+                "",
+            )
+            title_locked = True
+        elif any(t in {"01", "02", "03", "04", "05", "A", "B"} for t in content[:3]) and any(
+            t in chapter_titles for t in content[:6]
+        ):
+            kind = "divider"
+            title = next(t for t in content if t in chapter_titles)
+            subtitle = next(
+                (
+                    t for t in content
+                    if t != title and t not in {"01", "02", "03", "04", "05", "A", "B"} and not _is_v4_section(t)
+                ),
+                "",
+            )
+            for t in content[:3]:
+                if t in {"01", "02", "03", "04", "05", "A", "B"}:
+                    eyebrow = t
+                    break
+            title_locked = True
+        elif v4_section:
+            eyebrow = v4_section
+            rest = [t for t in content if t != v4_section and not _is_v4_section(t)]
+            if rest:
+                title = rest[0]
+            if len(rest) > 1 and not rest[1].startswith("Source:"):
+                subtitle = rest[1]
+            title_locked = True
+        if not title_locked:
+            for t in content:
+                up = t.upper()
+                if up.startswith(("SECTION 0", "DOCUMENT OVERVIEW", "WORKFLOW ANALYSIS", "CLOSING SUMMARY")):
+                    eyebrow = t
+                    continue
+                if t in {"01", "02", "03", "04", "05", "06", "07"} and kind == "divider":
+                    continue
+                if (
+                    t.startswith((
+                        "1.", "2.", "3.", "4.", "Agenda", "Appendix", "Key Findings",
+                        "Market Intel", "INVESTMENT", "DEAL POSITION", "DILIGENCE WORKFLOW",
+                        "Engagement overview", "Basis of preparation", "Scope & research",
+                        "Business introduction", "Market primer", "Market sizing",
+                        "Growth trajectory", "Competitor universe", "Positioning",
+                        "Strategic differentiators", "SWOT", "Customer segmentation",
+                        "Stickiness", "Operations & supply", "Risk register",
+                        "Historical performance", "Capital structure", "Executive summary",
+                        "Recommendation", "CDD Deck",
+                    ))
+                    or "MARKET DEFINITION" in t
+                    or t in {"Market Analysis", "Competitive Landscape", "Summary", "Key Findings",
+                             "Engagement & Scope", "Business & Market", "Customer & Commercial",
+                             "Operations & Risk", "Financials & Valuation", "IC Decision"}
+                    or any(
+                        k in t
+                        for k in (
+                            "TAM", "SWOT", "Competitive", "CAGR", "Pricing", "Demand",
+                            "battlecard", "moat", "taxonomy", "Historical", "Sustainability",
+                            "positioning", "capability", "Differentiation", "Direct &",
+                            "valuation", "go/no-go", "monitoring",
+                        )
                     )
-                )
-            ):
-                title = t
-                break
+                ):
+                    title = t
+                    break
 
-        seen_title = False
-        for t in content:
-            if t == title:
-                seen_title = True
-                continue
-            if not seen_title:
-                continue
-            if t.upper().startswith(("SECTION", "DOCUMENT", "WORKFLOW", "CLOSING", "DEAL POSITION", "DILIGENCE")):
-                continue
-            if t.startswith(("•", "—", "-", "Insight")):
+        if not title_locked:
+            seen_title = False
+            for t in content:
+                if t == title:
+                    seen_title = True
+                    continue
+                if not seen_title:
+                    continue
+                if t.upper().startswith(("SECTION", "DOCUMENT", "WORKFLOW", "CLOSING", "DEAL POSITION", "DILIGENCE")):
+                    continue
+                if t.startswith(("•", "—", "-", "Insight")):
+                    break
+                if len(t) < 160:
+                    subtitle = t
                 break
-            if len(t) < 160:
-                subtitle = t
-            break
 
         insight = ""
         bullets: list[str] = []
@@ -490,6 +659,18 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
 
         primary_table = tables[0] if tables else []
         paragraphs = [p[:420] for p in body_paras if p not in {title, subtitle}][:10]
+        kpis, columns, laid_out = _layout_from_shapes(bodies)
+        if kind in {"cover", "divider"} or any(
+            re.match(r"^\d{2}\b", column["heading"]) for column in columns
+        ):
+            columns = []
+            laid_out = {line for kpi in kpis for line in (kpi["value"], kpi["label"])}
+            for body in bodies:
+                if str(body["lines"][0]).startswith("Source:"):
+                    laid_out.add(body["lines"][0])
+        if laid_out:
+            paragraphs = [p for p in paragraphs if p not in laid_out]
+            bullets = [b for b in bullets if b not in laid_out]
         if kind == "cover":
             cover_skip = {
                 "DOCUMENT", "TARGET", "SECTOR", "REPORT DATE", "PREPARED BY",
@@ -515,6 +696,9 @@ def preview_pptx(path: Path, *, max_slides: int = 40) -> dict[str, Any]:
             "agenda_items": agenda_items,
             "meta_rows": meta_rows,
             "table": primary_table[:12],
+            "kpis": kpis,
+            "chart": chart,
+            "columns": columns,
             "page": f"{i + 1:02d} / {slide_count:02d}",
         }
         if kind == "divider":

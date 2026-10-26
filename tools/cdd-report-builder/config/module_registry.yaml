@@ -1,0 +1,1252 @@
+version: 2
+evidence_tags:
+  doc_ref: \(\s*DOC:\s*([^)]+?)\s*\)
+  web_ref: \[(\d{1,2})\]
+  computed: COMPUTED FACTS|\(computed\)
+  fact_base: FACT BASE
+  not_provided: N/?A\b|not provide|did not provide|no data|not available|Inconclusive
+doc_types:
+  interviews:
+  - interview
+  - stakeholder
+  - expert
+  survey:
+  - survey
+  - responses
+  pricing:
+  - pricing
+  - discount
+  - transaction
+  financials:
+  - financial
+  - p&l
+  - balance
+  - accounts
+  - fs_
+  - mis
+  cim:
+  - cim
+  - information memorandum
+  - teaser
+synthetic_markers:
+- SYNTHETIC
+- machine-generated test data
+- not real financial information
+modules:
+  DCO:
+    title: Deal Context & Objectives
+    aliases:
+    - Deal Context
+    - Deal Context and Objectives
+    role: context
+    criticality: core
+    sections:
+    - n: 1
+      key: exec_summary
+      title: Executive Summary
+    - n: 2
+      key: hypotheses
+      title: Key Investment Hypotheses (Must-Be-True)
+    - n: 3
+      key: red_flags
+      title: Critical Risks & Red Flags
+    - n: 4
+      key: open_questions
+      title: Critical Open Questions
+    - n: 5
+      key: key_data
+      title: Key Data Extract (Only High-Signal)
+    - n: 6
+      key: verdict
+      title: Preliminary Investment Verdict
+    record_for_metrics: []
+    expects:
+    - cim
+    - financials
+  SCM:
+    title: Scope & Methodology
+    aliases:
+    - Scope and Methodology
+    role: context
+    criticality: core
+    sections:
+    - n: 1
+      key: scope
+      title: Scope Definition
+    - n: 2
+      key: ic_questions
+      title: Key Investment Committee (IC) Questions
+    - n: 3
+      key: methodology
+      title: Analytical Methodology
+    - n: 4
+      key: deliverables
+      title: Deliverable Structure
+    record_for_metrics: []
+    expects:
+    - cim
+    - kpi_pack
+  CBG:
+    title: Company Background
+    aliases:
+    - Company Overview
+    - Business Background
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: snapshot
+      title: Company Snapshot
+    - n: 2
+      key: milestones
+      title: Historical Evolution & Milestones
+    - n: 3
+      key: revenue_model
+      title: Business & Revenue Model
+    - n: 4
+      key: products
+      title: Products & Solution Portfolio
+    - n: 5
+      key: footprint
+      title: Organizational & Operational Footprint
+    - n: 6
+      key: verdict
+      title: Execution Verdict & Strategic Risks
+    record_for_metrics: []
+    expects:
+    - cim
+    - kpi_pack
+    - legal
+    - marketing
+  MGQ:
+    title: Management Quality
+    aliases:
+    - Management Assessment
+    - Leadership Quality
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: scorecard
+      title: Leadership Scorecard
+    - n: 2
+      key: executives
+      title: Key Executive Deep-Dive
+    - n: 3
+      key: bench
+      title: Organizational Depth & Bench Strength
+    - n: 4
+      key: succession
+      title: Continuity & Succession Risk
+    - n: 5
+      key: governance
+      title: Governance & Board Oversight
+    - n: 6
+      key: verdict
+      title: Execution Verdict & Leadership Gaps
+    record_for_metrics:
+    - ops.headcount
+    expects:
+    - cim
+    - legal
+    - kpi_pack
+    - interviews
+  STR:
+    title: Strategic Direction
+    aliases:
+    - Strategy
+    - Strategic Plan
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: roadmap
+      title: Strategic Roadmap Breakdown
+    - n: 2
+      key: execution
+      title: Historical Execution Integrity
+    - n: 3
+      key: vectors
+      title: Growth Vector Prioritization
+    - n: 4
+      key: market_fit
+      title: Market Fit & Competitive Alignment
+    - n: 5
+      key: capital_allocation
+      title: Capital & Resource Allocation Discipline
+    - n: 6
+      key: verdict
+      title: Strategic Verdict & "Must-Win" Battles
+    record_for_metrics: []
+    expects:
+    - cim
+    - projections
+    - marketing
+    - interviews
+  RCO:
+    title: Regulatory Compliance
+    aliases:
+    - Regulatory & Compliance
+    - Regulation
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: framework
+      title: Relevant Regulatory Framework
+    - n: 2
+      key: status
+      title: Compliance Status & Audit Trail
+    - n: 3
+      key: litigation
+      title: Litigation & Legal Exposure Deep-Dive
+    - n: 4
+      key: ip_protection
+      title: IP Protection & Tech-Legal Moats
+    - n: 5
+      key: verdict
+      title: Regulatory Verdict & Legal Risk Rating
+    record_for_metrics:
+    - risk.regulatory
+    expects:
+    - legal
+    - analyst
+    - cim
+    - web
+  IPT:
+    title: IP & Technology
+    aliases:
+    - IP and Technology
+    - Technology & IP
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: ip_portfolio
+      title: Intellectual Property (IP) Portfolio
+    - n: 2
+      key: stack
+      title: Core Technology Stack & Infrastructure
+    - n: 3
+      key: rnd
+      title: R&D Pipeline & Innovation Velocity
+    - n: 4
+      key: tech_debt
+      title: Technical Debt & Cybersecurity Posture
+    - n: 5
+      key: verdict
+      title: Technology Verdict & Asset Quality
+    record_for_metrics:
+    - ops.tech_stack
+    expects:
+    - cim
+    - legal
+    - marketing
+    - interviews
+  ESG:
+    title: ESG & Sustainability
+    aliases:
+    - ESG
+    - ESG and Sustainability
+    - Sustainability
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: environmental
+      title: Environmental (E), Physical & Transition Risk
+    - n: 2
+      key: social
+      title: Social (S), Workforce & DEI Performance
+    - n: 3
+      key: governance
+      title: Governance (G), Oversight & Ethics
+    - n: 4
+      key: rating
+      title: ESG Rating & Compliance Posture
+    - n: 5
+      key: verdict
+      title: ESG Verdict & Maturity Score
+    record_for_metrics:
+    - esg.impact
+    expects:
+    - esg
+    - kpi_pack
+    - cim
+  MDF:
+    title: Market Definition
+    aliases:
+    - Market Map
+    - Market Perimeter
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: perimeter
+      title: Market Perimeter & Definition
+    - n: 2
+      key: tam_sam_som
+      title: TAM / SAM / SOM Estimation
+    - n: 3
+      key: taxonomy
+      title: Market Taxonomy & Segmentation
+    - n: 4
+      key: boundaries
+      title: Market Boundaries & Engagement Scope
+    - n: 5
+      key: verdict
+      title: Market Map Verdict
+    record_for_metrics:
+    - mkt.definition
+    expects:
+    - market_model
+    - analyst
+    - cim
+    - web
+  MVG:
+    title: Market Volume & Growth
+    aliases:
+    - Market Size & Growth
+    - Market Volume and Growth
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: size
+      title: Historical & Forecasted Market Size
+    - n: 2
+      key: drivers
+      title: Growth Driver Analysis
+    - n: 3
+      key: cagr
+      title: CAGR & Performance Benchmarking
+    - n: 4
+      key: lifecycle
+      title: Market Lifecycle & Maturity Assessment
+    - n: 5
+      key: integrity
+      title: Growth Integrity & Divergence Analysis
+    record_for_metrics:
+    - mkt.tam
+    - mkt.sam
+    - mkt.som
+    - mkt.cagr
+    - mkt.volume
+    - mkt.segment_share
+    expects:
+    - market_model
+    - analyst
+    - statistical_series
+    - web
+  MPR:
+    title: Market Pricing
+    aliases:
+    - Pricing
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: model
+      title: Pricing Model & Structure
+    - n: 2
+      key: positioning
+      title: Competitive Price Positioning
+    - n: 3
+      key: power
+      title: Pricing Power & Elasticity
+    - n: 4
+      key: impact
+      title: Margin & Revenue Impact
+    - n: 5
+      key: verdict
+      title: Pricing Verdict & Recommendations
+    record_for_metrics:
+    - mkt.price_benchmark
+    - cust.wtp
+    expects:
+    - contract
+    - marketing
+    - analyst
+    - interviews
+    - market_model
+  DDR:
+    title: Demand Drivers
+    aliases:
+    - Market Drivers
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: macro
+      title: Macro & Structural Demand Drivers
+    - n: 2
+      key: catalysts
+      title: Industry-Specific Catalysts & Tailwinds
+    - n: 3
+      key: regulatory
+      title: Regulatory & Compliance Drivers
+    - n: 4
+      key: cyclicality
+      title: Sustainability & Cyclicality Analysis
+    - n: 5
+      key: verdict
+      title: Demand Verdict & Risk Summary
+    record_for_metrics:
+    - mkt.demand_driver
+    expects:
+    - analyst
+    - statistical_series
+    - interviews
+    - survey
+    - web
+  CID:
+    title: Competitor Identification
+    aliases:
+    - Competitor Landscape
+    - Competitive Landscape
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: direct
+      title: Direct Competitor Universe
+    - n: 2
+      key: adjacent
+      title: Adjacent & Indirect Competitor Analysis
+    - n: 3
+      key: capability
+      title: Competitive Capability Matrix
+    - n: 4
+      key: barriers
+      title: Barrier to Entry & Entrant Risk
+    - n: 5
+      key: verdict
+      title: Competitive Landscape Verdict
+    record_for_metrics:
+    - comp.set
+    - comp.archetypes
+    expects:
+    - analyst
+    - firmographic
+    - marketing
+    - web
+    - interviews
+  CDF:
+    title: Competitive Differentiation
+    aliases:
+    - Differentiation
+    - Competitive Advantage
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: differentiators
+      title: Core Strategic Differentiators
+    - n: 2
+      key: moat
+      title: Moat Analysis & Sustainability
+    - n: 3
+      key: threats
+      title: Vulnerability & Competitive Threats
+    - n: 4
+      key: evidence
+      title: Evidence of Differentiation (Data-Driven)
+    - n: 5
+      key: verdict
+      title: Differentiation Verdict
+    record_for_metrics:
+    - comp.differentiation
+    - comp.positioning
+    - comp.barrier
+    expects:
+    - interviews
+    - survey
+    - marketing
+    - cim
+    - analyst
+  MSS:
+    title: Market Share Strategy
+    aliases:
+    - Market Share
+    - Market Position
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: share
+      title: Market Share Analysis
+    - n: 2
+      key: gtm
+      title: Go-to-Market (GTM) Assessment
+    - n: 3
+      key: win_loss
+      title: Win / Loss Dynamics & Churn Drivers
+    - n: 4
+      key: share_growth
+      title: Market Share Growth Potential
+    - n: 5
+      key: verdict
+      title: Market Position Verdict
+    record_for_metrics:
+    - comp.share
+    expects:
+    - analyst
+    - market_model
+    - kpi_pack
+    - firmographic
+  SWO:
+    title: SWOT Analysis
+    aliases:
+    - SWOT
+    role: synthesis
+    criticality: supporting
+    sections:
+    - n: 1
+      key: matrix
+      title: SWOT Summary Matrix
+    - n: 2
+      key: strengths
+      title: In-Depth Strength & Asset Analysis
+    - n: 3
+      key: weaknesses
+      title: Critical Weaknesses & Vulnerability Points
+    - n: 4
+      key: opportunities
+      title: Opportunity & Catalyst Analysis
+    - n: 5
+      key: threats
+      title: Strategic Threat & Red Flag Analysis
+    - n: 6
+      key: verdict
+      title: SWOT Synthesis & Verdict
+    record_for_metrics: []
+    expects:
+    - cim
+    - analyst
+    - interviews
+  CSG:
+    title: Customer Segmentation
+    aliases:
+    - Customer Segments
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: verticals
+      title: Primary Market & Vertical Segmentation
+    - n: 2
+      key: concentration
+      title: Customer Tiering & Concentration
+    - n: 3
+      key: geography
+      title: Geographic & Regional Segmentation
+    - n: 4
+      key: persona
+      title: End-User Persona & Use Case Analysis
+    - n: 5
+      key: verdict
+      title: Segmentation Verdict & Concentration Risk
+    record_for_metrics:
+    - cust.segments
+    - cust.count
+    expects:
+    - kpi_pack
+    - cim
+    - marketing
+    - survey
+    - contract
+  CSA:
+    title: Customer Satisfaction
+    aliases:
+    - Customer Sentiment
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: nps_csat
+      title: Sentiment & Satisfaction (NPS/CSAT)
+    - n: 2
+      key: reviews
+      title: External Review & Signal Analysis
+    - n: 3
+      key: pain_points
+      title: Product Pain Points & Complaint Patterns
+    - n: 4
+      key: service
+      title: Service Quality & Support Performance
+    - n: 5
+      key: verdict
+      title: Satisfaction Verdict & Quality Summary
+    record_for_metrics:
+    - cust.nps
+    - cust.satisfaction
+    expects:
+    - survey
+    - interviews
+    - web
+  CST:
+    title: Customer Stickiness
+    aliases:
+    - Customer Retention
+    - Retention
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: retention
+      title: Retention & Churn Performance
+    - n: 2
+      key: switching
+      title: Loyalty & Switching Cost Indicators
+    - n: 3
+      key: contracts
+      title: Contractual Structure & Renewal Cycle
+    - n: 4
+      key: churn_drivers
+      title: Churn Driver Deep-Dive
+    - n: 5
+      key: verdict
+      title: Stickiness Verdict & Risk Outlook
+    record_for_metrics:
+    - cust.retention
+    - cust.churn
+    - cust.tenure
+    expects:
+    - kpi_pack
+    - contract
+    - survey
+  SUP:
+    title: Supplier Dependence
+    aliases:
+    - Supplier Concentration
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: landscape
+      title: Primary Supplier Landscape
+    - n: 2
+      key: concentration
+      title: Supply Chain Concentration & Geographic Risk
+    - n: 3
+      key: contracts
+      title: Contractual Protection & Pricing Mechanisms
+    - n: 4
+      key: substitutability
+      title: Substitutability & Continuity Planning
+    - n: 5
+      key: verdict
+      title: Procurement Verdict & Risk Rating
+    record_for_metrics:
+    - ops.supplier_concentration
+    expects:
+    - contract
+    - kpi_pack
+    - financials
+    - cim
+  CSC:
+    title: Cost Structure
+    aliases:
+    - Cost Base
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: breakdown
+      title: High-Level Cost Component Breakdown
+    - n: 2
+      key: fixed_variable
+      title: Fixed vs. Variable Cost Dynamics
+    - n: 3
+      key: benchmarking
+      title: Efficiency Benchmarking vs. Peers
+    - n: 4
+      key: margin_levers
+      title: Margin Expansion Opportunities
+    - n: 5
+      key: verdict
+      title: Cost Structure Verdict & Scalability
+    record_for_metrics:
+    - fin.gross_margin
+    - fin.cost_base
+    expects:
+    - financials
+    - kpi_pack
+    - cim
+  SCR:
+    title: Supply Chain Resilience
+    aliases:
+    - Supply Chain
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: concentration
+      title: Supplier Concentration Analysis
+    - n: 2
+      key: inputs
+      title: Raw Material & Input Sensitivity
+    - n: 3
+      key: logistics
+      title: Logistics & Delivery Network
+    - n: 4
+      key: geopolitical
+      title: Geopolitical & Regulatory Exposure
+    - n: 5
+      key: verdict
+      title: Supply Chain Verdict & Mitigation Roadmap
+    record_for_metrics:
+    - ops.supply_resilience
+    expects:
+    - contract
+    - interviews
+    - cim
+    - kpi_pack
+  OPR:
+    title: Operational Risk
+    aliases:
+    - Operations Risk
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: process
+      title: Process & Workflow Vulnerability
+    - n: 2
+      key: it
+      title: Technology & IT Infrastructure Risk
+    - n: 3
+      key: scalability
+      title: Scalability & Growth Stress-Test
+    - n: 4
+      key: bcp
+      title: Business Continuity & Disaster Recovery
+    - n: 5
+      key: verdict
+      title: Operational Verdict & Risk Roadmap
+    record_for_metrics:
+    - ops.capacity
+    expects:
+    - kpi_pack
+    - cim
+    - contract
+  HPF:
+    title: Historical Performance
+    aliases:
+    - Financial Performance
+    - Historical Financials
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: topline
+      title: Top-Line Growth Analysis
+    - n: 2
+      key: margins
+      title: Margin & Profitability Profile (EBITDA)
+    - n: 3
+      key: benchmarking
+      title: Financial Benchmarking vs. Industry Peers
+    - n: 4
+      key: quality
+      title: Growth Quality & One-Time Adjustments
+    - n: 5
+      key: verdict
+      title: Performance Verdict & Financial Health Rating
+    record_for_metrics:
+    - fin.revenue
+    - fin.revenue_growth
+    - fin.ebitda
+    - fin.ebitda_margin
+    - fin.projection
+    expects:
+    - financials
+    - kpi_pack
+    - projections
+    - cim
+  RVQ:
+    title: Revenue Quality
+    aliases:
+    - Quality of Revenue
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: mix
+      title: Revenue Mix & Recurrence Profile
+    - n: 2
+      key: saas_metrics
+      title: SaaS / Subscription Metric Deep-Dive
+    - n: 3
+      key: visibility
+      title: Revenue Visibility & Backlog Analysis
+    - n: 4
+      key: adjustments
+      title: Quality Adjustments & Risk Factors
+    - n: 5
+      key: verdict
+      title: Revenue Verdict & Sustainability Score
+    record_for_metrics:
+    - fin.revenue_mix
+    - fin.recurring_share
+    - cust.concentration
+    expects:
+    - kpi_pack
+    - financials
+    - contract
+    - cim
+  CFL:
+    title: Cash Flow
+    aliases:
+    - Cash Flow Analysis
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: ocf
+      title: Operating Cash Flow (OCF) & Conversion
+    - n: 2
+      key: fcf
+      title: Free Cash Flow (FCF) & CAPEX Intensity
+    - n: 3
+      key: working_capital
+      title: Working Capital Efficiency (DSO/DPO/DIO)
+    - n: 4
+      key: quality
+      title: Cash Flow Quality & "One-Off" Items
+    - n: 5
+      key: verdict
+      title: Cash Flow Verdict & Liquidity Rating
+    record_for_metrics:
+    - fin.cash_conversion
+    expects:
+    - financials
+    - kpi_pack
+  CAP:
+    title: Capital Structure
+    aliases:
+    - Capitalisation
+    - Capitalization
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: debt
+      title: Debt Profile & Maturity Schedule
+    - n: 2
+      key: ratios
+      title: Key Leverage & Coverage Ratios
+    - n: 3
+      key: equity
+      title: Equity Structure & Shareholder Mix
+    - n: 4
+      key: covenants
+      title: Covenant Compliance & Risk Assessment
+    - n: 5
+      key: verdict
+      title: Capital Structure Verdict & Financing Rating
+    record_for_metrics:
+    - fin.net_debt
+    expects:
+    - financials
+    - cap_table
+    - cim
+  MRK:
+    title: Market Risk
+    aliases:
+    - Market Risks
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: matrix
+      title: Top Market Risk Matrix (Priority)
+    - n: 2
+      key: competitive
+      title: Competitive & Substitution Risks
+    - n: 3
+      key: macro
+      title: Macro & Geopolitical Risk Landscape
+    - n: 4
+      key: cycle
+      title: Market Cycle & Structural Risk Analysis
+    - n: 5
+      key: verdict
+      title: Market Risk Verdict & Mitigation Roadmap
+    record_for_metrics:
+    - risk.item
+    - mkt.recession_sensitivity
+    expects:
+    - analyst
+    - statistical_series
+    - interviews
+    - cim
+  GRO:
+    title: Growth Opportunities
+    aliases:
+    - Growth Levers
+    - Value Creation Opportunities
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: organic
+      title: Organic Growth Vector Prioritization
+    - n: 2
+      key: inorganic
+      title: Inorganic & M&A Pipeline Analysis
+    - n: 3
+      key: whitespace
+      title: Market White-Space & Adjacency Map
+    - n: 4
+      key: upsell
+      title: Upsell & Wallet Share Expansion
+    - n: 5
+      key: verdict
+      title: Opportunity Verdict & IRR Ranking
+    record_for_metrics: []
+    expects:
+    - cim
+    - projections
+    - market_model
+    - interviews
+  SYN:
+    title: Synergies
+    aliases:
+    - Synergy Analysis
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: cost
+      title: Primary Cost Synergies Matrix
+    - n: 2
+      key: revenue
+      title: Revenue & Growth Synergy Potential
+    - n: 3
+      key: cost_to_achieve
+      title: Execution Complexity & Cost-to-Achieve
+    - n: 4
+      key: phasing
+      title: Synergy Phasing & Realization Schedule
+    - n: 5
+      key: verdict
+      title: Synergy Verdict & Integration Rating
+    record_for_metrics:
+    - val.synergy
+    expects:
+    - financials
+    - projections
+    - cim
+  IRK:
+    title: Internal Risk
+    aliases:
+    - Internal Risks
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: matrix
+      title: Internal Risk Synthesis Matrix
+    - n: 2
+      key: operational
+      title: Operational & Execution Risks
+    - n: 3
+      key: financial
+      title: Financial & Capital-Related Risks
+    - n: 4
+      key: human_capital
+      title: Human Capital & Management Dependency
+    - n: 5
+      key: verdict
+      title: Internal Risk Verdict & Mitigation Plan
+    record_for_metrics: []
+    expects:
+    - kpi_pack
+    - cim
+    - legal
+    - interviews
+  VAL:
+    title: Valuation Model
+    aliases:
+    - Valuation
+    role: finding
+    criticality: supporting
+    sections:
+    - n: 1
+      key: comps
+      title: Comparable Company Analysis (Public Peers)
+    - n: 2
+      key: precedents
+      title: Precedent Transaction Analysis (Relevant M&A)
+    - n: 3
+      key: dcf
+      title: Discounted Cash Flow (DCF) Assumption Matrix
+    - n: 4
+      key: range
+      title: Preliminary Base Valuation Breakdown
+    - n: 5
+      key: verdict
+      title: Valuation Verdict & Fairness Assessment
+    record_for_metrics: []
+    expects:
+    - financials
+    - projections
+    - cim
+    - analyst
+  REC:
+    title: Recommendations
+    aliases:
+    - Recommendation
+    - Investment Recommendation
+    role: synthesis
+    criticality: core
+    sections:
+    - n: 1
+      key: decision
+      title: Definitive Investment Decision
+    - n: 2
+      key: drivers
+      title: Key Investment Drivers & Catalysts
+    - n: 3
+      key: cps
+      title: Condition Precedents (CPs) & Closing Requirements
+    - n: 4
+      key: plan_100d
+      title: Post-Closing 100-Day Action Plan
+    - n: 5
+      key: verdict
+      title: Recommendation Verdict & Remaining Questions
+    record_for_metrics: []
+    expects:
+    - cim
+    - financials
+    - projections
+  APX:
+    title: Appendices
+    aliases:
+    - Appendix
+    role: appendix
+    criticality: supporting
+    sections:
+    - n: 1
+      key: doc_log
+      title: Internal Document Sourcing Log
+    - n: 2
+      key: citations
+      title: External Research & Citation Index
+    - n: 3
+      key: data_gaps
+      title: Data Gaps & Unresolved Requests
+    - n: 4
+      key: coverage
+      title: Diligence Coverage Summary (Scope)
+    - n: 5
+      key: coordinator
+      title: Coordinator Verdict & Data Certainty
+    record_for_metrics: []
+    expects:
+    - cim
+    - web
+    - analyst
+  EXS:
+    title: Executive Summary
+    aliases:
+    - Executive Deal Summary
+    - Exec Summary
+    - Deal Snapshot
+    role: synthesis
+    criticality: core
+    supersedes:
+    - DCO
+    sections:
+    - n: 1
+      key: deal_snapshot
+      title: Executive Deal Snapshot
+    - n: 2
+      key: thesis
+      title: Investment Thesis & Value Drivers
+    - n: 3
+      key: risks
+      title: Primary Risks & Mitigation Strategies
+    - n: 4
+      key: value_creation
+      title: Value Creation & Equity Story
+    - n: 5
+      key: verdict
+      title: Executive Verdict & “Go” Recommendation
+    record_for_deal_fields:
+    - target_name
+    - acquirer
+    - industry
+    - transaction_type
+    - deal_rationale
+    - target_perimeter
+    expects:
+    - cim
+    - financials
+    - kpi_pack
+    - projections
+    record_for_metrics: []
+  BBH:
+    title: Buying Behavior
+    aliases:
+    - Buyer Behaviour
+    - Buying Behaviour
+    - Purchase Behavior
+    - Customer Buying Behavior
+    role: finding
+    criticality: core
+    sections:
+    - n: 1
+      key: procurement_cycle
+      title: Procurement Cycle & Decision Hierarchy
+    - n: 2
+      key: purchase_drivers
+      title: Primary Purchase Drivers & Triggers
+    - n: 3
+      key: seasonality
+      title: Seasonality & Cyclical Buying Patterns
+    - n: 4
+      key: switching
+      title: Switching Triggers & Vendor Selection Logic
+    - n: 5
+      key: verdict
+      title: Buying Behavior Verdict & Market Fit
+    expects:
+    - survey
+    - interviews
+    - contract
+    - marketing
+    - cim
+    note: The module that unlocks the Decision-Making Dynamics section (slides 50-57).
+    record_for_metrics:
+    - cust.purchase_criteria
+    - cust.decision_process
+    - cust.switching_trigger
+  SNS:
+    title: Sensitivity Analysis
+    aliases:
+    - Scenario Analysis
+    - Sensitivity & Scenarios
+    - Stress Test
+    role: synthesis
+    criticality: supporting
+    sections:
+    - n: 1
+      key: key_variables
+      title: Key Variable Sensitivity
+    - n: 2
+      key: scenarios
+      title: Upside / Downside Scenario Definition
+    - n: 3
+      key: value_impact
+      title: Valuation Impact by Scenario
+    - n: 4
+      key: breakeven
+      title: Breakeven & Failure Analysis
+    - n: 5
+      key: verdict
+      title: Sensitivity Verdict & Risk Rating
+    expects:
+    - projections
+    - financials
+    - market_model
+    record_for_metrics:
+    - val.sensitivity
+  FVR:
+    title: Final Valuation Range
+    aliases:
+    - Valuation Range
+    - Bid Range
+    - Final Valuation
+    - Football Field
+    role: synthesis
+    criticality: supporting
+    supersedes:
+    - VAL
+    sections:
+    - n: 1
+      key: football_field
+      title: Valuation “Football Field” Synthesis
+    - n: 2
+      key: synergy_upside
+      title: Synergy-Adjusted Valuation Upside
+    - n: 3
+      key: multiples
+      title: Implied Entry & Exit Multiple Scenarios
+    - n: 4
+      key: bid_strategy
+      title: Recommended Bid Strategy & Price Points
+    - n: 5
+      key: verdict
+      title: Bid Verdict & Executive Confidence
+    expects:
+    - financials
+    - projections
+    - cim
+    - analyst
+    record_for_metrics:
+    - val.range
+    - val.multiple
+module_count: 38
+document_grammar:
+  status: '[O] observed across the Compost Crew (v3/v4/v7) and Ola (v1/v2) corpora'
+  page_form: jsPDF-rendered image-only PDF, US Letter, 2-4 pages, ~192 dpi -> OCR-first ingestion
+  structure:
+  - element: module_title
+    pattern: ^\s*(?P<title>[A-Z][\w &/'-]{3,60})\s*$
+    where: first non-empty line of page 1
+  - element: section_heading
+    pattern: ^\s*(?P<n>\d{1,2})\.\s+(?P<title>[^\n]{4,80})$
+  - element: insight_snapshot
+    pattern: ^Insight Snapshot:\s*(?P<text>.+)$
+    kind: interpretation
+  - element: table
+    detect: 'layout: >=2 whitespace-separated columns over >=2 consecutive lines'
+    kind: fact
+  - element: labelled_field
+    pattern: ^(?P<label>[A-Z][\w &/'-]{2,45}):\s*(?P<value>.+)$
+    kind: fact
+  - element: read
+    pattern: ^Read:\s*(?P<text>.+)$
+    kind: interpretation
+  - element: synthesis
+    pattern: '^Analytical Synthesis(?: & Hidden Insights)?\s*$'
+    kind: interpretation
+    shape: prose
+  - element: verdict
+    pattern: ^Verdict:\s*(?P<text>.+)$
+    kind: interpretation
+  - element: recommendation
+    pattern: ^Recommendation:\s*(?P<text>.+)$
+    kind: interpretation
+  - element: confidence
+    pattern: ^Confidence:\s*(?P<value>High|Medium|Low)\b
+    kind: interpretation
+  - element: conditions
+    pattern: ^Key conditions:\s*(?P<text>.+)$
+    kind: interpretation
+  invariants:
+  - The final numbered section of every module is its verdict section.
+  - Every Insight Snapshot and Read carries at least one citation; a missing one is UNCITED_FACT.
+  - Section numbering may skip when OCR loses a heading - renumber by order, never by the printed digit
+    alone.
+citation_grammar:
+  doc_vdr:
+    pattern: \(\s*DOC:\s*(?P<project>[^_]+?)\s+VDR__(?P<path>[^)]+?)\s*\)
+    resolves_to: VdrNode + SourceArtifact
+    basis: data_room_doc
+  doc_loose:
+    pattern: \(\s*DOC:\s*(?P<file>[^)_]+\.(?:pdf|pptx|xlsx|docx|txt))\s*\)
+    resolves_to: SourceArtifact by fuzzy filename match; unmatched -> present=false, E10-SOURCE-DRIFT
+    basis: data_room_doc
+  web:
+    pattern: \[(?P<n>\d{1,3})\]\s*(?P<title>[^\n\[]{4,160})
+    resolves_to: SourceArtifact(provenance=web)
+    basis: web
+  computed:
+    pattern: COMPUTED FACTS|FACT BASE|\(computed\)
+    basis: data_room_computed
+  note: OCR mangles underscores and periods in filenames; match on a normalised key (lowercase, strip
+    non-alphanumerics) before declaring a source absent.

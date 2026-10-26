@@ -1571,6 +1571,13 @@ export type ReportPreviewSlide = {
   agenda_items?: Array<{ num: string; title: string; blurb: string }>;
   meta_rows?: string[][];
   table?: string[][];
+  kpis?: Array<{ value: string; label: string }>;
+  chart?: {
+    categories: string[];
+    series: Array<{ name: string; values: number[] }>;
+    left?: number;
+  } | null;
+  columns?: Array<{ heading: string; items: string[]; left?: number }>;
   page?: string;
   number?: string;
 };

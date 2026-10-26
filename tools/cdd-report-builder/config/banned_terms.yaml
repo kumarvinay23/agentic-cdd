@@ -1,0 +1,41 @@
+# Text that must never appear in a generated deck.
+# check_content.py (content.json) and qa_deck.py (rendered .pptx) both enforce this list.
+
+# 1. Template instruction markers and placeholders
+patterns:
+  - '\[(TEXT|BULLETS|TABLE|CHART|KPI|KPIS|AUTO|INSUFFICIENT)\s*·'
+  - '\[Action title'
+  - '\[Supporting message'
+  - '\[Source line'
+  - '\[Project name\]'
+  - '<target name>'
+  - '\[Month YYYY\]'
+  - '\[Report type'
+  - '\[Prepared for'
+  - 'lorem ipsum'
+  - '\bTODO\b'
+  - '\bTBD\b'
+  - '\bXXX+\b'
+  # agent placeholder entities that are not evidence
+  - '\b(Regulation|Policy|Lawsuit|Peer|Start-?Up|Product|Segment|Fund)\s+[XYZABC]\b(?![a-z])'
+
+# 2. Names, numbers and conclusions from the reference / example report used to design the
+#    template. They are illustrative only and must never be carried into a generated deck.
+#    Add terms from any new example report here.
+reference_report_terms:
+  - Talus
+  - Talus Pay
+  - Stax
+  - Project Achilles
+  - Achilles
+  - Jobox
+  - Clarus
+  - Alvarez & Marsal
+  - Acquirer-as-a-Service
+  - AaaS
+  - Athul Ravunniarath
+  - Roy Lockhart
+  - Palash Misra
+
+# 3. Project-specific terms to suppress (e.g. client code names that must not appear). Usually empty.
+project_terms: []

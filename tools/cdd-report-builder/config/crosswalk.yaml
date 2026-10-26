@@ -1,0 +1,1302 @@
+version: 2
+generated_by: scripts/ontology.py crosswalk
+doc: Derived edges VdrNode <-> AgentModule <-> SlideSpec. Regenerate after editing module_registry.yaml,
+  slide_map.yaml or vdr_taxonomy.yaml.
+modules:
+- module: APX
+  title: Appendices
+  criticality: supporting
+  expects_doc_types:
+  - cim
+  - web
+  - analyst
+  vdr_nodes:
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary: []
+    secondary:
+    - S096_supp_entrenchment
+    - S100_source_register
+    fallback:
+    - S005_research_approach
+- module: BBH
+  title: Buying Behavior
+  criticality: core
+  expects_doc_types:
+  - survey
+  - interviews
+  - contract
+  - marketing
+  - cim
+  vdr_nodes:
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_1_2 Customer Contract List
+  - 3_2_1 Customer Survey Export
+  - 3_2_2 Interview Programme & Notes
+  - 3_2_3 NPS / Satisfaction Tracking
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - cust.purchase_criteria
+  - cust.decision_process
+  - cust.switching_trigger
+  slides:
+    primary:
+    - S014_model_scorecard
+    - S025_h2_demand_alignment
+    - S026_h2_lifecycle_fit
+    - S051_partner_switching_lifecycle
+    - S052_switching_drivers
+    - S053_decision_tree
+    - S054_decision_process
+    - S055_purchase_criteria
+    - S056_vertical_needs
+    - S057_switching_complexity
+    - S092_case_lost_prospect
+    secondary:
+    - S016_pain_points
+    - S028_h4_incumbent_dissatisfaction
+    - S030_h4_full_suite
+    - S033_icp_mapping
+    - S043_gf3_channel_adoption
+    - S062_criteria_vs_archetypes
+    - S067_full_suite_wtp
+    - S068_churn_triggers
+    - S074_l1_right_to_win
+    - S077_l2_partner_willingness
+    - S080_l4_pricing
+    - S093_case_competitor_customer
+    fallback: []
+- module: CAP
+  title: Capital Structure
+  criticality: supporting
+  expects_doc_types:
+  - financials
+  - cap_table
+  - cim
+  vdr_nodes:
+  - 1_1_1 Capitalization Table
+  - 1_1_2 Equity Ledger
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - fin.net_debt
+  slides:
+    primary: []
+    secondary:
+    - S009_company_snapshot
+    fallback:
+    - S009_company_snapshot
+- module: CBG
+  title: Company Background
+  criticality: core
+  expects_doc_types:
+  - cim
+  - kpi_pack
+  - legal
+  - marketing
+  vdr_nodes:
+  - 1_2_1 Legal Entity
+  - 1_2_2 List of Officers
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 6_1_1 Litigation Register
+  - 6_2_1 Operating Licences
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S009_company_snapshot
+    - S010_platform_evolution
+    - S012_business_model_flow
+    secondary: []
+    fallback: []
+- module: CDF
+  title: Competitive Differentiation
+  criticality: core
+  expects_doc_types:
+  - interviews
+  - survey
+  - marketing
+  - cim
+  - analyst
+  vdr_nodes:
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_2_1 Customer Survey Export
+  - 3_2_2 Interview Programme & Notes
+  - 3_2_3 NPS / Satisfaction Tracking
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - comp.differentiation
+  - comp.positioning
+  - comp.barrier
+  slides:
+    primary:
+    - S013_business_model_comparison
+    - S014_model_scorecard
+    - S015_barriers
+    - S016_pain_points
+    - S029_h4_differentiation
+    - S030_h4_full_suite
+    - S061_positioning_map
+    - S062_criteria_vs_archetypes
+    - S063_feature_benchmarking
+    - S066_competitor_painpoints
+    - S069_target_strengths
+    - S074_l1_right_to_win
+    secondary:
+    - S025_h2_demand_alignment
+    - S028_h4_incumbent_dissatisfaction
+    - S055_purchase_criteria
+    - S056_vertical_needs
+    - S060_competitor_archetypes
+    - S064_price_benchmarking
+    - S067_full_suite_wtp
+    - S082_l6_product_expansion
+    - S092_case_lost_prospect
+    - S094_case_existing_customer
+    fallback:
+    - S060_competitor_archetypes
+    - S061_positioning_map
+- module: CFL
+  title: Cash Flow
+  criticality: supporting
+  expects_doc_types:
+  - financials
+  - kpi_pack
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  owns_metrics:
+  - fin.cash_conversion
+  slides:
+    primary: []
+    secondary:
+    - S009_company_snapshot
+    - S048_downturn_resilience
+    - S079_l3_expand_accounts
+    fallback:
+    - S009_company_snapshot
+- module: CID
+  title: Competitor Identification
+  criticality: core
+  expects_doc_types:
+  - analyst
+  - firmographic
+  - marketing
+  - web
+  - interviews
+  vdr_nodes:
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_2_2 Interview Programme & Notes
+  owns_metrics:
+  - comp.set
+  - comp.archetypes
+  slides:
+    primary:
+    - S013_business_model_comparison
+    - S028_h4_incumbent_dissatisfaction
+    - S059_routes_to_market
+    - S060_competitor_archetypes
+    - S061_positioning_map
+    - S062_criteria_vs_archetypes
+    - S064_price_benchmarking
+    - S066_competitor_painpoints
+    - S085_landscape_by_category
+    - S086_landscape_by_size
+    - S093_case_competitor_customer
+    secondary:
+    - S011_value_chain
+    - S016_pain_points
+    - S029_h4_differentiation
+    - S063_feature_benchmarking
+    - S065_incumbent_nps
+    fallback:
+    - S011_value_chain
+    - S029_h4_differentiation
+- module: CSA
+  title: Customer Satisfaction
+  criticality: core
+  expects_doc_types:
+  - survey
+  - interviews
+  - web
+  vdr_nodes:
+  - 3_2_1 Customer Survey Export
+  - 3_2_2 Interview Programme & Notes
+  - 3_2_3 NPS / Satisfaction Tracking
+  owns_metrics:
+  - cust.nps
+  - cust.satisfaction
+  slides:
+    primary:
+    - S016_pain_points
+    - S027_h3_satisfaction
+    - S028_h4_incumbent_dissatisfaction
+    - S065_incumbent_nps
+    - S068_churn_triggers
+    - S069_target_strengths
+    - S070_target_development_areas
+    - S092_case_lost_prospect
+    - S093_case_competitor_customer
+    - S094_case_existing_customer
+    secondary:
+    - S014_model_scorecard
+    - S029_h4_differentiation
+    - S044_gf3_channel_stickiness
+    - S052_switching_drivers
+    - S066_competitor_painpoints
+    - S096_supp_entrenchment
+    fallback:
+    - S029_h4_differentiation
+- module: CSC
+  title: Cost Structure
+  criticality: supporting
+  expects_doc_types:
+  - financials
+  - kpi_pack
+  - cim
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - fin.gross_margin
+  - fin.cost_base
+  slides:
+    primary: []
+    secondary:
+    - S009_company_snapshot
+    - S045_gf4_pricing_stability
+    - S048_downturn_resilience
+    - S080_l4_pricing
+    fallback:
+    - S009_company_snapshot
+- module: CSG
+  title: Customer Segmentation
+  criticality: core
+  expects_doc_types:
+  - kpi_pack
+  - cim
+  - marketing
+  - survey
+  - contract
+  vdr_nodes:
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_1_2 Customer Contract List
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 3_2_1 Customer Survey Export
+  - 3_2_3 NPS / Satisfaction Tracking
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - cust.segments
+  - cust.count
+  slides:
+    primary:
+    - S033_icp_mapping
+    - S042_gf2_mix_shift
+    - S054_decision_process
+    - S055_purchase_criteria
+    - S056_vertical_needs
+    secondary:
+    - S006_survey_sample
+    - S009_company_snapshot
+    - S011_value_chain
+    - S025_h2_demand_alignment
+    - S026_h2_lifecycle_fit
+    - S036_volume_by_channel
+    - S037_tam_walkdown
+    - S038_sam_by_endmarket
+    - S053_decision_tree
+    - S059_routes_to_market
+    - S073_l1_new_customers
+    - S075_l1_channel_expansion
+    - S081_l5_adjacent_segments
+    fallback:
+    - S011_value_chain
+    - S034_market_definitions
+    - S037_tam_walkdown
+- module: CST
+  title: Customer Stickiness
+  criticality: core
+  expects_doc_types:
+  - kpi_pack
+  - contract
+  - survey
+  vdr_nodes:
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_2 Customer Contract List
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 3_2_1 Customer Survey Export
+  - 3_2_3 NPS / Satisfaction Tracking
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  owns_metrics:
+  - cust.retention
+  - cust.churn
+  - cust.tenure
+  slides:
+    primary:
+    - S026_h2_lifecycle_fit
+    - S044_gf3_channel_stickiness
+    - S052_switching_drivers
+    - S057_switching_complexity
+    - S068_churn_triggers
+    - S079_l3_expand_accounts
+    - S087_partner_counts
+    - S094_case_existing_customer
+    - S096_supp_entrenchment
+    secondary:
+    - S027_h3_satisfaction
+    - S051_partner_switching_lifecycle
+    fallback: []
+- module: DCO
+  title: Deal Context & Objectives
+  criticality: core
+  expects_doc_types:
+  - cim
+  - financials
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary: []
+    secondary:
+    - S003_engagement
+    - S020_highlights_summary
+    fallback: []
+- module: DDR
+  title: Demand Drivers
+  criticality: core
+  expects_doc_types:
+  - analyst
+  - statistical_series
+  - interviews
+  - survey
+  - web
+  vdr_nodes:
+  - 3_2_1 Customer Survey Export
+  - 3_2_2 Interview Programme & Notes
+  - 3_2_3 NPS / Satisfaction Tracking
+  owns_metrics:
+  - mkt.demand_driver
+  slides:
+    primary:
+    - S018_industry_trends
+    - S023_h1_growth_drivers
+    - S025_h2_demand_alignment
+    - S040_growth_factors_overview
+    - S041_gf1_demand
+    - S042_gf2_mix_shift
+    - S043_gf3_channel_adoption
+    secondary:
+    - S024_h1_recession
+    - S046_sam_growth_build
+    - S048_downturn_resilience
+    fallback: []
+- module: ESG
+  title: ESG & Sustainability
+  criticality: supporting
+  expects_doc_types:
+  - esg
+  - kpi_pack
+  - cim
+  vdr_nodes:
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 7_1_1 Landfill Diversion Reporting
+  - 7_1_2 Carbon and GHG Impact Report
+  - 7_1_3 Community and Municipal Partnership Impact Summaries
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - esg.impact
+  slides:
+    primary: []
+    secondary:
+    - S018_industry_trends
+    fallback: []
+- module: EXS
+  title: Executive Summary
+  criticality: core
+  expects_doc_types:
+  - cim
+  - financials
+  - kpi_pack
+  - projections
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S020_highlights_summary
+    secondary:
+    - S003_engagement
+    - S009_company_snapshot
+    fallback:
+    - S003_engagement
+    - S005_research_approach
+    - S009_company_snapshot
+    - S012_business_model_flow
+- module: FVR
+  title: Final Valuation Range
+  criticality: supporting
+  expects_doc_types:
+  - financials
+  - projections
+  - cim
+  - analyst
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - val.range
+  - val.multiple
+  slides:
+    primary: []
+    secondary:
+    - S047_scenario_analysis
+    - S083_l7_ma
+    fallback: []
+- module: GRO
+  title: Growth Opportunities
+  criticality: core
+  expects_doc_types:
+  - cim
+  - projections
+  - market_model
+  - interviews
+  vdr_nodes:
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_3_3 Market Sizing
+  - 3_2_2 Interview Programme & Notes
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S017_roadmap
+    - S022_h1_sam_walkup
+    - S030_h4_full_suite
+    - S031_h5_growth_levers
+    - S039_value_added_services
+    - S067_full_suite_wtp
+    - S072_growth_levers_overview
+    - S073_l1_new_customers
+    - S075_l1_channel_expansion
+    - S076_l2_partner_whitespace
+    - S077_l2_partner_willingness
+    - S078_l2_partner_scaling
+    - S081_l5_adjacent_segments
+    - S082_l6_product_expansion
+    - S090_sizing_method_adjacent
+    secondary:
+    - S074_l1_right_to_win
+    - S079_l3_expand_accounts
+    - S083_l7_ma
+    - S087_partner_counts
+    fallback:
+    - S018_industry_trends
+    - S021_h1_market_size
+- module: HPF
+  title: Historical Performance
+  criticality: core
+  expects_doc_types:
+  - financials
+  - kpi_pack
+  - projections
+  - cim
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - fin.revenue
+  - fin.revenue_growth
+  - fin.ebitda
+  - fin.ebitda_margin
+  - fin.projection
+  slides:
+    primary:
+    - S009_company_snapshot
+    secondary: []
+    fallback: []
+- module: IPT
+  title: IP & Technology
+  criticality: supporting
+  expects_doc_types:
+  - cim
+  - legal
+  - marketing
+  - interviews
+  vdr_nodes:
+  - 1_2_1 Legal Entity
+  - 1_2_2 List of Officers
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_2_2 Interview Programme & Notes
+  - 6_1_1 Litigation Register
+  - 6_2_1 Operating Licences
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - ops.tech_stack
+  slides:
+    primary:
+    - S015_barriers
+    - S063_feature_benchmarking
+    - S082_l6_product_expansion
+    secondary:
+    - S010_platform_evolution
+    - S017_roadmap
+    - S056_vertical_needs
+    fallback: []
+- module: IRK
+  title: Internal Risk
+  criticality: supporting
+  expects_doc_types:
+  - kpi_pack
+  - cim
+  - legal
+  - interviews
+  vdr_nodes:
+  - 1_2_1 Legal Entity
+  - 1_2_2 List of Officers
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 3_2_2 Interview Programme & Notes
+  - 6_1_1 Litigation Register
+  - 6_2_1 Operating Licences
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S049_risk_assessment
+    secondary:
+    - S070_target_development_areas
+    fallback:
+    - S049_risk_assessment
+- module: MDF
+  title: Market Definition
+  criticality: core
+  expects_doc_types:
+  - market_model
+  - analyst
+  - cim
+  - web
+  vdr_nodes:
+  - 2_3_3 Market Sizing
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - mkt.definition
+  slides:
+    primary:
+    - S011_value_chain
+    - S012_business_model_flow
+    - S018_industry_trends
+    - S034_market_definitions
+    - S035_volume_narrowing
+    - S037_tam_walkdown
+    - S081_l5_adjacent_segments
+    - S089_sizing_method_core
+    secondary:
+    - S013_business_model_comparison
+    - S021_h1_market_size
+    - S022_h1_sam_walkup
+    - S085_landscape_by_category
+    fallback:
+    - S021_h1_market_size
+    - S037_tam_walkdown
+    - S089_sizing_method_core
+- module: MGQ
+  title: Management Quality
+  criticality: supporting
+  expects_doc_types:
+  - cim
+  - legal
+  - kpi_pack
+  - interviews
+  vdr_nodes:
+  - 1_2_1 Legal Entity
+  - 1_2_2 List of Officers
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 3_2_2 Interview Programme & Notes
+  - 6_1_1 Litigation Register
+  - 6_2_1 Operating Licences
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - ops.headcount
+  slides:
+    primary: []
+    secondary:
+    - S009_company_snapshot
+    fallback: []
+- module: MPR
+  title: Market Pricing
+  criticality: supporting
+  expects_doc_types:
+  - contract
+  - marketing
+  - analyst
+  - interviews
+  - market_model
+  vdr_nodes:
+  - 2_3_3 Market Sizing
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_1_2 Customer Contract List
+  - 3_2_2 Interview Programme & Notes
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  owns_metrics:
+  - mkt.price_benchmark
+  - cust.wtp
+  slides:
+    primary:
+    - S039_value_added_services
+    - S045_gf4_pricing_stability
+    - S064_price_benchmarking
+    - S067_full_suite_wtp
+    - S080_l4_pricing
+    secondary:
+    - S013_business_model_comparison
+    - S030_h4_full_suite
+    - S052_switching_drivers
+    - S055_purchase_criteria
+    - S061_positioning_map
+    - S079_l3_expand_accounts
+    - S090_sizing_method_adjacent
+    fallback: []
+- module: MRK
+  title: Market Risk
+  criticality: core
+  expects_doc_types:
+  - analyst
+  - statistical_series
+  - interviews
+  - cim
+  vdr_nodes:
+  - 3_2_2 Interview Programme & Notes
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - risk.item
+  - mkt.recession_sensitivity
+  slides:
+    primary:
+    - S024_h1_recession
+    - S048_downturn_resilience
+    - S049_risk_assessment
+    secondary:
+    - S018_industry_trends
+    - S023_h1_growth_drivers
+    - S040_growth_factors_overview
+    - S047_scenario_analysis
+    fallback:
+    - S018_industry_trends
+    - S023_h1_growth_drivers
+    - S040_growth_factors_overview
+- module: MSS
+  title: Market Share Strategy
+  criticality: core
+  expects_doc_types:
+  - analyst
+  - market_model
+  - kpi_pack
+  - firmographic
+  vdr_nodes:
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 2_3_3 Market Sizing
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  owns_metrics:
+  - comp.share
+  slides:
+    primary:
+    - S036_volume_by_channel
+    - S038_sam_by_endmarket
+    - S043_gf3_channel_adoption
+    - S044_gf3_channel_stickiness
+    - S059_routes_to_market
+    - S073_l1_new_customers
+    - S074_l1_right_to_win
+    - S075_l1_channel_expansion
+    secondary:
+    - S012_business_model_flow
+    - S015_barriers
+    - S022_h1_sam_walkup
+    - S031_h5_growth_levers
+    - S042_gf2_mix_shift
+    - S046_sam_growth_build
+    - S060_competitor_archetypes
+    - S061_positioning_map
+    - S076_l2_partner_whitespace
+    - S086_landscape_by_size
+    fallback:
+    - S012_business_model_flow
+    - S060_competitor_archetypes
+    - S061_positioning_map
+- module: MVG
+  title: Market Volume & Growth
+  criticality: core
+  expects_doc_types:
+  - market_model
+  - analyst
+  - statistical_series
+  - web
+  vdr_nodes:
+  - 2_3_3 Market Sizing
+  owns_metrics:
+  - mkt.tam
+  - mkt.sam
+  - mkt.som
+  - mkt.cagr
+  - mkt.volume
+  - mkt.segment_share
+  slides:
+    primary:
+    - S021_h1_market_size
+    - S022_h1_sam_walkup
+    - S023_h1_growth_drivers
+    - S035_volume_narrowing
+    - S036_volume_by_channel
+    - S037_tam_walkdown
+    - S038_sam_by_endmarket
+    - S040_growth_factors_overview
+    - S046_sam_growth_build
+    - S089_sizing_method_core
+    - S090_sizing_method_adjacent
+    secondary:
+    - S034_market_definitions
+    - S041_gf1_demand
+    - S042_gf2_mix_shift
+    - S043_gf3_channel_adoption
+    - S047_scenario_analysis
+    - S073_l1_new_customers
+    - S081_l5_adjacent_segments
+    fallback:
+    - S023_h1_growth_drivers
+    - S034_market_definitions
+    - S040_growth_factors_overview
+- module: OPR
+  title: Operational Risk
+  criticality: supporting
+  expects_doc_types:
+  - kpi_pack
+  - cim
+  - contract
+  vdr_nodes:
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_2 Customer Contract List
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - ops.capacity
+  slides:
+    primary: []
+    secondary:
+    - S049_risk_assessment
+    - S057_switching_complexity
+    - S070_target_development_areas
+    fallback:
+    - S049_risk_assessment
+- module: RCO
+  title: Regulatory Compliance
+  criticality: supporting
+  expects_doc_types:
+  - legal
+  - analyst
+  - cim
+  - web
+  vdr_nodes:
+  - 1_2_1 Legal Entity
+  - 1_2_2 List of Officers
+  - 6_1_1 Litigation Register
+  - 6_2_1 Operating Licences
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - risk.regulatory
+  slides:
+    primary: []
+    secondary:
+    - S015_barriers
+    - S018_industry_trends
+    - S049_risk_assessment
+    fallback:
+    - S018_industry_trends
+    - S049_risk_assessment
+- module: REC
+  title: Recommendations
+  criticality: core
+  expects_doc_types:
+  - cim
+  - financials
+  - projections
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S020_highlights_summary
+    secondary: []
+    fallback:
+    - S003_engagement
+    - S031_h5_growth_levers
+    - S072_growth_levers_overview
+- module: RVQ
+  title: Revenue Quality
+  criticality: core
+  expects_doc_types:
+  - kpi_pack
+  - financials
+  - contract
+  - cim
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 3_1_2 Customer Contract List
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - fin.revenue_mix
+  - fin.recurring_share
+  - cust.concentration
+  slides:
+    primary:
+    - S079_l3_expand_accounts
+    - S080_l4_pricing
+    secondary:
+    - S009_company_snapshot
+    - S012_business_model_flow
+    - S024_h1_recession
+    - S033_icp_mapping
+    - S039_value_added_services
+    - S042_gf2_mix_shift
+    - S045_gf4_pricing_stability
+    - S048_downturn_resilience
+    - S096_supp_entrenchment
+    fallback:
+    - S009_company_snapshot
+    - S012_business_model_flow
+- module: SCM
+  title: Scope & Methodology
+  criticality: core
+  expects_doc_types:
+  - cim
+  - kpi_pack
+  vdr_nodes:
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S003_engagement
+    - S005_research_approach
+    - S006_survey_sample
+    secondary:
+    - S089_sizing_method_core
+    fallback:
+    - S089_sizing_method_core
+- module: SCR
+  title: Supply Chain Resilience
+  criticality: supporting
+  expects_doc_types:
+  - contract
+  - interviews
+  - cim
+  - kpi_pack
+  vdr_nodes:
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 3_1_2 Customer Contract List
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 3_2_2 Interview Programme & Notes
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - ops.supply_resilience
+  slides:
+    primary: []
+    secondary:
+    - S049_risk_assessment
+    - S078_l2_partner_scaling
+    fallback:
+    - S049_risk_assessment
+- module: SNS
+  title: Sensitivity Analysis
+  criticality: supporting
+  expects_doc_types:
+  - projections
+  - financials
+  - market_model
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_3_3 Market Sizing
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 8_1_2 Investor Workbook
+  owns_metrics:
+  - val.sensitivity
+  slides:
+    primary:
+    - S047_scenario_analysis
+    - S048_downturn_resilience
+    secondary:
+    - S024_h1_recession
+    fallback: []
+- module: STR
+  title: Strategic Direction
+  criticality: supporting
+  expects_doc_types:
+  - cim
+  - projections
+  - marketing
+  - interviews
+  vdr_nodes:
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 3_1_1 Marketing Materials and Service Area Maps
+  - 3_2_2 Interview Programme & Notes
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S010_platform_evolution
+    - S017_roadmap
+    - S083_l7_ma
+    secondary:
+    - S031_h5_growth_levers
+    - S072_growth_levers_overview
+    - S082_l6_product_expansion
+    fallback:
+    - S031_h5_growth_levers
+    - S072_growth_levers_overview
+- module: SUP
+  title: Supplier Dependence
+  criticality: supporting
+  expects_doc_types:
+  - contract
+  - kpi_pack
+  - financials
+  - cim
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_2_1 Revenue by Service Line
+  - 2_2_2 Revenue by Customer Segment
+  - 2_2_3 Operating KPIs
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 3_1_2 Customer Contract List
+  - 3_1_3 Cohort / Retention Analysis
+  - 3_1_4 Pipeline & Win-Loss
+  - 4_1_1 Facility Lease Agreements
+  - 4_2_1 Vehicle List
+  - 4_2_2 Equipment List
+  - 5_1_1 Customer Agreements
+  - 5_1_2 Supplier Agreements
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - ops.supplier_concentration
+  slides:
+    primary:
+    - S051_partner_switching_lifecycle
+    - S076_l2_partner_whitespace
+    - S077_l2_partner_willingness
+    - S078_l2_partner_scaling
+    - S087_partner_counts
+    secondary:
+    - S011_value_chain
+    fallback:
+    - S011_value_chain
+- module: SWO
+  title: SWOT Analysis
+  criticality: supporting
+  expects_doc_types:
+  - cim
+  - analyst
+  - interviews
+  vdr_nodes:
+  - 3_2_2 Interview Programme & Notes
+  - 8_1_1 CIM
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary:
+    - S070_target_development_areas
+    secondary:
+    - S020_highlights_summary
+    - S069_target_strengths
+    fallback:
+    - S029_h4_differentiation
+- module: SYN
+  title: Synergies
+  criticality: supporting
+  expects_doc_types:
+  - financials
+  - projections
+  - cim
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics:
+  - val.synergy
+  slides:
+    primary:
+    - S083_l7_ma
+    secondary:
+    - S010_platform_evolution
+    - S031_h5_growth_levers
+    - S072_growth_levers_overview
+    fallback:
+    - S031_h5_growth_levers
+    - S072_growth_levers_overview
+- module: VAL
+  title: Valuation Model
+  criticality: supporting
+  expects_doc_types:
+  - financials
+  - projections
+  - cim
+  - analyst
+  vdr_nodes:
+  - 2_1_1 Financial Statements
+  - 2_1_2 Audited Accounts
+  - 2_1_3 Monthly Financial Statements
+  - 2_1_4 Balance Sheet Details
+  - 2_1_5 Statement of Cash Flows
+  - 2_3_1 Financial Projections
+  - 2_3_2 Assumption Supporting Projections
+  - 2_4_1 Debt Schedules
+  - 2_4_2 Working Capital Analysis
+  - 8_1_1 CIM
+  - 8_1_2 Investor Workbook
+  - 8_1_3 Teaser Document
+  - 8_1_4 Process Letter
+  owns_metrics: []
+  slides:
+    primary: []
+    secondary:
+    - S083_l7_ma
+    fallback: []

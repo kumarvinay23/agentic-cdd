@@ -13,7 +13,7 @@ export default function RegisterPage() {
         <AuthCard>
           <AuthHeader
             title="Create account"
-            subtitle="Create your Agentic CDD workspace."
+            subtitle="Create your DiligenceIQ workspace."
           />
           <RegisterForm />
         </AuthCard>

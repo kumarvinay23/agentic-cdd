@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { EvidenceNetworkMap } from "@/components/deal/EvidenceNetworkMap";
-import { product } from "@/lib/config";
+import { BrandMark } from "@/components/brand/BrandMark";
 import {
   dataClassLabel,
   isAvailable,
@@ -281,7 +281,7 @@ export function EvidenceCoverage({
               covers versus what still needs secondary (web) or primary research.
             </p>
           </div>
-          <p className="hidden text-[12px] text-text-secondary sm:block">{product.name}</p>
+          <BrandMark height={28} className="hidden sm:block" />
         </div>
 
         {error ? (

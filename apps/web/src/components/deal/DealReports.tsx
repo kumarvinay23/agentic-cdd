@@ -346,9 +346,74 @@ function DocxPreview({ blocks }: { readonly blocks: ReportPreviewBlock[] }) {
   );
 }
 
-function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
+function PptxBars({
+  chart,
+}: {
+  readonly chart: NonNullable<ReportPreviewSlide["chart"]>;
+}) {
+  const series = chart.series || [];
+  const categories = chart.categories || [];
+  const peak = Math.max(
+    1,
+    ...series.flatMap((item) => item.values.map((value) => Math.abs(Number(value) || 0))),
+  );
+  const colors = ["#1F3864", "#0F766E", "#E87A2E", "#6B8FB5"];
+  return (
+    <div className="flex min-h-[120px] flex-col">
+      <div className="flex h-28 items-end gap-2">
+        {categories.map((category, index) => (
+          <div key={`${category}-${index}`} className="flex h-full min-w-0 flex-1 flex-col justify-end">
+            <div className="flex h-full items-end justify-center gap-0.5">
+              {series.map((item, seriesIndex) => {
+                const value = Number(item.values[index] ?? 0);
+                const height = Math.max(4, Math.round((Math.abs(value) / peak) * 100));
+                return (
+                  <div
+                    key={`${item.name}-${seriesIndex}`}
+                    className="w-full max-w-8 rounded-sm"
+                    style={{
+                      height: `${height}%`,
+                      backgroundColor: colors[seriesIndex % colors.length],
+                    }}
+                    title={`${item.name}: ${value}`}
+                  />
+                );
+              })}
+            </div>
+            <p className="mt-1 truncate text-center text-[9px] font-medium text-[#4B5563]">{category}</p>
+          </div>
+        ))}
+      </div>
+      {series.length > 1 ? (
+        <div className="mt-1 flex flex-wrap gap-2">
+          {series.map((item, index) => (
+            <span key={item.name} className="inline-flex items-center gap-1 text-[9px] text-[#6B7280]">
+              <span
+                className="inline-block h-2 w-2"
+                style={{ backgroundColor: colors[index % colors.length] }}
+              />
+              {item.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PptxSlideFrame({
+  slide,
+  reportType,
+}: {
+  readonly slide: ReportPreviewSlide;
+  readonly reportType: string;
+}) {
   const kind = slide.kind || "content";
-  const isDark = kind === "cover" || kind === "divider";
+  const isMarket = reportType === "market_deck";
+  const brand = isMarket ? "Market Intel Deck" : "DiligenceIQ · CDD";
+  const header =
+    !isMarket && slide.eyebrow && !/^\d{1,2}$/.test(slide.eyebrow) ? slide.eyebrow : brand;
+  const isDark = isMarket && (kind === "cover" || kind === "divider");
 
   if (isDark) {
     return (
@@ -358,12 +423,12 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
           {kind === "cover" ? (
             <>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#D4B88A]">
-                {slide.title || "Investment Due Diligence · Market Intelligence"}
+                {slide.title || (isMarket ? "Investment Due Diligence · Market Intelligence" : "DiligenceIQ · CDD")}
               </p>
               <h2 className="mt-3 text-[32px] font-bold leading-tight">
                 {slide.subtitle && !slide.subtitle.toLowerCase().includes("ola")
                   ? slide.subtitle
-                  : "Market Intel Deck"}
+                  : brand}
               </h2>
               {(slide.paragraphs || [])
                 .filter((p) => p && p !== slide.subtitle && p !== slide.title)
@@ -413,10 +478,10 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
   }
 
   return (
-    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg border border-[#e5e7eb] bg-white shadow-md">
+    <div className="relative w-full overflow-hidden rounded-lg border border-[#e5e7eb] bg-white shadow-md">
       <div className="flex items-center justify-between px-5 pt-3">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-[#1F3864]">
-          Market Intel Deck
+          {header}
         </p>
         <p className="text-[10px] font-semibold uppercase tracking-wide text-[#B91C1C]">
           Strictly Private &amp; Confidential
@@ -424,8 +489,13 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
       </div>
       <div className="mx-5 mt-1 h-[2px] bg-[#E87A2E]" />
 
-      <div className="flex h-[calc(100%-3.2rem)] flex-col px-5 pb-8 pt-3">
-        {slide.eyebrow ? (
+      <div className="flex flex-col px-5 pb-3 pt-3">
+        {kind === "divider" ? (
+          <p className="text-[42px] font-bold leading-none text-[#0F766E]">
+            {slide.number || slide.eyebrow}
+          </p>
+        ) : null}
+        {slide.eyebrow && slide.eyebrow !== header && kind !== "divider" ? (
           <p className="text-[10px] font-bold uppercase tracking-wide text-[#E87A2E]">
             {slide.eyebrow}
           </p>
@@ -434,6 +504,16 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
         <div className="mt-1 h-[3px] w-10 bg-[#E87A2E]" />
         {slide.subtitle ? (
           <p className="mt-2 text-[12px] text-[#6B7280]">{slide.subtitle}</p>
+        ) : null}
+
+        {(slide.chart || (slide.columns && slide.columns.length > 0)) &&
+        slide.paragraphs &&
+        slide.paragraphs.length > 0 ? (
+          <div className="mt-2 space-y-1 text-[11px] leading-snug text-[#4B5563]">
+            {slide.paragraphs.slice(0, 2).map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
+          </div>
         ) : null}
 
         {slide.insight ? (
@@ -456,6 +536,64 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
                 </div>
               </div>
             ))}
+          </div>
+        ) : null}
+
+        {slide.kpis && slide.kpis.length > 0 ? (
+          <div
+            className="mt-3 grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${Math.min(slide.kpis.length, 5)}, minmax(0, 1fr))` }}
+          >
+            {slide.kpis.map((kpi) => (
+              <div key={kpi.label} className="border border-[#E5E7EB] border-t-2 border-t-[#1F3864] bg-[#F8FAFC] px-2 py-1.5">
+                <p className="text-[15px] font-bold leading-none text-[#1F3864]">{kpi.value}</p>
+                <p className="mt-1 text-[9px] leading-snug text-[#6B7280]">{kpi.label}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {slide.chart || (slide.columns && slide.columns.length > 0) ? (
+          <div
+            className={`mt-3 grid min-h-0 flex-1 gap-3 ${
+              slide.chart && slide.columns && slide.columns.length > 0 && slide.columns.length <= 2
+                ? "grid-cols-2"
+                : "grid-cols-1"
+            }`}
+          >
+            {(() => {
+              const columnLeft = Math.min(...(slide.columns || []).map((column) => column.left ?? 0));
+              const chartFirst = Boolean(slide.chart) && (slide.chart?.left ?? 0) <= columnLeft;
+              const chartNode = slide.chart ? (
+                <div key="chart" className="min-h-[140px] rounded border border-[#E5E7EB] bg-[#F8FAFC] p-2">
+                  <PptxBars chart={slide.chart} />
+                </div>
+              ) : null;
+              const columnNode =
+                slide.columns && slide.columns.length > 0 ? (
+                  <div
+                    key="columns"
+                    className="grid gap-2"
+                    style={{
+                      gridTemplateColumns: `repeat(${Math.min(slide.columns.length, slide.chart ? 1 : 5)}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {slide.columns.map((column) => (
+                      <div key={column.heading} className="border border-[#E5E7EB] border-t-2 border-t-[#0F766E] bg-white p-2">
+                        <p className="text-[11px] font-semibold text-[#1F3864]">{column.heading}</p>
+                        <ul className="mt-1 space-y-1">
+                          {column.items.map((item) => (
+                            <li key={item} className="text-[10px] leading-snug text-[#4B5563]">
+                              {item}
+                            </li>
+                        ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : null;
+              return chartFirst ? [chartNode, columnNode] : [columnNode, chartNode];
+            })()}
           </div>
         ) : null}
 
@@ -512,6 +650,7 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
         (!slide.bullets || slide.bullets.length === 0) &&
         (!slide.table || slide.table.length === 0) &&
         (!slide.agenda_items || slide.agenda_items.length === 0) &&
+        (!slide.columns || slide.columns.length === 0) &&
         slide.paragraphs &&
         slide.paragraphs.length > 0 ? (
           <div className="mt-3 space-y-1.5 overflow-auto text-[12px] text-[#374151]">
@@ -522,9 +661,9 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
         ) : null}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between border-t border-[#E87A2E] px-5 py-1.5">
+      <div className="flex items-center justify-between border-t border-[#E87A2E] px-5 py-1.5">
         <p className="text-[9px] text-[#6B7280]">
-          Investment Due Diligence · © Agentic CDD
+          Investment Due Diligence · © DiligenceIQ
         </p>
         <p className="text-[11px] font-semibold text-[#1F3864]">{slide.page}</p>
       </div>
@@ -535,9 +674,11 @@ function PptxSlideFrame({ slide }: { readonly slide: ReportPreviewSlide }) {
 function PptxPreview({
   slides,
   slideCount,
+  reportType,
 }: {
   readonly slides: ReportPreviewSlide[];
   readonly slideCount?: number;
+  readonly reportType: string;
 }) {
   if (!slides.length) {
     return (
@@ -562,7 +703,7 @@ function PptxPreview({
       <div className="max-h-[min(78vh,980px)] space-y-4 overflow-auto p-4">
         {slides.map((slide) => (
           <div key={`slide-${slide.index}`} className="mx-auto w-full max-w-4xl">
-            <PptxSlideFrame slide={slide} />
+            <PptxSlideFrame slide={slide} reportType={reportType} />
           </div>
         ))}
       </div>
@@ -1072,7 +1213,11 @@ export function DealReports({
           ) : previewFormat === "pdf" || selectedReport.export === "pdf" ? (
             <PdfPreview url={pdfPreviewUrl} pageCount={pdfPageCount} />
           ) : previewFormat === "pptx" || selectedReport.export === "pptx" ? (
-            <PptxPreview slides={previewSlides} slideCount={previewSlideCount} />
+            <PptxPreview
+              slides={previewSlides}
+              slideCount={previewSlideCount}
+              reportType={selectedReport.report_type}
+            />
           ) : previewFormat === "docx" || selectedReport.export === "docx" ? (
             <DocxPreview blocks={previewBlocks} />
           ) : (

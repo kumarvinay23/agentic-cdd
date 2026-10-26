@@ -770,7 +770,7 @@ def _build_exec_dashboard(wb: Workbook, ctx: BuildContext, facts: list[MetricFac
     company = ctx.profile.company if ctx.profile else ctx.deal_slug
     ws.cell(row=r, column=1, value=f"{company} · Executive Dashboard · Strictly Private & Confidential")
     r += 1
-    ws.cell(row=r, column=1, value="Prepared by Agentic CDD")
+    ws.cell(row=r, column=1, value="Prepared by DiligenceIQ")
     r += 2
 
     pl_lines = _get_spec(ctx, "historical_performance").get("pl_lines", [])

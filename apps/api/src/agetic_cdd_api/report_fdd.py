@@ -230,7 +230,7 @@ def _write_fdd_docx(
         fp = footer.paragraphs[0]
         fp.text = ""
         fr = fp.add_run(
-            f"Agentic CDD · {len(pages)} section(s) · {len(figures)} shared figure(s)"
+            f"DiligenceIQ · {len(pages)} section(s) · {len(figures)} shared figure(s)"
         )
         fr.font.size = Pt(8)
         fr.font.color.rgb = _MUTED

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Agentic CDD API"
+    app_name: str = "DiligenceIQ API"
     api_prefix: str = "/api/v1"
     # development | production — controls localhost CORS regex and startup checks.
     app_env: str = "development"

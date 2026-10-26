@@ -1,0 +1,258 @@
+# VDR direct-extraction recipes - GENERIC (any deal)
+# ---------------------------------------------------------------------------
+# Agent modules summarise the data room and sometimes drop the numbers that matter most. These
+# recipes read data-room workbooks directly and emit evidence attributed to the module-of-record
+# (HPF, RVQ, CST, MVG, GRO ...) with basis `data_room_computed` (R1, R9).
+#
+# Layers (first match per sheet wins):
+#   1. deal profile  - optional, `--recipes <profile.yaml>`; exact sheet names for one data room.
+#                      A profile recipe with the same id replaces the generic one.
+#   2. generic       - this file: common sheet names across CDD data rooms.
+#   3. fallback      - `generic_fallback: true`: any other sheet with a year / period header row is
+#                      extracted with auto units, module guessed from FALLBACK_MODULES keywords,
+#                      and flagged GENERIC_EXTRACT (verify the label and unit before relying on it).
+#
+# Recipe keys:
+#   file / sheet   regex on file name / sheet name (case-insensitive)
+#   module         module-of-record for the evidence
+#   section        {n, key, title}; n >= 90 keeps data-room sections apart from agent sections
+#   subject        target | market | customer | competitor
+#   units          money_M | money | pct_frac | count | label | auto | money_M_if_header
+#   scale_M        show $ values >= 100k in $M
+#   columns        annual (year-total columns only, from monthly accounts)
+#   derive         [ttm, ytd_vs_py] computed from monthly columns
+#   header_match   regex identifying the header row when it is not the first year-row
+#   label_col      label column index; col_range [a, b] for side-by-side tables
+#   kv             {label_col, value_col, header} for label/value panels with no header row
+#   carry_label    reuse the last label for continuation rows
+#   keep_rows / stop_at   row filters (regex)
+#   notes          capture long explanatory sentences under the table as note evidence
+#   dq_duplicate_column   flag duplicate entities in that column (DATA_QUALITY)
+#   rows           {label regex: metric id} tags; untagged rows are still kept
+#   max_rows / max_cols   bounds so raw data tabs are never read as tables
+# Sub-header rows in capitals ("RETENTION, MODEL BASIS (2026)") qualify the rows beneath them;
+# a block containing model / plan / assumption / forecast marks its values as plan (MODEL_BASIS).
+version: 2
+plan_after: auto
+generic_fallback: true
+fallback_max_rows: 40
+skip_sheets: "^(data|raw|lookup|list|dropdown|sources|guide|intro|introduction|cover|index|contents|notes|map)|_data$|>>$"
+
+recipes:
+
+  - id: balance_sheet
+    file: "financials|financial statements|management accounts|balance"
+    sheet: "balance|\\bbs\\b|financial position"
+    module: CFL
+    section: {n: 97, key: vdr_bs, title: "Balance sheet (management accounts)"}
+    subject: target
+    units: money
+    scale_M: true
+    max_rows: 60
+
+  - id: cash_flow
+    file: "financials|financial statements|management accounts|cash"
+    sheet: "cash ?flow|socf|\\bcf\\b"
+    module: CFL
+    section: {n: 96, key: vdr_cf, title: "Cash flow (management accounts)"}
+    subject: target
+    units: money
+    scale_M: true
+    max_rows: 60
+
+  - id: pnl_annual
+    file: "financials|financial statements|p&l|p & l|management accounts|income statement|trial balance"
+    sheet: "p&l|p & l|income|profit|statement of operations|monthly"
+    module: HPF
+    section: {n: 90, key: vdr_pnl, title: "Statement of operations (management accounts, annual roll-up)"}
+    subject: target
+    units: money
+    scale_M: true
+    columns: annual
+    derive: [ttm, ytd_vs_py]
+    rows:
+      "^(total )?(net )?revenues?$|^total (net )?sales$|^turnover$": fin.revenue
+      "^gross profit$": fin.gross_margin
+      "^gross margin": fin.gross_margin
+      "^(adjusted )?ebitda$": fin.ebitda
+      "ebitda margin": fin.ebitda_margin
+      "sales$|revenue$": fin.revenue_mix
+      "^total (cost|operating|selling)": fin.cost_base
+    max_rows: 80
+
+  - id: fin_summary
+    file: "workbook|model|databook|financial"
+    sheet: "^(financial|financials|p&l|income) summary$|^summary financials$|^historicals?$"
+    module: HPF
+    section: {n: 91, key: vdr_fin_summary, title: "Financial summary (company workbook)"}
+    subject: target
+    units: auto
+    rows:
+      "^(total )?revenue$": fin.revenue
+      "gross profit|gross margin": fin.gross_margin
+      "^(adjusted )?ebitda$": fin.ebitda
+      "ebitda margin": fin.ebitda_margin
+    max_rows: 20
+
+  - id: rev_segment
+    file: "workbook|model|databook|financial|revenue"
+    sheet: "revenue by|sales by|segment|product mix|channel mix"
+    module: RVQ
+    section: {n: 91, key: vdr_rev_segment, title: "Revenue by segment (company workbook)"}
+    subject: target
+    units: auto
+    rows:
+      "total": fin.revenue
+      ".": fin.revenue_mix
+    max_rows: 30
+
+  - id: arr
+    file: "workbook|model|databook|arr|mrr|kpi"
+    sheet: "^(arr|mrr)|recurring revenue|arr roll|arr bridge"
+    module: RVQ
+    section: {n: 92, key: vdr_arr, title: "Recurring revenue (ARR / MRR)"}
+    subject: target
+    units: auto
+    rows:
+      ".": fin.arr
+    max_rows: 30
+
+  - id: unit_econ
+    file: "workbook|model|databook|kpi"
+    sheet: "unit economics|ltv|cac|kpi summary|kpis"
+    module: CST
+    section: {n: 91, key: vdr_unit_econ, title: "Unit economics and retention"}
+    subject: target
+    units: auto
+    rows:
+      "retention": cust.retention
+      "ltv|lifetime": cust.tenure
+      "locations|accounts|customers|subscri": cust.count
+    max_rows: 30
+
+  - id: cohorts
+    file: "workbook|model|databook|cohort|retention"
+    sheet: "cohort"
+    module: CST
+    section: {n: 93, key: vdr_cohorts, title: "Customer cohorts"}
+    subject: target
+    units: auto
+    rows:
+      ".": cust.retention
+    max_rows: 30
+
+  - id: retention_summary
+    file: "workbook|model|databook|retention|churn|kpi"
+    sheet: "retention|churn|(customer|account|subscriber|client)s? summary"
+    module: CST
+    section: {n: 92, key: vdr_retention, title: "Customer retention summary"}
+    subject: target
+    units: auto
+    notes: true
+    rows:
+      "retention|grr|nrr": cust.retention
+      "churn": cust.churn
+      "accounts|customers|subscri|logos": cust.count
+    max_rows: 30
+
+  - id: concentration
+    file: "workbook|model|databook|customer|revenue"
+    sheet: "concentration|top.?\\d+|top customers|largest customers"
+    module: RVQ
+    section: {n: 94, key: vdr_concentration, title: "Customer concentration"}
+    subject: target
+    units: auto
+    header_match: "^(rank|#|no\\.?)$"
+    label_col: 0
+    keep_rows: "^\\d{1,2}$|total"
+    dq_duplicate_column: "Account|Customer|Client|Name"
+    rows:
+      ".": cust.concentration
+    max_rows: 40
+
+  - id: contracts
+    file: "workbook|model|contract|databook"
+    sheet: "contract|backlog|order book|pipeline|bookings"
+    module: RVQ
+    section: {n: 95, key: vdr_contracts, title: "Contracts, backlog and pipeline"}
+    subject: target
+    units: auto
+    notes: true
+    rows:
+      "pipeline|prospect|opportunit": fin.pipeline
+      ".": fin.contracted
+    max_rows: 40
+
+  - id: scenarios
+    file: "workbook|model"
+    sheet: "scenario|sensitivit|case"
+    module: HPF
+    section: {n: 96, key: vdr_scenarios, title: "Management scenarios and sensitivities"}
+    subject: target
+    units: auto
+    max_rows: 30
+
+  - id: cim_crosswalk
+    file: "workbook|model|databook"
+    sheet: "crosswalk|tie.?out|cim support|cim reconciliation|bridge to cim"
+    module: CBG
+    section: {n: 98, key: vdr_cim_crosswalk, title: "CIM crosswalk: CIM figures traced to support"}
+    subject: target
+    units: label
+    max_rows: 90
+
+  - id: market_model
+    file: "tam|sam|som|market siz|market model"
+    sheet: "tam|sam|som|market"
+    module: MVG
+    section: {n: 90, key: vdr_market_model, title: "Bottom-up market model (company)"}
+    subject: market
+    units: money_M_if_header
+    carry_label: true
+    rows:
+      "total": mkt.tam
+      ".": mkt.segment_share
+    max_rows: 40
+
+  - id: headcount
+    file: "workbook|model|org|headcount|hr"
+    sheet: "headcount|fte|org|sales capacity|quota"
+    module: GRO
+    section: {n: 93, key: vdr_headcount, title: "Headcount and sales capacity"}
+    subject: target
+    units: auto
+    max_rows: 30
+
+  - id: zip_scores
+    file: "zip|expansion|territor"
+    sheet: "summary"
+    module: GRO
+    section: {n: 94, key: vdr_zips, title: "Territory scores"}
+    subject: target
+    units: auto
+    header_match: "^rank$"
+    label_col: 1
+    max_rows: 60
+    max_cols: 8
+
+  - id: zip_scores_nova
+    file: "zip|expansion|territor"
+    sheet: "NOVA_Tables"
+    module: GRO
+    section: {n: 97, key: vdr_zips_nova, title: "Northern Virginia territory scores"}
+    subject: target
+    units: auto
+    header_match: "^rank$"
+    label_col: 49
+    col_range: [48, 52]
+    max_rows: 80
+    max_cols: 55
+
+# Fallback: sheet-name keywords -> module-of-record for GENERIC_EXTRACT items
+fallback_modules:
+  "p&l|income|revenue|ebitda|financ|budget|forecast|projection": HPF
+  "segment|mix|arr|mrr|concentration|contract|backlog|pricing|price": RVQ
+  "retention|churn|cohort|customer|subscri|nps|ltv|logo|accounts": CST
+  "tam|sam|som|market|competit": MVG
+  "zip|geograph|territor|expansion|site|location": GRO
+  "capex|asset|debt|loan|working capital|balance": CFL

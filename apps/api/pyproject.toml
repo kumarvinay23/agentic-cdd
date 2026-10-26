@@ -24,6 +24,7 @@ dependencies = [
     "openpyxl>=3.1",
     "python-pptx>=0.6.21",
     "reportlab>=4.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -49,3 +50,6 @@ markers = [
     "databook_ship: P7 golden databooks + trap suite ship gate (H-1…H-7)",
     "fdd_ship: Phase 9 FDD golden deals + trap suite ship gate",
 ]
+[tool.setuptools.package-data]
+agetic_cdd_api = ["*.md", "**/*.md"]
+  

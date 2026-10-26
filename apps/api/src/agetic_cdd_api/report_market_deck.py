@@ -344,7 +344,7 @@ def _chrome(slide, *, company: str, section: str, page: int, total: int, part: s
     part_bit = f"Section {part} · " if part else ""
     _add_textbox(
         slide, Inches(0.45), Inches(7.15), Inches(9.5), Inches(0.28),
-        f"{part_bit}{section} · Investment Due Diligence · © Agentic CDD",
+        f"{part_bit}{section} · Investment Due Diligence · © DiligenceIQ",
         size=9, color=_MUTED,
     )
     _add_textbox(
@@ -531,7 +531,7 @@ def _slide_divider(prs: Presentation, ctx: BuildContext, number: str, title: str
     _add_textbox(slide, Inches(0.8), Inches(4.35), Inches(11), Inches(0.4),
                  subtitle, size=14, color=_LIGHT)
     _add_textbox(slide, Inches(0.8), Inches(6.7), Inches(9), Inches(0.3),
-                 "AGENTIC CDD · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL",
+                 "DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL",
                  size=9, color=_LIGHT)
     _add_textbox(slide, Inches(10.5), Inches(6.7), Inches(2.2), Inches(0.3),
                  f"{page:02d} / {total:02d}", size=11, bold=True, color=_WHITE, align=PP_ALIGN.RIGHT)
