@@ -14,7 +14,7 @@ import {
   usageRequest,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-store";
-import { product } from "@/lib/config";
+import { BrandMark } from "@/components/brand/BrandMark";
 import type { Deal, PortfolioMetrics, SectorOption, UsageStats } from "@/lib/deal-types";
 
 const emptyMetrics: PortfolioMetrics = {
@@ -96,14 +96,7 @@ export function PortfolioShell() {
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </button>
-          <div className="flex items-center gap-2">
-            <span className="inline-grid h-7 w-7 place-items-center rounded-lg bg-[#1e3a5f] text-white">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M13 2 4.5 13.5h6L11 22l8.5-11.5h-6L13 2z" />
-              </svg>
-            </span>
-            <span className="text-[15px] font-bold tracking-tight text-text-primary">{product.name}</span>
-          </div>
+          <BrandMark height={28} />
           <span className="mx-1 h-[18px] w-px bg-border-secondary" />
           <span className="text-[13px] font-medium text-text-secondary">Portfolio</span>
         </div>

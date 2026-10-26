@@ -13,7 +13,7 @@ export default function LoginPage() {
         <AuthCard>
           <AuthHeader
             title="Sign in"
-            subtitle="Sign in to your Agentic CDD account."
+            subtitle="Sign in to your DiligenceIQ account."
           />
           <LoginForm />
         </AuthCard>

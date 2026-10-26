@@ -325,7 +325,7 @@ def _chrome(slide, *, company: str, section: str, page: int, total: int, part: s
     part_bit = f"Section {part} · " if part else ""
     _add_textbox(
         slide, Inches(0.45), Inches(7.15), Inches(9.5), Inches(0.28),
-        f"{part_bit}{section} · Investment Due Diligence · © Agentic CDD",
+        f"{part_bit}{section} · Investment Due Diligence · © DiligenceIQ",
         size=9, color=_MUTED,
     )
     _add_textbox(
@@ -530,7 +530,7 @@ def _slide_divider(prs: Presentation, ctx: BuildContext, number: str, title: str
     _add_textbox(slide, Inches(0.8), Inches(4.35), Inches(11), Inches(0.4),
                  subtitle, size=14, color=_LIGHT)
     _add_textbox(slide, Inches(0.8), Inches(6.7), Inches(9), Inches(0.3),
-                 "AGENTIC CDD · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL",
+                 "DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL",
                  size=9, color=_LIGHT)
     _add_textbox(slide, Inches(10.5), Inches(6.7), Inches(2.2), Inches(0.3),
                  f"{page:02d} / {total:02d}", size=11, bold=True, color=_WHITE, align=PP_ALIGN.RIGHT)
@@ -1318,87 +1318,23 @@ class CddDeckBuilder(ReportBuilder):
     report_type = "cdd_deck"
 
     def build_sections(self, ctx: BuildContext) -> Iterator[dict[str, Any]]:
-        enabled = [s for s in (ctx.storyline or []) if s.included]
-        total = max(1, _estimate_slide_count(enabled))
-        current = 0
-        for label in ("cover", "agenda", "part dividers"):
-            current += 1
-            yield _evt("section", f"Generating {label}", i=current, total=total)
-        for section in enabled:
-            composers = _COMPOSERS.get(section.title) or [None]
-            for _ in composers:
-                current += 1
-                yield _evt(
-                    "section",
-                    f"Generating slide {current} of {total}: {section.title}",
-                    i=current,
-                    total=total,
-                )
+        from agetic_cdd_api.report_cdd_deck_v4 import plan_cdd_deck
+
+        plan = plan_cdd_deck(ctx)
+        total = max(1, len(plan.pages))
+        for index, page in enumerate(plan.pages, start=1):
+            label = page.title or page.section or page.kind
+            yield _evt("section", f"Generating slide {index} of {total}: {label}", i=index, total=total)
 
     def export_artifact(self, ctx: BuildContext) -> str:
-        prs = Presentation()
-        prs.slide_width = Emu(_SLIDE_W)
-        prs.slide_height = Emu(_SLIDE_H)
-
-        enabled = [s for s in (ctx.storyline or []) if s.included]
-        total = _estimate_slide_count(enabled)
-
-        page = 0
-
-        def next_page() -> int:
-            nonlocal page
-            page += 1
-            return page
-
-        _slide_cover(prs, ctx, next_page(), total)
-        _slide_agenda(prs, ctx, next_page(), total)
-
-        dividers_done: set[str] = set()
-        appendix_done = False
-
-        for section in enabled:
-            title = section.title
-            divider = _DIVIDER_BEFORE.get(title)
-            if divider and title not in dividers_done:
-                num, dtitle, dsub = divider
-                _slide_divider(prs, ctx, num, dtitle, dsub, next_page(), total)
-                dividers_done.add(title)
-
-            composers = _COMPOSERS.get(title)
-            if composers:
-                for composer in composers:
-                    composer(prs, ctx, next_page(), total)
-                    if title == "Appendix & Sources":
-                        appendix_done = True
-            else:
-                slide = prs.slides.add_slide(prs.slide_layouts[6])
-                pg = next_page()
-                _section_title(slide, title, "")
-                agents = [_resolve(ctx, ak) for ak in section.agents]
-                bullets: list[str] = []
-                for a in agents:
-                    bullets.extend(_findings(a, 3))
-                _add_bullets(
-                    slide, Inches(0.55), Inches(1.7), Inches(12), Inches(4.8),
-                    bullets[:10] or ["No findings available for this section."], size=13,
-                )
-                _chrome(slide, company=_company(ctx), section=title[:40], page=pg, total=total)
-
-        if not appendix_done:
-            _slide_appendix(prs, ctx, next_page(), total)
-
-        # Fix page totals if estimate drifted
-        actual = len(prs.slides)
-        if actual != total:
-            # Re-stamp is hard on already-written text; leave estimate close — regenerate with actual
-            pass
+        from agetic_cdd_api.report_cdd_skill import render_cdd_with_skill
 
         out_dir = report_artifact_dir(ctx.deal_slug, "cdd_deck")
         company = _company(ctx)
         safe = re.sub(r"[^\w\s-]", "", company).strip().replace(" ", "_") or ctx.deal_slug
         filename = f"{safe}_CDD_Deck.pptx"
         path = out_dir / filename
-        prs.save(str(path))
+        render_cdd_with_skill(ctx, path)
 
         deal_root = deals_root() / ctx.deal_slug
         try:

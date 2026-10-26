@@ -1,0 +1,5660 @@
+version: 3
+blueprint: 97-slide CDD reporting standard + 4-slide DiligenceIQ evidence appendix
+canvas:
+  width_in: 13.333
+  height_in: 7.5
+defaults:
+  title:
+    max_chars: 165
+    font_pt: 20
+    font_min_pt: 18
+  subtitle:
+    max_chars: 150
+    font_pt: 13
+    font_min_pt: 12
+  body:
+    font_pt: 12
+    font_min_pt: 10
+  table:
+    font_pt: 10.5
+    font_min_pt: 9
+    max_rows: 9
+  source:
+    auto: true
+  not_provided_text: Not provided in agent outputs
+  insufficient_text: Insufficient evidence
+  research_gap_text: Requires primary research (survey / interview programme)
+gates:
+  always:
+    renders: unconditional
+  core:
+    renders: always; blocker if unsupported
+    min_facts: 1
+    blocker: true
+    accepts_fallback: true
+    fallback_min_facts: 3
+    fallback_exception: E12-SUBSTITUTION
+  conditional:
+    renders: if evidence available
+    min_facts: 3
+    exception: E1-NOT-PROVIDED
+  research_gated:
+    renders: if survey or interview sources present
+    min_facts: 3
+    requires_doc_types:
+    - survey
+    - interviews
+    min_n: 30
+    exception: E11-NO-PRIMARY
+  derived:
+    renders: unconditional
+    built_from: run data
+sections:
+- id: front
+  name: Engagement Overview
+  blurb: Who commissioned the work, what was asked and how it was answered
+- id: business
+  name: Business Introduction & Market Primer
+  blurb: Who the target is, how the industry works and where the target sits in it
+- id: highlights
+  name: Investment Highlights
+  blurb: The main findings, each stated at the strength of its evidence
+- id: market
+  name: Market Dynamics & Opportunity
+  blurb: How large, how fast-growing and how resilient the addressable market is
+- id: decisions
+  name: Decision-Making Dynamics
+  blurb: How buyers choose, what makes them switch and how hard switching is
+- id: competition
+  name: Competitive Landscape
+  blurb: Who the target competes with and whether its advantages hold up
+- id: growth
+  name: Growth Opportunities
+  blurb: Where the incremental value is and what has to be true to capture it
+- id: appx_partners
+  name: Appendix A - Partner & Vendor Landscape
+  blurb: The ecosystem around the target
+- id: appx_sizing
+  name: Appendix B - Market Sizing Methodology
+  blurb: How every number in the sizing was built
+- id: appx_cases
+  name: Appendix C - Case Studies
+  blurb: Individual buyer journeys in full
+- id: appx_supp
+  name: Appendix D - Supplementary Data
+  blurb: Supporting detail behind the findings
+- id: appx_audit
+  name: Appendix E - Evidence & Audit Trail
+  blurb: Module verdicts, source register and exceptions
+slides:
+- id: S001_cover
+  'no': 1
+  section: front
+  archetype: cover
+  exhibit: cover
+  gate: always
+  provenance: blueprint
+  blueprint_title: Cover Page
+  purpose: Identify the engagement, the parties, and confidentiality status at a glance.
+  must_contain:
+  - Project codename ('Project [X]'), engagement type (sell-side / buy-side support) and report status
+    (Draft / Final).
+  - Advisory team with named leads and contact details; client identified per the engagement letter.
+  - Date of issue and a clear CONFIDENTIAL designation in the top corner.
+  - Clean, brand-led layout — no findings, data, or claims on the cover.
+  source_spec: Engagement letter / SOW; deal-team roster; client naming conventions.
+  analysis: None — purely identifying. Confirm codename and permitted recipients with the client first.
+  exhibit_spec: 'Full-bleed branded cover: title block + team block, no data.'
+  quality_bar: Confirm the confidentiality designation and approved recipient list before any draft circulates.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: report_title
+    type: text
+    limits:
+      max_chars: 320
+  - name: report_subtitle
+    type: text
+    limits:
+      max_chars: 320
+  - name: prepared_for
+    type: text
+    limits:
+      max_chars: 320
+  - name: report_date
+    type: text
+    limits:
+      max_chars: 320
+- id: S002_disclaimer
+  'no': 2
+  section: front
+  archetype: disclaimer
+  exhibit: text_panel
+  gate: always
+  provenance: blueprint
+  blueprint_title: Disclaimer & Reliance Limitations
+  purpose: Define scope, reliance, and the limits of assurance before any finding is read.
+  must_contain:
+  - State the report was prepared for the named client, on topics the client identified, using only the
+    procedures the client requested.
+  - Clarify the report provides no assurance and is subject to limitations; recipients accept its scope.
+  - 'Set third-party terms: recipients must perform their own diligence and acquire no rights against
+    the advisor.'
+  - Prohibit redistribution except by legal process, with indemnification language for downstream claims.
+  source_spec: Firm legal / risk template; reliance language from the engagement letter.
+  analysis: None — legal boilerplate tailored to scope; route new client types or geographies through
+    legal review.
+  exhibit_spec: Text-only bullet slide, kept identical across every report.
+  quality_bar: Never soften reliance language to please a prospective buyer — disclaimer scope creep is
+    a liability.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T12-COMPANY-VS-MARKET
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: disclaimer_body
+    type: text
+    limits:
+      max_chars: 1500
+  - name: data_notice
+    type: text
+    limits:
+      max_chars: 420
+- id: S003_engagement
+  'no': 3
+  section: front
+  archetype: columns5
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Engagement Overview & Objectives
+  purpose: State the mandate in one sentence and decompose it into the five diligence workstreams.
+  must_contain:
+  - Action title naming what the client engaged the firm to assess (market opportunity, customer sentiment,
+    competitive positioning, growth avenues).
+  - A 'Primary Objectives' strip summarising the mandate in one full sentence.
+  - Five numbered workstreams — Business Primer · Market Dynamics & Opportunity · Customer Dynamics &
+    Feedback · Competitive Landscape & Positioning · Growth Opportunities.
+  - Three to five scope bullets under each workstream stating exactly what will be assessed, defined,
+    or validated.
+  source_spec: Kick-off materials; the sponsor's underwriting questions and stated IC concerns.
+  analysis: Translate the buyer's underwriting questions into testable workstreams and scope bullets.
+  exhibit_spec: Objectives banner + five-column workstream grid with scope bullets.
+  quality_bar: Objectives must mirror the buyer's actual decision criteria — not a generic checklist.
+  primary_modules:
+  - SCM
+  fallback_modules:
+  - EXS
+  - REC
+  secondary_modules:
+  - EXS
+  - DCO
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T12-COMPANY-VS-MARKET
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: lead
+    type: text
+    limits:
+      max_chars: 320
+  - name: col1_body
+    type: bullets
+    limits:
+      max_items: 4
+      max_chars_item: 95
+  - name: col2_body
+    type: bullets
+    limits:
+      max_items: 4
+      max_chars_item: 95
+  - name: col3_body
+    type: bullets
+    limits:
+      max_items: 4
+      max_chars_item: 95
+  - name: col4_body
+    type: bullets
+    limits:
+      max_items: 4
+      max_chars_item: 95
+  - name: col5_body
+    type: bullets
+    limits:
+      max_items: 4
+      max_chars_item: 95
+- id: S004_contents
+  'no': 4
+  section: front
+  archetype: contents
+  exhibit: text_panel
+  gate: derived
+  provenance: blueprint
+  blueprint_title: Contents
+  purpose: Give the reader a two-level map of the report with page references.
+  must_contain:
+  - 'Top-level sections in reading order: Engagement Overview · Business Introduction & Market Primer
+    · Investment Highlights · Detailed Findings · Appendix.'
+  - Detailed Findings expanded into its four workstream chapters, each with its page number.
+  - Appendix expanded into its lettered parts (landscape, sizing methodology, case studies, supplementary
+    data).
+  - Page references verified against final pagination.
+  source_spec: Final deck pagination.
+  analysis: None — navigation only.
+  exhibit_spec: Two-level indented contents list with right-aligned page numbers.
+  quality_bar: Section titles and page numbers must match the dividers and footers exactly.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: contents_body
+    type: auto
+- id: S005_research_approach
+  'no': 5
+  section: front
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Research Approach & Interview Sample
+  purpose: Show the evidence base — how many conversations, of what type, from which perspectives.
+  must_contain:
+  - Statement that findings combine primary research (interviews, survey) with secondary data analysis,
+    and what the interviews focused on.
+  - Phone interview table by interviewee type (target customers, competitor customers, competitors, partners)
+    with counts and total [n = X].
+  - Survey sample table by respondent type with counts and total [n = X].
+  - Logo wall of organizations interviewed (anonymise where required).
+  source_spec: Interview tracker; survey-platform export; primary-research logs.
+  analysis: Report every n transparently; note the sample is built for triangulation, not statistical
+    precision.
+  exhibit_spec: Two count tables + interviewed-organizations logo wall.
+  quality_bar: Disclose every sample size — findings from a handful of calls must never be dressed as
+    consensus.
+  primary_modules:
+  - SCM
+  fallback_modules:
+  - EXS
+  - APX
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Evidence base by source type
+    right_head: Coverage, limitations and what was not available
+  elements:
+  - name: left
+    type: table
+    head: Evidence base by source type
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Coverage, limitations and what was not available
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S006_survey_sample
+  'no': 6
+  section: front
+  archetype: chart_commentary
+  exhibit: stacked_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Survey Sample Distribution
+  purpose: Break the survey base down by respondent type, size, and industry so cuts can be judged.
+  must_contain:
+  - 100% stacked bars for the overall respondent-type split, firm-size mix within each type, and industry
+    mix.
+  - A multi-select horizontal bar for focus industries served by one respondent group (sums >100%).
+  - The n beneath every column so each cut can be evaluated independently.
+  - Survey field dates and method noted in the source line.
+  source_spec: Web-survey export.
+  analysis: Check sample representativeness against the target's ICP; flag skews before findings are generalised.
+  exhibit_spec: Three 100% stacked columns + one multi-select bar panel, all with n labels.
+  quality_bar: Any sample skew acknowledged here — not discovered by the IC later.
+  primary_modules:
+  - SCM
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    chart_head: Survey sample by segment (n)
+    right_head: Sampling approach and representativeness
+  elements:
+  - name: chart
+    type: chart
+    head: Survey sample by segment (n)
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Sampling approach and representativeness
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S007_glossary
+  'no': 7
+  section: front
+  archetype: table_full
+  exhibit: text_panel
+  gate: derived
+  provenance: blueprint
+  blueprint_title: Glossary
+  purpose: Standardise the specialist language the rest of the report depends on.
+  must_contain:
+  - 'Two-column table: key term | plain-English description, one row per term.'
+  - Cover the industry value chain roles, the target's model-specific terms, and adjacent provider archetypes.
+  - 'Include sizing and metric definitions used later: TAM, SAM, served market, gross vs net revenue,
+    volume metrics.'
+  - Order terms from ecosystem roles to metrics so the table reads as a primer.
+  source_spec: Industry references; management materials; firm's standard definitions.
+  analysis: None — alignment only; ensure definitions match how terms are used in the body.
+  exhibit_spec: Clean term / description table.
+  quality_bar: Every specialist term used later in the deck appears here first.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  - T10-NARRATIVE-TO-TABLE
+  - T2-COMBINE
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 10
+      max_cols: 2
+      max_chars_cell: 140
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true
+- id: S008_div_business
+  'no': 8
+  section: business
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Business Introduction & Market Primer
+  purpose: Signal the start of the primer chapter with the standard divider design.
+  must_contain:
+  - Section title only, on the firm's standard divider layout.
+  - Consistent branding (logo, tagline, copyright) identical across all dividers.
+  - No findings or data on divider pages.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Full-bleed branded section divider.
+  quality_bar: Divider titles must match the contents page word-for-word.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S009_company_snapshot
+  'no': 9
+  section: business
+  archetype: kpi_panel
+  exhibit: kpi_strip
+  gate: core
+  provenance: blueprint
+  blueprint_title: Company Overview & Financial Snapshot
+  purpose: Introduce the Target's model, scale, and trajectory on a single page.
+  must_contain:
+  - Action title stating the growth story and the strategic shift under way; sub-line giving the forward
+    implication.
+  - Revenue bar chart (last 2–3 fiscal years + budget year) with CAGR callout and 1–2 interpretation bullets.
+  - 'Company description bullets: what it does, proprietary technology, focus verticals, headline profitability
+    with YoY growth.'
+  - 'Stat rail: revenue, volume processed / delivered, customer count, founding year, headquarters.'
+  - End-market mix pie and go-to-market channel split for the most recent period.
+  source_spec: Management accounts / CIM; KPI pack; QofE where available.
+  analysis: Reconcile revenue and EBITDA to QofE; recompute CAGR; verify mix splits against management
+    data.
+  exhibit_spec: Revenue bars + stat rail + end-market pie + channel donut.
+  quality_bar: Every figure on this page ties to management data or QofE — no marketing numbers.
+  primary_modules:
+  - CBG
+  - HPF
+  fallback_modules:
+  - EXS
+  - RVQ
+  - CSC
+  - CFL
+  - CAP
+  secondary_modules:
+  - RVQ
+  - CAP
+  - MGQ
+  - CFL
+  - CSC
+  - EXS
+  - CSG
+  metrics:
+  - fin.revenue
+  - fin.revenue_growth
+  - fin.ebitda_margin
+  - cust.count
+  - ops.headcount
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T3-SUMMARISE
+  - T5-CALCULATE
+  - T6-CONCLUDE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C11-MARGIN
+  - C4-MIX
+  source_priority:
+  - R1
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E6-SUITABILITY
+  heads:
+    left_head: Key facts
+    right_head: Revenue mix and financial trajectory
+  elements:
+  - name: kpis
+    type: kpis
+    limits:
+      max_items: 5
+      max_chars_item: 42
+  - name: left
+    type: bullets
+    head: Key facts
+    limits:
+      max_items: 5
+      max_chars_item: 170
+  - name: right
+    type: chart
+    head: Revenue mix and financial trajectory
+    limits:
+      max_series: 3
+      max_points: 8
+- id: S010_platform_evolution
+  'no': 10
+  section: business
+  archetype: flow_row
+  exhibit: lifecycle_flow
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Platform Evolution & Acquisition Integration
+  purpose: Show how acquisitions and organic build created today's differentiated platform.
+  must_contain:
+  - Timeline of acquisitions and organic build phases with dates and the capability each added.
+  - Capability inventory grouped by product family (vertical features, segment-specific processing, partner
+    APIs, value-added services), marked non-exhaustive.
+  - 'Before / after right-to-win schematic: capabilities pre-acquisition vs the differentiated model today.'
+  - Closing statement of how the evolution increased right-to-win across channels and end-markets.
+  source_spec: Management information; management and market interviews.
+  analysis: Link each acquisition to the specific capabilities and customer segments it unlocked.
+  exhibit_spec: Timeline + capability grid + before/after panel.
+  quality_bar: '''Differentiated'' claims trace to named capabilities — not asserted.'
+  primary_modules:
+  - CBG
+  - STR
+  fallback_modules: []
+  secondary_modules:
+  - SYN
+  - IPT
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    flow_head: How the platform was built
+    right_head: Integration record and what it implies
+  elements:
+  - name: flow
+    type: table
+    head: How the platform was built
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Integration record and what it implies
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S011_value_chain
+  'no': 11
+  section: business
+  archetype: table_full
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Value Chain & Stakeholder Map
+  purpose: 'Orient the reader: who does what in this industry, and where the Target sits.'
+  must_contain:
+  - 'Stakeholder table grouped into three bands: infrastructure providers, competitors, customers.'
+  - One row per stakeholder type with example providers (logos) and a 1–2 line description of the role.
+  - The Target's archetype row visually distinguished within the competitor band.
+  - Descriptions written for a reader new to the industry.
+  source_spec: Secondary research; expert interviews.
+  analysis: Position the Target precisely; make competitor vs supplier vs customer unambiguous.
+  exhibit_spec: Banded stakeholder table with logo cells and role descriptions.
+  quality_bar: A generalist IC member can navigate the rest of the report from this page alone.
+  primary_modules:
+  - MDF
+  fallback_modules:
+  - CSG
+  - CID
+  - SUP
+  secondary_modules:
+  - SUP
+  - CSG
+  - CID
+  metrics:
+  - mkt.definition
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S012_business_model_flow
+  'no': 12
+  section: business
+  archetype: flow_row
+  exhibit: lifecycle_flow
+  gate: core
+  provenance: blueprint
+  blueprint_title: Business Model Routes & Value-Chain Flow
+  purpose: Map the numbered routes customers take to the service — and which the Target addresses.
+  must_contain:
+  - Value-chain schematic with numbered routes (direct to infrastructure, via traditional intermediary,
+    via the Target's model, via the incumbent alternative).
+  - 'Detail panel explaining each numbered route: who uses it, why, and its economics and trade-offs.'
+  - Markers showing which routes are addressable to the Target, including legacy / resale offerings.
+  - Sub-line stating the structural takeaway about the Target's differentiated route.
+  source_spec: Expert interviews; secondary research; management materials.
+  analysis: Locate the Target's addressability by route; identify structural advantages per route.
+  exhibit_spec: Flow diagram with numbered routes + matching numbered detail column.
+  quality_bar: Every route drawn on the diagram has a corresponding detail entry — no orphan arrows.
+  primary_modules:
+  - CBG
+  - MDF
+  fallback_modules:
+  - EXS
+  - RVQ
+  - MSS
+  secondary_modules:
+  - RVQ
+  - MSS
+  metrics:
+  - fin.revenue_mix
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C11-MARGIN
+  - C4-MIX
+  source_priority:
+  - R1
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E6-SUITABILITY
+  heads:
+    flow_head: Route to market, end to end
+    right_head: Where value is captured
+  elements:
+  - name: flow
+    type: table
+    head: Route to market, end to end
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Where value is captured
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S013_business_model_comparison
+  'no': 13
+  section: business
+  archetype: table_full
+  exhibit: scorecard
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Business Model Comparison
+  purpose: Contrast the Target's model with the two incumbent archetypes it must beat.
+  must_contain:
+  - 'Three side-by-side schematics: incumbent model A, the Target''s model, incumbent model B.'
+  - Callout annotations on each schematic explaining flexibility, control, and integration differences.
+  - Strengths and weaknesses lists under each model, written from the customer's perspective.
+  - Title asserting what the Target's model uniquely combines from the other two.
+  source_spec: Management information; expert and customer interviews.
+  analysis: Contrast architecture, economics, and service posture; isolate the genuine combination advantage.
+  exhibit_spec: Three-panel model schematic with strengths / weaknesses blocks.
+  quality_bar: Comparison built on customers' selection criteria — not the Target's marketing deck.
+  primary_modules:
+  - CDF
+  - CID
+  fallback_modules: []
+  secondary_modules:
+  - MDF
+  - MPR
+  metrics:
+  - comp.archetypes
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S014_model_scorecard
+  'no': 14
+  section: business
+  archetype: table_full
+  exhibit: scorecard
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Model Scorecard vs Customer Selection Criteria
+  purpose: Score each model against what customers actually weigh — and read off right-to-win.
+  must_contain:
+  - Matrix rows = selection considerations (risk / liability, revenue model, technical flexibility, branding
+    control, onboarding speed).
+  - Columns = the competing models, each cell rated (most / more / less favourable) with a one-line rationale.
+  - Right-to-win impact gauges by customer segment for each consideration.
+  - Implications column translating each row into a consequence for the Target.
+  source_spec: Web survey; expert and customer interviews.
+  analysis: Score each model per criterion from evidence; convert scores into segment-level right-to-win.
+  exhibit_spec: Criteria × model matrix with favourability ratings, impact gauges, implications rail.
+  quality_bar: Each rating supported by at least one interview or survey datapoint.
+  primary_modules:
+  - BBH
+  - CDF
+  fallback_modules: []
+  secondary_modules:
+  - CSA
+  metrics:
+  - cust.purchase_criteria
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S015_barriers
+  'no': 15
+  section: business
+  archetype: two_panel
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Structural Barriers to Replication
+  purpose: Argue why incumbents cannot copy the Target's proposition — from economics, not hope.
+  must_contain:
+  - Two panels, one per incumbent archetype, each listing 2–3 structural barriers (technology model, cost
+    structure, historical positioning, channel conflict).
+  - A short explanation under each barrier of why it is structural rather than a current-state gap.
+  - Synthesis banner per archetype stating the conclusion in one sentence.
+  source_spec: Expert interviews; secondary research.
+  analysis: 'Stress-test each barrier: what investment or pivot would erode it, and how likely is that?'
+  exhibit_spec: Two-column barrier panels + synthesis banners.
+  quality_bar: '''Cannot replicate'' is argued from business-model economics — never merely asserted.'
+  primary_modules:
+  - CDF
+  - IPT
+  fallback_modules: []
+  secondary_modules:
+  - MSS
+  - RCO
+  metrics:
+  - comp.barrier
+  transform:
+  - T1-EXTRACT
+  - T12-COMPANY-VS-MARKET
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Structural barriers
+    right_head: Durability and what would erode them
+  elements:
+  - name: left
+    type: bullets
+    head: Structural barriers
+    limits:
+      max_items: 5
+      max_chars_item: 170
+  - name: right
+    type: bullets
+    head: Durability and what would erode them
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S016_pain_points
+  'no': 16
+  section: business
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Incumbent Pain Points vs Target Value Proposition
+  purpose: Pair every incumbent weakness with the Target capability that exploits it — and prove it with
+    quotes.
+  must_contain:
+  - Numbered pain points with the dominant incumbent model (cost, inflexibility, missing vertical depth,
+    weak support).
+  - The matching Target value proposition beside each pain point.
+  - Verbatim market commentary for each pair, quoted with the speaker's role and organisation type.
+  - Sub-line framing the displacement opportunity this creates.
+  source_spec: Competitor, customer, and churned-account interviews.
+  analysis: Map each pain point to a verified Target capability; let the market's own words carry the
+    claim.
+  exhibit_spec: 'Three-column layout: pain point → value proposition → supporting quote.'
+  quality_bar: Every pain point is paired with a real, attributed quote — no orphan claims.
+  primary_modules:
+  - CDF
+  - CSA
+  fallback_modules: []
+  secondary_modules:
+  - CID
+  - BBH
+  metrics:
+  - comp.differentiation
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Incumbent pain point vs target response
+    right_head: Strength of the evidence
+  elements:
+  - name: left
+    type: table
+    head: Incumbent pain point vs target response
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Strength of the evidence
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S017_roadmap
+  'no': 17
+  section: business
+  archetype: flow_row
+  exhibit: lifecycle_flow
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Platform Roadmap Beyond the Core
+  purpose: Show how the platform evolves from product to infrastructure — and label plans as plans.
+  must_contain:
+  - Current capability inventory grouped by product area (onboarding, core service, value-added solutions,
+    partner tooling).
+  - Planned extensions per area in a parallel 'to evolve into' column.
+  - 'Framing line: the platform becomes infrastructure that lets customers scale, monetise, and differentiate.'
+  - Monetisation implications of each extension noted briefly.
+  source_spec: Management roadmap; product materials; market interviews.
+  analysis: Assess roadmap credibility and sequencing against evidence of market demand.
+  exhibit_spec: Two-column now → next capability map by product area.
+  quality_bar: Roadmap items are clearly labelled as plans, never blended with current capability.
+  primary_modules:
+  - STR
+  - GRO
+  fallback_modules: []
+  secondary_modules:
+  - IPT
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    flow_head: Roadmap beyond the core
+    right_head: Feasibility and dependencies
+  elements:
+  - name: flow
+    type: table
+    head: Roadmap beyond the core
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Feasibility and dependencies
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S018_industry_trends
+  'no': 18
+  section: business
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Industry Trends & Implications
+  purpose: Close the primer with the structural tailwinds and headwinds that frame the thesis.
+  must_contain:
+  - Three to five industry trends, each with a 2–3 sentence description grounded in market evidence.
+  - Degree-of-impact rating per trend (high / medium) with a one-line justification.
+  - An explicit impact / implication statement for the Target on every trend.
+  - Trends chosen because they bear on the investment thesis — not generic sector commentary.
+  source_spec: Expert interviews; secondary research.
+  analysis: Rate impact and direction; connect each trend to a specific Target lever or risk.
+  exhibit_spec: 'Trend table: trend | description | impact chip + implication.'
+  quality_bar: Every trend ends in a so-what for the Target; no trend is decoration.
+  primary_modules:
+  - MDF
+  - DDR
+  fallback_modules:
+  - MRK
+  - RCO
+  - GRO
+  secondary_modules:
+  - MRK
+  - RCO
+  - ESG
+  metrics:
+  - mkt.demand_driver
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    left_head: Trend and its implication
+    right_head: Net read for the target
+  elements:
+  - name: left
+    type: table
+    head: Trend and its implication
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Net read for the target
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S019_div_highlights
+  'no': 19
+  section: highlights
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Investment Highlights
+  purpose: Signal the synthesis chapter — the case the IC can stop after.
+  must_contain:
+  - Section title only, on the standard divider layout.
+  - Consistent branding identical to other dividers.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Full-bleed branded section divider.
+  quality_bar: Divider title matches the contents page word-for-word.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S020_highlights_summary
+  'no': 20
+  section: highlights
+  archetype: numbered_rows
+  exhibit: banded_table
+  gate: derived
+  provenance: blueprint
+  blueprint_title: Investment Highlights Summary
+  purpose: The whole case on one page — written last, placed first.
+  must_contain:
+  - One banner row per workstream, numbered 1–5 (market · decision-making · customer feedback · competitive
+    positioning · growth).
+  - Two to three bolded highlight statements per row, each followed by its supporting clause.
+  - Quantified claims carry their key figures (market size, growth rate, satisfaction metrics) inline.
+  - Action title synthesising the transformation story and why dynamics favour the Target.
+  source_spec: The detailed findings sections of this report.
+  analysis: Distil each workstream to its 2–3 most defensible claims; cut anything not proven later.
+  exhibit_spec: Numbered highlight banner, one row per workstream.
+  quality_bar: The IC can stop here and know the answer — and every claim traces to a findings page.
+  primary_modules:
+  - EXS
+  - REC
+  fallback_modules: []
+  secondary_modules:
+  - SWO
+  - DCO
+  metrics: []
+  transform:
+  - T0-AUTO
+  - T10-NARRATIVE-TO-TABLE
+  - T2-COMBINE
+  - T3-SUMMARISE
+  - T6-CONCLUDE
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: rows
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+- id: S021_h1_market_size
+  'no': 21
+  section: highlights
+  archetype: chart_commentary
+  exhibit: walkdown
+  gate: core
+  provenance: blueprint
+  blueprint_title: Highlight 1 — Market Size (TAM / SAM / Served)
+  purpose: 'Establish the headline opportunity: how big, how serviceable, how contested.'
+  must_contain:
+  - 'Opportunity pyramid: TAM, SAM, and served market with $ values and component splits (core + adjacent
+    offering).'
+  - Segmented bar of the opportunity by customer size band, with channel mix inside each band.
+  - Opportunity definition strip stating what the TAM captures and at what economics.
+  - Workstream number chip tying the page to Highlight 1.
+  source_spec: Market model; web survey; secondary sizing sources; management data.
+  analysis: Size top-down, validate bottom-up; state inclusion / exclusion rules on-page.
+  exhibit_spec: Opportunity pyramid + segmented size-band bar.
+  quality_bar: Sizing traces to the appendix methodology page step-by-step.
+  primary_modules:
+  - MVG
+  fallback_modules:
+  - MDF
+  - GRO
+  secondary_modules:
+  - MDF
+  metrics:
+  - mkt.tam
+  - mkt.sam
+  - mkt.som
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: TAM / SAM / served market
+    right_head: Basis, sources and confidence
+  elements:
+  - name: chart
+    type: chart
+    head: TAM / SAM / served market
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Basis, sources and confidence
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S022_h1_sam_walkup
+  'no': 22
+  section: highlights
+  archetype: chart_commentary
+  exhibit: walkup
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Highlight 1 — SAM Expansion Walkup
+  purpose: Show the incremental opportunity the Target's new model unlocked.
+  must_contain:
+  - Walkup waterfall from core serviceable market to the expanded SAM, with the increment attributable
+    to the new offering.
+  - Channel / customer-type stacking inside each bar.
+  - Annotation of what product innovation added ($ value) and the new monetisation pathways opened.
+  - Sub-line stating what SAM excludes and why.
+  source_spec: Market model; management data.
+  analysis: Isolate the increment honestly; check for double counting between core and new opportunity.
+  exhibit_spec: Two-bar walkup waterfall with stacked channel splits and annotation.
+  quality_bar: The increment reconciles exactly with the TAM / SAM definitions used elsewhere.
+  primary_modules:
+  - MVG
+  - GRO
+  fallback_modules: []
+  secondary_modules:
+  - MDF
+  - MSS
+  metrics:
+  - mkt.sam
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: SAM expansion build
+    right_head: What each step assumes
+  elements:
+  - name: chart
+    type: chart
+    head: SAM expansion build
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: What each step assumes
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S023_h1_growth_drivers
+  'no': 23
+  section: highlights
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Highlight 1 — Market Growth Drivers
+  purpose: Decompose the growth outlook into named levers the IC can interrogate.
+  must_contain:
+  - Waterfall from current SAM to the 5-year SAM, one bar per growth lever, with the headline CAGR.
+  - Side rail defining each lever and its approximate share of total growth.
+  - Mix-shift-only levers flagged explicitly as channel shift, not incremental market growth.
+  - Channel-level CAGRs (faster-growing vs slower channel) beneath the chart.
+  source_spec: Market model; web survey; interviews; secondary sources.
+  analysis: Decompose the CAGR into levers; separate real expansion from channel mix shift.
+  exhibit_spec: Growth waterfall + lever definition rail with %-of-growth chips.
+  quality_bar: Lever contributions sum to the headline CAGR — arithmetic checked.
+  primary_modules:
+  - DDR
+  - MVG
+  fallback_modules:
+  - MVG
+  - MRK
+  secondary_modules:
+  - MRK
+  metrics:
+  - mkt.demand_driver
+  - mkt.cagr
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    left_head: Driver, magnitude and evidence
+    right_head: Net growth read
+  elements:
+  - name: left
+    type: table
+    head: Driver, magnitude and evidence
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Net growth read
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S024_h1_recession
+  'no': 24
+  section: highlights
+  archetype: chart_commentary
+  exhibit: line_series
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Highlight 1 — Recession Resilience
+  purpose: Prove the market grows through downturns, not just in good times.
+  must_contain:
+  - Long-run market size vs GDP-growth dual-axis chart (20+ years).
+  - Recession windows annotated with period CAGRs for both series (market vs GDP).
+  - Takeaway banner stating the resilience conclusion in one sentence.
+  - Workstream chip and sub-line tying resilience to the Target's diversified exposure.
+  source_spec: Historical market estimates; macroeconomic data (e.g., FRED).
+  analysis: Compare market vs GDP growth through at least two downturns; test the durability argument.
+  exhibit_spec: Dual-axis time series with recession callout boxes.
+  quality_bar: The resilience claim is grounded in two or more historical downturns.
+  primary_modules:
+  - MRK
+  fallback_modules: []
+  secondary_modules:
+  - SNS
+  - DDR
+  - RVQ
+  metrics:
+  - mkt.recession_sensitivity
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Behaviour through the last downturn
+    right_head: Why demand held or did not
+  elements:
+  - name: chart
+    type: chart
+    head: Behaviour through the last downturn
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Why demand held or did not
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S025_h2_demand_alignment
+  'no': 25
+  section: highlights
+  archetype: table_commentary
+  exhibit: scorecard
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Highlight 2 — Demand Alignment
+  purpose: Chain the market's buying behaviour to the Target's platform fit.
+  must_contain:
+  - 'Four-panel argument chain: customers shifting to the new model → shared buying criteria varying by
+    size → vertical functionality mattering → the Target flexibly serving both groups.'
+  - Two to four evidence bullets per panel, grounded in survey and interview findings.
+  - Footer proof bar linking the argument to named Target capabilities.
+  - Panel headers written as a connected sentence across the page.
+  source_spec: Web survey; interviews.
+  analysis: Build the argument chain so each panel is evidenced, then land on capability fit.
+  exhibit_spec: Four-column argument panels + footer capability bar.
+  quality_bar: Each panel cites its evidence base — this page argues, it does not assert.
+  primary_modules:
+  - DDR
+  - BBH
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  - CDF
+  metrics:
+  - cust.purchase_criteria
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    left_head: What buyers need vs what the target offers
+    right_head: Where alignment is weakest
+  elements:
+  - name: left
+    type: table
+    head: What buyers need vs what the target offers
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Where alignment is weakest
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S026_h2_lifecycle_fit
+  'no': 26
+  section: highlights
+  archetype: flow_row
+  exhibit: lifecycle_flow
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Highlight 2 — Customer Lifecycle Fit
+  purpose: Show where in the customer lifecycle the Target wins, and why it keeps winning.
+  must_contain:
+  - Lifecycle / maturity curve locating when customers start evaluating providers like the Target, with
+    the GTM sweet spot annotated (size band).
+  - Notes on stickiness once adopted and the minimal graduation risk below the largest tier.
+  - Ranked purchase-criteria index chart from the survey [n = X] beside the curve.
+  - Synthesis rail linking the Target's strengths to the top-ranked criteria.
+  source_spec: Web survey; interviews.
+  analysis: Locate the switching window; align the Target's strengths against the highest-ranked criteria.
+  exhibit_spec: Annotated lifecycle curve + indexed criteria bar chart + synthesis rail.
+  quality_bar: The sweet-spot claim is consistent with the decision-making chapter's evidence.
+  primary_modules:
+  - CST
+  - BBH
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  metrics:
+  - cust.retention
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    flow_head: Customer lifecycle and where the target fits
+    right_head: Evidence and gaps
+  elements:
+  - name: flow
+    type: table
+    head: Customer lifecycle and where the target fits
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Evidence and gaps
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S027_h3_satisfaction
+  'no': 27
+  section: highlights
+  archetype: chart_commentary
+  exhibit: nps_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Highlight 3 — Customer Satisfaction
+  purpose: Let the Target's customers make the satisfaction case in their own words.
+  must_contain:
+  - Driver rows for the recurring satisfaction themes (ease of use, customer service, speed of delivery,
+    competitive pricing).
+  - Commentary column summarising the evidence per driver.
+  - One to two verbatim customer quotes per driver, attributed by role.
+  - Sub-line framing the base as stable and satisfied.
+  source_spec: Customer interviews.
+  analysis: Extract recurring drivers across interviews; separate satisfaction from active advocacy.
+  exhibit_spec: Driver | commentary | quote table.
+  quality_bar: Quotes are attributed and representative — not cherry-picked outliers.
+  primary_modules:
+  - CSA
+  fallback_modules: []
+  secondary_modules:
+  - CST
+  metrics:
+  - cust.nps
+  - cust.satisfaction
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C10-DELTA
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  - E3-CONFLICT
+  heads:
+    chart_head: Satisfaction and advocacy
+    right_head: What drives the score
+  elements:
+  - name: chart
+    type: chart
+    head: Satisfaction and advocacy
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: What drives the score
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S028_h4_incumbent_dissatisfaction
+  'no': 28
+  section: highlights
+  archetype: chart_commentary
+  exhibit: grouped_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Highlight 4 — Incumbent Dissatisfaction
+  purpose: Quantify the frustration with incumbents that creates the Target's wedge.
+  must_contain:
+  - Numbered structural pain points with the legacy model (economics, undifferentiated product, missing
+    vertical expertise, poor support).
+  - 'NPS stacked bars for the incumbent''s customer groups: detractor / passive / promoter splits with
+    NPS values and n.'
+  - Framing line connecting dissatisfaction to switching potential for the Target.
+  source_spec: Web survey; interviews.
+  analysis: Compute NPS by segment; link each pain point to observed switching intent.
+  exhibit_spec: Pain-point list + NPS stacked bars with n labels.
+  quality_bar: NPS sample sizes shown; small-n cells flagged rather than hidden.
+  primary_modules:
+  - CSA
+  - CID
+  fallback_modules: []
+  secondary_modules:
+  - CDF
+  - BBH
+  metrics:
+  - cust.satisfaction
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C12-AVERAGE
+  - C9-INDEX
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    chart_head: Dissatisfaction with incumbents
+    right_head: The opening this creates
+  elements:
+  - name: chart
+    type: chart
+    head: Dissatisfaction with incumbents
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: The opening this creates
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S029_h4_differentiation
+  'no': 29
+  section: highlights
+  archetype: table_full
+  exhibit: scorecard
+  gate: core
+  provenance: blueprint
+  blueprint_title: Highlight 4 — Competitive Differentiation
+  purpose: Position the Target against competitor archetypes on the criteria that decide deals.
+  must_contain:
+  - Three numbered differentiation claims (platform performance, support quality, flexibility), each with
+    supporting evidence bullets.
+  - Heat matrix of competitor archetypes vs key criteria (functionality, flexibility, adaptability, support,
+    cost).
+  - Synthesis banner stating the opportunity as demands evolve toward the Target's model.
+  source_spec: Web survey; interviews.
+  analysis: Benchmark archetypes on the criteria customers rank highest; validate the Target's cells externally.
+  exhibit_spec: Archetype × criteria heat matrix + numbered claims rail.
+  quality_bar: The Target's scores are third-party evidenced — never self-reported by management.
+  primary_modules:
+  - CDF
+  fallback_modules:
+  - CID
+  - SWO
+  - CSA
+  secondary_modules:
+  - CID
+  - CSA
+  metrics:
+  - comp.differentiation
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S030_h4_full_suite
+  'no': 30
+  section: highlights
+  archetype: chart_commentary
+  exhibit: grouped_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Highlight 4 — Full-Suite Offering Receptivity
+  purpose: Show the market wants the integrated model the Target is building.
+  must_contain:
+  - 'Capability panel: core capabilities + value-added services, including vertical-specific modules,
+    with an upside note on expansion.'
+  - 'Survey stacked bars: likelihood to switch to a full-suite provider by customer type, with means,
+    top-2 shares, and n.'
+  - Sub-line noting the model lets customers easily replace or upgrade incumbents.
+  source_spec: Web survey; management materials.
+  analysis: Quantify receptivity by customer type; connect stated appetite to the capability inventory.
+  exhibit_spec: Capability inventory panel + likelihood-to-switch stacked bars.
+  quality_bar: Receptivity is read alongside stated switching barriers — not in isolation.
+  primary_modules:
+  - GRO
+  - CDF
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  - MPR
+  metrics:
+  - cust.wtp
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C12-AVERAGE
+  - C9-INDEX
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    chart_head: Receptivity to a full-suite offer
+    right_head: Willingness to pay and caveats
+  elements:
+  - name: chart
+    type: chart
+    head: Receptivity to a full-suite offer
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Willingness to pay and caveats
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S031_h5_growth_levers
+  'no': 31
+  section: highlights
+  archetype: numbered_rows
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Highlight 5 — Growth Levers
+  purpose: 'Lay out the growth agenda: seven levers, sequenced by proximity to the core.'
+  must_contain:
+  - 'Opportunity matrix plotting the numbered levers by proximity to core (x) and horizon (grouping: core
+    / near adjacency / expansion).'
+  - 'Lever table: each numbered growth area with the advisor''s perspective and considerations.'
+  - Levers span new customers, new partners, product utilisation, pricing, new segments, product expansion,
+    and M&A.
+  - Every lever cross-references its deep-dive page in the growth chapter.
+  source_spec: Findings sections; management strategy materials.
+  analysis: Sequence levers by readiness and proximity; separate core momentum from expansion bets.
+  exhibit_spec: 2-axis opportunity matrix + lever perspective table.
+  quality_bar: Every lever on the matrix has a perspective row — and vice versa.
+  primary_modules:
+  - GRO
+  fallback_modules:
+  - STR
+  - REC
+  - SYN
+  secondary_modules:
+  - STR
+  - SYN
+  - MSS
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T3-SUMMARISE
+  - T6-CONCLUDE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: rows
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+- id: S032_div_market
+  'no': 32
+  section: market
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Detailed Findings
+  purpose: Open the findings section and list its four chapters.
+  must_contain:
+  - 'Section title with the four workstream chapters listed: Market Dynamics & Opportunity · Decision-Making
+    Dynamics · Competitive Landscape · Growth Opportunities.'
+  - Standard divider branding; repeated before each chapter with the current chapter highlighted.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with chapter list.
+  quality_bar: Chapter list matches the contents page exactly.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S033_icp_mapping
+  'no': 33
+  section: market
+  archetype: table_full
+  exhibit: heat_grid
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Ideal Customer Profile Mapping
+  purpose: Define precisely who the Target's model is built for — by size, vertical, and type.
+  must_contain:
+  - 'Heat grid: customer size band (rows) × industry vertical (columns) × customer type (sub-rows), rated
+    very low → very high fit.'
+  - The ICP zone outlined and labelled; enterprise-tier rows annotated with why addressability is limited.
+  - Side callouts explaining what drives high fit (purpose-built functionality) and where fit could be
+    built.
+  - Sub-line noting this reflects the new model specifically, distinct from legacy offerings.
+  source_spec: Management data; interviews.
+  analysis: Define ICP from demonstrated fit and win evidence — not aspiration.
+  exhibit_spec: ICP heat grid with outlined zone and explanatory callouts.
+  quality_bar: ICP boundaries are consistent with the sizing exclusions used in the market chapter.
+  primary_modules:
+  - CSG
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  - RVQ
+  metrics:
+  - cust.segments
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S034_market_definitions
+  'no': 34
+  section: market
+  archetype: table_full
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Market Opportunity Definitions
+  purpose: Make every sizing boundary explicit before any number is shown.
+  must_contain:
+  - 'Left rail: TAM / SAM / served market pyramid with $ values for each component (core opportunity +
+    adjacent offering).'
+  - 'Definition columns for each component: what each level includes, what it excludes, and why.'
+  - Explicit notes on exclusions (segments that self-serve, uneconomic micro tiers) and where TAM equals
+    SAM and why.
+  - Component tags (A / B) reused on every subsequent sizing page.
+  source_spec: Market model.
+  analysis: Write inclusion / exclusion logic that survives IC interrogation; tag components consistently.
+  exhibit_spec: 'Definition table: opportunity level × component, with the value rail.'
+  quality_bar: These definitions match every later chart that uses them — no silent redefinition.
+  primary_modules:
+  - MDF
+  fallback_modules:
+  - MVG
+  - CSG
+  secondary_modules:
+  - MVG
+  metrics:
+  - mkt.definition
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S035_volume_narrowing
+  'no': 35
+  section: market
+  archetype: chart_commentary
+  exhibit: walkdown
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Addressable Volume Narrowing
+  purpose: Walk from total market volume to what is structurally addressable.
+  must_contain:
+  - 'Three-bar narrowing waterfall: total volume → volume in less-addressable verticals removed → addressable
+    volume.'
+  - Vertical composition (%) inside each bar; excluded verticals in grey, retained in brand colour.
+  - 'Note box explaining the exclusion logic: structural misalignment, direct relationships, internalised
+    alternatives.'
+  - Percentage retained annotated between bars.
+  source_spec: Government / industry statistics; secondary sizing sources.
+  analysis: Exclude verticals by stated structural criteria — never by convenience.
+  exhibit_spec: Three-bar waterfall with per-vertical stacking and exclusion note.
+  quality_bar: Every removed vertical has its exclusion rationale stated on-page.
+  primary_modules:
+  - MVG
+  - MDF
+  fallback_modules: []
+  secondary_modules: []
+  metrics:
+  - mkt.volume
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: From universe to addressable volume
+    right_head: Each narrowing step and its source
+  elements:
+  - name: chart
+    type: chart
+    head: From universe to addressable volume
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Each narrowing step and its source
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S036_volume_by_channel
+  'no': 36
+  section: market
+  archetype: chart_commentary
+  exhibit: stacked_bar
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Addressable Volume by Channel
+  purpose: Split addressable volume by route-to-customer across the retained verticals.
+  must_contain:
+  - 100% stacked bars per vertical showing channel mix (partner-led vs independent), ordered by volume.
+  - Absolute volume totals above each vertical bar and sigma totals per channel at the right.
+  - Commentary on where channel adoption lags or leads by vertical.
+  - Total addressable volume callout in the corner.
+  source_spec: Market model; web survey; secondary sources.
+  analysis: Estimate channel mix per vertical from survey base rates plus secondary evidence.
+  exhibit_spec: 100% stacked vertical bars with absolute totals and channel sigmas.
+  quality_bar: Channel splits are consistent with the survey base rates reported earlier.
+  primary_modules:
+  - MVG
+  - MSS
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  metrics:
+  - mkt.volume
+  - mkt.segment_share
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Addressable volume by channel
+    right_head: Channel economics and reach
+  elements:
+  - name: chart
+    type: chart
+    head: Addressable volume by channel
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Channel economics and reach
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S037_tam_walkdown
+  'no': 37
+  section: market
+  archetype: chart_commentary
+  exhibit: walkdown
+  gate: core
+  provenance: blueprint
+  blueprint_title: TAM by Segment & Walkdown to SAM
+  purpose: Quantify the revenue opportunity and remove the segments the Target cannot serve.
+  must_contain:
+  - 'Left panel: TAM split by customer size band (100% stacked with channel mix inside each band, absolute
+    $ above).'
+  - 'Right panel: walkdown waterfall TAM → less-serviceable segments removed → SAM.'
+  - Explicit statement of the removed segments (top tier that self-serves; micro tier that is uneconomic).
+  - Draft pages carry a 'Preliminary' tag until the model is locked.
+  source_spec: Market model; survey; secondary sources.
+  analysis: Apply the serviceability filters defined on the definitions page; keep the arithmetic visible.
+  exhibit_spec: Segmented TAM bar + walkdown waterfall.
+  quality_bar: Walkdown arithmetic sums exactly; removals match the ICP page.
+  primary_modules:
+  - MVG
+  - MDF
+  fallback_modules:
+  - MDF
+  - CSG
+  secondary_modules:
+  - CSG
+  metrics:
+  - mkt.tam
+  - mkt.sam
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: TAM by segment, walked down to SAM
+    right_head: Exclusions and why
+  elements:
+  - name: chart
+    type: chart
+    head: TAM by segment, walked down to SAM
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Exclusions and why
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S038_sam_by_endmarket
+  'no': 38
+  section: market
+  archetype: chart_commentary
+  exhibit: stacked_bar
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: SAM by End-Market & Channel — Served Market
+  purpose: 'Locate the competitive battleground: who currently serves the serviceable market.'
+  must_contain:
+  - 'Twin panels: SAM for each channel (independent vs partner-led), split by end-market, ordered by size.'
+  - 'Served-market shading inside every bar: share via third-party providers vs direct / in-house.'
+  - Provider-type totals in the legend ($ via third parties vs direct).
+  - Sub-line stating the served-market estimate and the displacement logic it implies.
+  source_spec: Market model; web survey; secondary sources.
+  analysis: Estimate current provider mix per end-market; define the near-term contestable pool.
+  exhibit_spec: Twin stacked-bar panels with served-market shading and totals.
+  quality_bar: The served-market estimate reconciles with competitor share evidence.
+  primary_modules:
+  - MVG
+  - MSS
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  metrics:
+  - mkt.sam
+  - mkt.som
+  - mkt.segment_share
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: SAM by end-market and channel
+    right_head: Served share and headroom
+  elements:
+  - name: chart
+    type: chart
+    head: SAM by end-market and channel
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Served share and headroom
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S039_value_added_services
+  'no': 39
+  section: market
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Value-Added Services Opportunity
+  purpose: Size the attach opportunity beyond the core service.
+  must_contain:
+  - 'Left panel: VAS TAM split by customer type, stacked by monetisation mechanism (subscription fee vs
+    per-unit uplift), with the pricing assumptions named.'
+  - 'Right panel: served vs whitespace split of the VAS market by customer type.'
+  - Per-customer economics stated in the legend ($ per customer per year; uplift rate).
+  - 'Sub-line: how VAS is monetised and why it is upside to the core opportunity.'
+  source_spec: Market model; price benchmarks; management price sheets.
+  analysis: Size the attach opportunity from stated per-customer economics; separate served from whitespace.
+  exhibit_spec: Two stacked-bar panels with assumption footnotes.
+  quality_bar: Pricing assumptions are benchmarked to real price points — not invented.
+  primary_modules:
+  - GRO
+  - MPR
+  fallback_modules: []
+  secondary_modules:
+  - RVQ
+  metrics:
+  - mkt.price_benchmark
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    left_head: Service, attach rate and price point
+    right_head: Revenue potential and evidence
+  elements:
+  - name: left
+    type: table
+    head: Service, attach rate and price point
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Revenue potential and evidence
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S040_growth_factors_overview
+  'no': 40
+  section: market
+  archetype: numbered_rows
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Market Growth Factors — Overview
+  purpose: Name the five forces expanding the market before deep-diving each one.
+  must_contain:
+  - 'Numbered market factors (~5): underlying demand growth, mix shift to monetizable modes, channel adoption,
+    pricing stability, attach-rate growth.'
+  - Description and implication for each factor in 2–3 sentences.
+  - Numbered chips that recur on the following deep-dive pages (one page per factor).
+  - Direction / magnitude of each factor noted.
+  source_spec: Web survey; interviews; secondary research.
+  analysis: Identify the forces that genuinely expand or shift the addressable pool.
+  exhibit_spec: Factor table with numbered chips and implication column.
+  quality_bar: Every factor listed here has a dedicated evidence page immediately following.
+  primary_modules:
+  - DDR
+  - MVG
+  fallback_modules:
+  - MVG
+  - MRK
+  secondary_modules:
+  - MRK
+  metrics:
+  - mkt.cagr
+  - mkt.demand_driver
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads: {}
+  elements:
+  - name: rows
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+- id: S041_gf1_demand
+  'no': 41
+  section: market
+  archetype: chart_commentary
+  exhibit: line_series
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Growth Factor 1 — Underlying Demand Growth
+  purpose: Evidence that spend in the Target's verticals grows consistently.
+  must_contain:
+  - Target's current mix by vertical (snapshot panel) for context.
+  - Long-run (~20-year) revenue index by core vertical with per-vertical CAGRs listed.
+  - Recession-window annotation showing growth stayed positive through the downturn.
+  - Methodology note naming the statistical proxy used for each vertical.
+  source_spec: Government statistical series (census, economic data); management data.
+  analysis: Build defensible per-vertical growth proxies; compute long-run and recession-period CAGRs.
+  exhibit_spec: Multi-line indexed time series + mix snapshot + CAGR rail.
+  quality_bar: The proxy series behind each vertical is documented in the note.
+  primary_modules:
+  - DDR
+  fallback_modules: []
+  secondary_modules:
+  - MVG
+  metrics:
+  - mkt.demand_driver
+  - mkt.cagr
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Underlying demand series
+    right_head: Driver mechanics and durability
+  elements:
+  - name: chart
+    type: chart
+    head: Underlying demand series
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Driver mechanics and durability
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S042_gf2_mix_shift
+  'no': 42
+  section: market
+  archetype: chart_commentary
+  exhibit: stacked_bar
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Growth Factor 2 — Mix Shift to Monetizable Modes
+  purpose: Show behaviour shifting toward the modes the Target monetises.
+  must_contain:
+  - Horizontal 100% stacked bars by year (~8-year series) of end-user behaviour mix, with the monetizable
+    modes gaining share.
+  - 'Commentary rail: the structural drivers of the shift, with 1–2 verbatim quotes (e.g., generational
+    behaviour, omnichannel expectations).'
+  - 'Framing line: the shift expands the monetizable base for providers like the Target.'
+  - Data-gap footnote where series years are missing.
+  source_spec: Public statistical series; interviews.
+  analysis: Quantify the displacement trend; translate share shift into volume implications.
+  exhibit_spec: Stacked-bar time series + quote commentary rail.
+  quality_bar: Series source and any data gaps are disclosed in footnotes.
+  primary_modules:
+  - DDR
+  - CSG
+  fallback_modules: []
+  secondary_modules:
+  - MSS
+  - RVQ
+  - MVG
+  metrics:
+  - mkt.segment_share
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Mix shift to monetizable modes
+    right_head: Why the shift is happening
+  elements:
+  - name: chart
+    type: chart
+    head: Mix shift to monetizable modes
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Why the shift is happening
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S043_gf3_channel_adoption
+  'no': 43
+  section: market
+  archetype: chart_commentary
+  exhibit: line_series
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Growth Factor 3 — Channel Adoption
+  purpose: Triangulate preference, current behaviour, and intent for the emerging channel.
+  must_contain:
+  - 'Panel 1: customer preference for embedded / integrated vs standalone (1–7 scale stacked bar; mean,
+    top-2, n).'
+  - 'Panel 2: current approach mix among partner organisations (% by approach).'
+  - 'Panel 3: non-adopters'' likelihood to adopt via a third party (scale stacked bar; mean, n).'
+  - Commentary rail synthesising the three panels with a supporting quote.
+  source_spec: Web survey; interviews.
+  analysis: Keep stated preference and behavioural intent distinct; report all scales and n's.
+  exhibit_spec: Three survey stacked-bar panels + commentary rail.
+  quality_bar: Preference vs intent distinction preserved — they are different claims.
+  primary_modules:
+  - MSS
+  - DDR
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  - MVG
+  metrics:
+  - mkt.segment_share
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Adoption of the emerging channel
+    right_head: Adoption drivers and blockers
+  elements:
+  - name: chart
+    type: chart
+    head: Adoption of the emerging channel
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Adoption drivers and blockers
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S044_gf3_channel_stickiness
+  'no': 44
+  section: market
+  archetype: chart_commentary
+  exhibit: nps_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Growth Factor 3 — Stickiness of the Emerging Channel
+  purpose: Show that once adopted, the emerging channel is harder to leave.
+  must_contain:
+  - 'Difficulty-to-switch stacked bars: emerging channel vs legacy standalone (1–7 scale; means, top-2,
+    n).'
+  - 'Commentary: why deep workflow integration raises switching costs, with 2 verbatim quotes on mechanism.'
+  - 'Implication line: as the Target grows in this channel, retention economics improve.'
+  source_spec: Web survey; interviews.
+  analysis: Compare switching friction across channels; tie the gap to a causal mechanism.
+  exhibit_spec: Paired stacked bars + mechanism commentary with quotes.
+  quality_bar: The stickiness claim rests on mechanism plus data — not scores alone.
+  primary_modules:
+  - CST
+  - MSS
+  fallback_modules: []
+  secondary_modules:
+  - CSA
+  metrics:
+  - cust.retention
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C10-DELTA
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    chart_head: Stickiness once adopted
+    right_head: What keeps buyers in the channel
+  elements:
+  - name: chart
+    type: chart
+    head: Stickiness once adopted
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: What keeps buyers in the channel
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S045_gf4_pricing_stability
+  'no': 45
+  section: market
+  archetype: chart_commentary
+  exhibit: line_series
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Growth Factor 4 — Pricing & Margin Stability
+  purpose: Decompose pricing to show provider economics hold or improve.
+  must_contain:
+  - Stacked bar decomposing gross pricing into pass-through cost vs provider residual, with typical ranges.
+  - Expected-trajectory table per layer (overall rate / provider residual / pass-through) with direction
+    arrows.
+  - 'Commentary rail: quotes supporting stability or modest growth per layer.'
+  - Note on the structural reasons providers defend their share (service quality, value-added tools).
+  source_spec: Interviews; industry benchmarks.
+  analysis: Decompose the price stack; assess compression risk layer by layer.
+  exhibit_spec: Pricing decomposition bar + trajectory table + quote rail.
+  quality_bar: Trajectory claims are sourced to market participants, not extrapolation.
+  primary_modules:
+  - MPR
+  fallback_modules: []
+  secondary_modules:
+  - CSC
+  - RVQ
+  metrics:
+  - mkt.price_benchmark
+  - fin.gross_margin
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C11-MARGIN
+  - C4-MIX
+  - C7-CAGR
+  source_priority:
+  - R1
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  - E6-SUITABILITY
+  heads:
+    chart_head: Price and margin through the cycle
+    right_head: Pricing power and pass-through
+  elements:
+  - name: chart
+    type: chart
+    head: Price and margin through the cycle
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Pricing power and pass-through
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S046_sam_growth_build
+  'no': 46
+  section: market
+  archetype: table_chart
+  exhibit: walkup
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: SAM Growth Build (Detailed)
+  purpose: The full 5-year growth model behind the highlights-page waterfall.
+  must_contain:
+  - Growth waterfall from current SAM to 5-year SAM, one bar per lever, with headline CAGR.
+  - 'Left rail: each lever defined with its ~% share of total growth.'
+  - Mix-shift-only levers flagged as structural channel change, not incremental growth.
+  - 'End-state definition note: what the terminal-year figure includes; channel CAGRs beneath.'
+  source_spec: Market model; survey; interviews; secondary sources.
+  analysis: Quantify each lever's contribution and document its assumptions.
+  exhibit_spec: Waterfall + lever contribution rail with % chips.
+  quality_bar: Matches the Investment Highlights version to the dollar.
+  primary_modules:
+  - MVG
+  fallback_modules: []
+  secondary_modules:
+  - DDR
+  - MSS
+  metrics:
+  - mkt.sam
+  - mkt.cagr
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    left_head: Growth build by factor
+    right_head: SAM trajectory
+  elements:
+  - name: left
+    type: table
+    head: Growth build by factor
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: chart
+    head: SAM trajectory
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S047_scenario_analysis
+  'no': 47
+  section: market
+  archetype: table_full
+  exhibit: scenario_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Scenario Analysis
+  purpose: Bound the outlook with honest bear / base / bull cases per channel.
+  must_contain:
+  - 'Twin panels (one per channel): current vs terminal-year SAM under bear / base / bull, with CAGR per
+    case.'
+  - Annotation of what differentiates the cases (the highest-impact assumptions flexed).
+  - Note on which channel benefits disproportionately and why.
+  - 'Range framing: both channels grow meaningfully within a narrow band.'
+  source_spec: Market model sensitivity runs.
+  analysis: Flex the assumptions that matter most; name them — avoid arbitrary ±% cases.
+  exhibit_spec: Grouped scenario bars, twin panels by channel.
+  quality_bar: Scenario drivers are named on-page; ranges are defensible.
+  primary_modules:
+  - SNS
+  fallback_modules: []
+  secondary_modules:
+  - MVG
+  - FVR
+  - MRK
+  metrics:
+  - val.sensitivity
+  - mkt.cagr
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C14-SUM
+  - C15-NET
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R1
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  - E6-SUITABILITY
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S048_downturn_resilience
+  'no': 48
+  section: market
+  archetype: chart_commentary
+  exhibit: line_series
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Downturn Resilience (Detailed)
+  purpose: The full evidence base for the countercyclical claim.
+  must_contain:
+  - Long-run SAM vs GDP-growth series with recession windows and period CAGRs annotated.
+  - 'Mechanism callouts: (1) mission-critical nature of the service; (2) countercyclical pricing dynamics
+    — each with a supporting quote.'
+  - Takeaway banner restating the resilience conclusion.
+  - 'Indexing note: how the historical series was constructed.'
+  source_spec: Historical market estimates; macro data; interviews.
+  analysis: Evidence both resilience mechanisms independently; index the series transparently.
+  exhibit_spec: Annotated dual-axis time series + two mechanism callouts.
+  quality_bar: Each mechanism is supported by a quote or datapoint — not narrative alone.
+  primary_modules:
+  - MRK
+  - SNS
+  fallback_modules: []
+  secondary_modules:
+  - RVQ
+  - DDR
+  - CFL
+  - CSC
+  metrics:
+  - mkt.recession_sensitivity
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Downturn behaviour, modelled
+    right_head: Resilience mechanisms and their limits
+  elements:
+  - name: chart
+    type: chart
+    head: Downturn behaviour, modelled
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Resilience mechanisms and their limits
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S049_risk_assessment
+  'no': 49
+  section: market
+  archetype: table_commentary
+  exhibit: risk_matrix
+  gate: core
+  provenance: blueprint
+  blueprint_title: Risk Assessment
+  purpose: Carry every thesis risk to a named severity and a mitigant.
+  must_contain:
+  - 'Risk rows: disintermediation (customers going direct), macro pressure on the core segment, technology
+    substitution, margin compression from price transparency.'
+  - Severity gauge per risk (low → high) set by evidence.
+  - 'Market assessment column: what the evidence says, with a quote or datapoint per risk.'
+  - 'Implication column: the Target''s mitigants and residual exposure.'
+  source_spec: Interviews; web survey; secondary research.
+  analysis: Rate likelihood and severity from evidence; test each mitigant honestly.
+  exhibit_spec: Risk table with severity gauges and implication rail.
+  quality_bar: Every risk raised anywhere in the deck is resolved or carried here.
+  primary_modules:
+  - MRK
+  - IRK
+  fallback_modules:
+  - IRK
+  - OPR
+  - SCR
+  - RCO
+  secondary_modules:
+  - OPR
+  - SCR
+  - RCO
+  metrics:
+  - risk.item
+  - risk.regulatory
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C6-RISK-SCORE
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  heads:
+    left_head: Risk register - impact x likelihood
+    right_head: Mitigations and residual exposure
+  elements:
+  - name: left
+    type: table
+    head: Risk register - impact x likelihood
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Mitigations and residual exposure
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S050_div_decisions
+  'no': 50
+  section: decisions
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Decision-Making Dynamics
+  purpose: Re-show the findings divider with this chapter highlighted.
+  must_contain:
+  - Four-chapter list with Decision-Making Dynamics highlighted as current.
+  - Standard divider branding.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with chapter list, current chapter emphasised.
+  quality_bar: Highlight state matches the reader's position in the deck.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S051_partner_switching_lifecycle
+  'no': 51
+  section: decisions
+  archetype: flow_row
+  exhibit: lifecycle_flow
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Partner Switching Lifecycle
+  purpose: Locate the window in a partner's maturity when providers get switched.
+  must_contain:
+  - Maturity curve (adoption vs time) with early-stage priorities (speed, simplicity) vs scaled priorities
+    (economics, control) annotated.
+  - 'The switching window highlighted: where most provider reassessment occurs, with the adoption-range
+    trigger.'
+  - Note on the largest tier that eventually goes direct — and why that is rare.
+  - 'Synthesis bar: why these dynamics favour the Target''s economics and flexibility.'
+  source_spec: Interviews.
+  analysis: Define switching triggers by lifecycle stage; identify where the Target should intercept.
+  exhibit_spec: Annotated lifecycle curve with highlighted switching window.
+  quality_bar: The window claim is consistent with the churn-trigger data later in the deck.
+  primary_modules:
+  - BBH
+  - SUP
+  fallback_modules: []
+  secondary_modules:
+  - CST
+  metrics:
+  - cust.switching_trigger
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    flow_head: Partner switching lifecycle
+    right_head: Where partners are won and lost
+  elements:
+  - name: flow
+    type: table
+    head: Partner switching lifecycle
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Where partners are won and lost
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S052_switching_drivers
+  'no': 52
+  section: decisions
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Customer Switching Drivers
+  purpose: Explain why end customers move, and what they gain when they do.
+  must_contain:
+  - Driver rows (e.g., partner rolls out an integrated solution; customer scales past its current provider)
+    with descriptions.
+  - 'Benefit chips per driver: integration depth, experience, economics, support.'
+  - Overview column detailing each benefit in 1–2 sentences.
+  - 'Implication rail: how the Target captures volume from each driver.'
+  source_spec: Interviews; web survey.
+  analysis: Separate push factors (incumbent failure) from pull factors (new-model advantages).
+  exhibit_spec: Driver → benefits → overview table with implication rail.
+  quality_bar: Each driver is evidenced by a quote or survey statistic.
+  primary_modules:
+  - BBH
+  - CST
+  fallback_modules: []
+  secondary_modules:
+  - CSA
+  - MPR
+  metrics:
+  - cust.switching_trigger
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Trigger, frequency and evidence
+    right_head: Implication for win rate
+  elements:
+  - name: left
+    type: table
+    head: Trigger, frequency and evidence
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Implication for win rate
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S053_decision_tree
+  'no': 53
+  section: decisions
+  archetype: flow_row
+  exhibit: decision_tree
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Customer Decision Tree
+  purpose: Map every path a switching customer can take — and where the Target wins.
+  must_contain:
+  - Trigger events on the left feeding yes / no decision nodes.
+  - 'Branches resolving to outcomes: adopt the partner-embedded option, choose a standalone third party
+    (which type?), or stay.'
+  - Markers on every path where the Target is addressable (embedded, standalone, resale).
+  - Annotations explaining what drives each branch choice.
+  source_spec: Interviews.
+  analysis: Trace decision paths from real switching stories; locate the Target's entry points on each.
+  exhibit_spec: Left-to-right decision tree with outcome rail and addressability markers.
+  quality_bar: Every leaf node states who wins that path and why.
+  primary_modules:
+  - BBH
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  metrics:
+  - cust.decision_process
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    flow_head: How a buyer reaches a decision
+    right_head: Where deals are lost
+  elements:
+  - name: flow
+    type: table
+    head: How a buyer reaches a decision
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Where deals are lost
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S054_decision_process
+  'no': 54
+  section: decisions
+  archetype: table_full
+  exhibit: heat_grid
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Decision Process & Stakeholders by Segment
+  purpose: Contrast how small, startup, and sophisticated buyers actually decide.
+  must_contain:
+  - 'Three columns: small customers · small startup partners · large sophisticated organisations.'
+  - Decision-making process per column (owner-led and fast → default-brand quick picks → formal multi-stakeholder
+    RFP).
+  - Decision timeline stats per column with survey n's (e.g., % deciding within 4–12 months).
+  - Key decision-makers and influencers mapped per column (owner; C-suite; cross-functional + external
+    influencers).
+  source_spec: Web survey; interviews.
+  analysis: Contrast processes across segments; extract the GTM motion each requires.
+  exhibit_spec: Three-column comparison with stakeholder icon rows and timeline stats.
+  quality_bar: Timeline statistics carry their survey n's on-page.
+  primary_modules:
+  - BBH
+  - CSG
+  fallback_modules: []
+  secondary_modules: []
+  metrics:
+  - cust.decision_process
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S055_purchase_criteria
+  'no': 55
+  section: decisions
+  archetype: table_full
+  exhibit: scorecard
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Purchase Criteria by Customer Type & Size
+  purpose: Rank what buyers weigh — and test the Target against every criterion.
+  must_contain:
+  - Twin indexed bar charts ranking purchase criteria for each customer type [n's shown].
+  - Size-index chips per criterion showing how importance shifts from small to large buyers.
+  - Commentary column with a supporting quote per major criterion.
+  - 'Target-alignment column: evidence-based fit assessment per criterion.'
+  source_spec: Web survey; interviews.
+  analysis: Index criteria importance; validate the Target's fit per criterion with customer evidence.
+  exhibit_spec: Twin indexed bars + criteria table with size chips, quotes, and alignment column.
+  quality_bar: The alignment column is grounded in customer evidence, not management's view.
+  primary_modules:
+  - BBH
+  - CSG
+  fallback_modules: []
+  secondary_modules:
+  - MPR
+  - CDF
+  metrics:
+  - cust.purchase_criteria
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S056_vertical_needs
+  'no': 56
+  section: decisions
+  archetype: table_full
+  exhibit: heat_grid
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Vertical-Specific Functionality Needs
+  purpose: Show how much vertical depth matters — differently — to each buyer group.
+  must_contain:
+  - Importance stacked bars (1–7 scale) by size band for each customer type, with means and n's.
+  - 'Commentary: one group values vertical features as operational necessity, the other as product differentiator.'
+  - Supporting quotes for each framing.
+  - 'Implication panel: what the Target''s vertical toolset earns it in each group.'
+  source_spec: Web survey; interviews.
+  analysis: Segment importance scores; interpret the different reasons behind similar scores.
+  exhibit_spec: Stacked-bar panels by segment + commentary and implication rail.
+  quality_bar: Differences are interpreted, not just displayed.
+  primary_modules:
+  - CSG
+  - BBH
+  fallback_modules: []
+  secondary_modules:
+  - CDF
+  - IPT
+  metrics:
+  - cust.segments
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S057_switching_complexity
+  'no': 57
+  section: decisions
+  archetype: table_commentary
+  exhibit: heat_grid
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Switching Complexity by Segment
+  purpose: Grade the friction of switching for every sub-segment — and derive the entry strategy.
+  must_contain:
+  - Rows per sub-segment (small / medium / large partners; embedded, large-direct, small-direct customers)
+    with low→high difficulty gauges.
+  - Overview column explaining what drives friction (infrastructure investment, integration depth, contracts).
+  - 'Implication column: where the Target should fully replace vs supplement incumbents.'
+  - Footnote defining the size boundaries used.
+  source_spec: Interviews.
+  analysis: Map friction to prior infrastructure investment; convert into a replace-vs-supplement strategy.
+  exhibit_spec: Difficulty gauge table with overview and implication columns.
+  quality_bar: Entry-strategy implications follow logically from the friction evidence.
+  primary_modules:
+  - CST
+  - BBH
+  fallback_modules: []
+  secondary_modules:
+  - OPR
+  metrics:
+  - cust.switching_trigger
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Switching complexity by segment
+    right_head: What this means for retention and for attack
+  elements:
+  - name: left
+    type: table
+    head: Switching complexity by segment
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: What this means for retention and for attack
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S058_div_competition
+  'no': 58
+  section: competition
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Competitive Landscape
+  purpose: Re-show the findings divider with this chapter highlighted.
+  must_contain:
+  - Four-chapter list with Competitive Landscape highlighted as current.
+  - Standard divider branding.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with chapter list, current chapter emphasised.
+  quality_bar: Highlight state matches the reader's position in the deck.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S059_routes_to_market
+  'no': 59
+  section: competition
+  archetype: flow_row
+  exhibit: lifecycle_flow
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Routes to Market & Where Competition Happens
+  purpose: Map how the Target reaches customers, and who it meets in each route.
+  must_contain:
+  - 'Three-panel schematic: direct to customers / partners; indirectly via intermediaries; servicing incumbent-model
+    providers.'
+  - Actor boxes per panel showing customer tiers reached and the intermediaries involved.
+  - Explanatory captions on how each route works and where the Target competes vs supplies.
+  - Legend distinguishing core competition, service suppliers, and adjacent suppliers.
+  source_spec: Interviews; management materials.
+  analysis: Clarify where competition actually occurs by route — not just who exists in the market.
+  exhibit_spec: Route schematic with actor boxes and relationship legend.
+  quality_bar: Consistent with the value-chain map in the primer chapter.
+  primary_modules:
+  - MSS
+  - CID
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  metrics:
+  - comp.set
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    flow_head: Routes to market and where competition happens
+    right_head: Where the target wins and loses
+  elements:
+  - name: flow
+    type: table
+    head: Routes to market and where competition happens
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Where the target wins and loses
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S060_competitor_archetypes
+  'no': 60
+  section: competition
+  archetype: table_full
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Competitor Archetype Comparison
+  purpose: Benchmark the archetypes head-to-head on customers' criteria — with the market's own words.
+  must_contain:
+  - One row per archetype (legacy infrastructure providers, incumbent full-stack model, traditional intermediaries,
+    the Target's model) with key players (logos).
+  - Key characteristics bullets per archetype (2–3, balanced).
+  - 'Heat ratings across the criteria set: customization, adaptability, support, cost.'
+  - Market feedback quote per archetype, attributed by role.
+  source_spec: Interviews; secondary research.
+  analysis: Benchmark archetypes on customers' decision criteria; keep ratings evidence-based.
+  exhibit_spec: Archetype table with logo cells, heat chips, and quote column.
+  quality_bar: Every rating is triangulated across at least two independent source types.
+  primary_modules:
+  - CID
+  fallback_modules:
+  - CDF
+  - MSS
+  secondary_modules:
+  - CDF
+  - MSS
+  metrics:
+  - comp.set
+  - comp.archetypes
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S061_positioning_map
+  'no': 61
+  section: competition
+  archetype: chart_commentary
+  exhibit: positioning_map
+  gate: core
+  provenance: blueprint
+  blueprint_title: Competitive Positioning Map
+  purpose: Plot the landscape on the two axes customers actually choose on.
+  must_contain:
+  - '2×2 logo scatter: value-added capability (y) vs vertical specialization (x), all significant players
+    plotted.'
+  - 'Key takeaways rail: 3–4 landscape conclusions, each with a supporting quote.'
+  - Note box handling edge cases (large vertical players with in-house models) and why they are the exception.
+  - 'Positioning banner: where the Target plays and what that intersection wins.'
+  source_spec: Interviews; secondary research.
+  analysis: Choose axes reflecting customers' choice drivers; plot positions from evidence, not websites
+    alone.
+  exhibit_spec: Logo scatter 2×2 + takeaways rail + exception note.
+  quality_bar: Axis choice is justified, and the Target's plotted position is defensible from data.
+  primary_modules:
+  - CID
+  - CDF
+  fallback_modules:
+  - CDF
+  - MSS
+  secondary_modules:
+  - MPR
+  - MSS
+  metrics:
+  - comp.positioning
+  - comp.share
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C12-AVERAGE
+  - C9-INDEX
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  heads:
+    chart_head: Positioning on capability and price
+    right_head: Reading the map
+  elements:
+  - name: chart
+    type: chart
+    head: Positioning on capability and price
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Reading the map
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S062_criteria_vs_archetypes
+  'no': 62
+  section: competition
+  archetype: table_full
+  exhibit: scorecard
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Criteria Performance vs Key Archetypes
+  purpose: Score the Target against the two main alternatives on every purchase criterion.
+  must_contain:
+  - 'Heat matrix: purchase criteria (rows) × incumbent archetype A / archetype B / the Target (columns).'
+  - 'Side commentary per archetype: why customers choose it, with quotes.'
+  - 'Where gaps open for the Target: flexibility and margin control without the incumbent''s overhead,
+    with quote support.'
+  source_spec: Interviews; web survey; company materials.
+  analysis: Score performance per criterion from customer evidence; identify the winnable rows.
+  exhibit_spec: Criteria × archetype heat matrix + commentary rail.
+  quality_bar: The Target's column is customer-evidenced — never self-reported.
+  primary_modules:
+  - CDF
+  - CID
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  metrics:
+  - comp.differentiation
+  - cust.purchase_criteria
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S063_feature_benchmarking
+  'no': 63
+  section: competition
+  archetype: table_full
+  exhibit: heat_grid
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Feature-Module Performance Benchmarking
+  purpose: Benchmark satisfaction with specific feature modules by provider type.
+  must_contain:
+  - 'Score tables (1–7 scale) per respondent group: feature modules rated overall and split by provider
+    type, with n per table.'
+  - A combined-respondents table beneath the segment tables.
+  - 'Commentary rail: which modules drive selection, which are vertical-critical, with quotes.'
+  - Small-sample flags footnoted wherever n is thin.
+  source_spec: Web survey; interviews.
+  analysis: Benchmark module-level performance; find the gaps worth attacking.
+  exhibit_spec: Stacked score tables by respondent group + commentary rail.
+  quality_bar: Every small-n cell is footnoted — no silent thin samples.
+  primary_modules:
+  - CDF
+  - IPT
+  fallback_modules: []
+  secondary_modules:
+  - CID
+  metrics:
+  - ops.tech_stack
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S064_price_benchmarking
+  'no': 64
+  section: competition
+  archetype: chart_commentary
+  exhibit: grouped_bar
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Price Benchmarking
+  purpose: Compare effective pricing across providers on a genuinely comparable basis.
+  must_contain:
+  - 'Grouped bars: median effective pricing for the Target vs industry vs the key incumbent, across customer
+    size bands.'
+  - 'Methodology note: the standard basis used to blend prices for comparability.'
+  - Sub-line on the economics story the comparison supports (attractive to both sides of the market).
+  - 'Data-gap caveat: what management data would sharpen the benchmark.'
+  source_spec: Benchmarks; interviews; management data where available.
+  analysis: Normalise all prices to one stated basis before comparing; resist mixing bases.
+  exhibit_spec: Grouped bar chart by size band with methodology footnote.
+  quality_bar: The comparison basis is stated on-page; gross and net are never mixed.
+  primary_modules:
+  - MPR
+  - CID
+  fallback_modules: []
+  secondary_modules:
+  - CDF
+  metrics:
+  - mkt.price_benchmark
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C12-AVERAGE
+  - C9-INDEX
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Price benchmarking by archetype
+    right_head: Where the target sits and why
+  elements:
+  - name: chart
+    type: chart
+    head: Price benchmarking by archetype
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Where the target sits and why
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S065_incumbent_nps
+  'no': 65
+  section: competition
+  archetype: chart_commentary
+  exhibit: nps_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Incumbent NPS by Provider Type
+  purpose: Measure advocacy for incumbents — and read the switching potential in the gaps.
+  must_contain:
+  - 'Twin NPS stacked-bar panels (0–10 scale): incumbent model A and incumbent model B, split by customer
+    group.'
+  - Detractor / passive / promoter shares with NPS value and n beneath every bar.
+  - Callout annotations on the striking results (e.g., heavy detractor concentrations).
+  - Small-sample flags where applicable.
+  source_spec: Web survey.
+  analysis: Compute NPS by provider type and customer group; interpret as openness to alternatives.
+  exhibit_spec: Twin NPS stacked panels with callouts.
+  quality_bar: NPS is not over-read where n is small — flags stay attached to the numbers.
+  primary_modules:
+  - CSA
+  fallback_modules: []
+  secondary_modules:
+  - CID
+  metrics:
+  - cust.nps
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C10-DELTA
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    chart_head: NPS by provider type
+    right_head: What the spread reveals
+  elements:
+  - name: chart
+    type: chart
+    head: NPS by provider type
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: What the spread reveals
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S066_competitor_painpoints
+  'no': 66
+  section: competition
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Competitor Pain-Point Synthesis
+  purpose: Cluster the market's complaints into the structural themes the Target attacks.
+  must_contain:
+  - 'Pain-point rows: support quality, delivery / settlement speed, pricing rigidity, fragmented technology,
+    missing differentiated features.'
+  - Named-competitor evidence flags per row (logo chips) showing who the complaint attaches to.
+  - One verbatim quote per row, attributed by role, carrying the specific grievance.
+  - 'Sub-line: recurring pain points open the door for challengers like the Target.'
+  source_spec: Interviews.
+  analysis: Cluster complaints into structural themes; attribute to specific competitors carefully.
+  exhibit_spec: Pain-point table with competitor flags and quote cells.
+  quality_bar: Quotes are role-attributed and first-hand — hearsay is excluded.
+  primary_modules:
+  - CID
+  - CDF
+  fallback_modules: []
+  secondary_modules:
+  - CSA
+  metrics:
+  - comp.set
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Pain point by competitor archetype
+    right_head: Which the target can exploit
+  elements:
+  - name: left
+    type: table
+    head: Pain point by competitor archetype
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Which the target can exploit
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S067_full_suite_wtp
+  'no': 67
+  section: competition
+  archetype: chart_commentary
+  exhibit: grouped_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Full-Suite Demand & Willingness to Pay
+  purpose: Pair switching intent with willingness to pay for the integrated model.
+  must_contain:
+  - Likelihood-to-switch stacked bars (1–7) by customer type, with means, top-2 shares, and n.
+  - 'Willingness-to-pay panel: % who would increase / hold / decrease spend for a full-suite provider,
+    with average uplift.'
+  - 'Commentary rail: what full-suite means to buyers, with supporting quotes.'
+  - Framing line connecting demand to the Target's positioning.
+  source_spec: Web survey; interviews.
+  analysis: Read intent and willingness to pay together; quantify the monetisation upside honestly.
+  exhibit_spec: Intent stacked bars + WTP panel + commentary.
+  quality_bar: Upside claims always carry the survey base they rest on.
+  primary_modules:
+  - GRO
+  - MPR
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  - CDF
+  metrics:
+  - cust.wtp
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C12-AVERAGE
+  - C9-INDEX
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    chart_head: Full-suite demand and willingness to pay
+    right_head: Pricing headroom and risk
+  elements:
+  - name: chart
+    type: chart
+    head: Full-suite demand and willingness to pay
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Pricing headroom and risk
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S068_churn_triggers
+  'no': 68
+  section: competition
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Churn Triggers
+  purpose: Rank what actually makes customers leave — beyond price.
+  must_contain:
+  - 'Paired horizontal multi-select bars: churn triggers ranked for each customer type (% selecting, n).'
+  - Triggers spanning cost, integration quality, support, reliability, outgrowing the solution, vendor
+    consolidation.
+  - Commentary rail mapping the top triggers to what a winning provider must deliver, with quotes.
+  - Note that operational friction rivals price as the leading trigger.
+  source_spec: Web survey; interviews.
+  analysis: Rank triggers per segment; convert into the Target's retention and displacement playbook.
+  exhibit_spec: Paired ranked bars + commentary rail.
+  quality_bar: Trigger ranking is consistent with the pain-point synthesis page.
+  primary_modules:
+  - CST
+  - CSA
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  metrics:
+  - cust.churn
+  - cust.switching_trigger
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  heads:
+    left_head: Churn trigger, frequency and severity
+    right_head: Addressability
+  elements:
+  - name: left
+    type: table
+    head: Churn trigger, frequency and severity
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Addressability
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S069_target_strengths
+  'no': 69
+  section: competition
+  archetype: quotes
+  exhibit: quote_wall
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Target Strengths — Customer Evidence
+  purpose: Document the drivers of satisfaction and loyalty in customers' own words.
+  must_contain:
+  - 'Driver rows: ease of use, customer service, speed of delivery, competitive rates.'
+  - Commentary per driver summarising the interview evidence.
+  - One to two verbatim quotes per driver, attributed by role.
+  - Framed as key drivers of satisfaction and loyalty.
+  source_spec: Customer interviews.
+  analysis: Identify repeatable satisfaction drivers echoed across multiple customers.
+  exhibit_spec: Driver | commentary | quote table.
+  quality_bar: Each strength is echoed by more than one customer.
+  primary_modules:
+  - CSA
+  - CDF
+  fallback_modules: []
+  secondary_modules:
+  - SWO
+  metrics:
+  - comp.differentiation
+  transform:
+  - T1-EXTRACT
+  - T12-COMPANY-VS-MARKET
+  - T3-SUMMARISE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    quotes_head: What customers say the target does well
+    right_head: Pattern across respondents
+  elements:
+  - name: quotes
+    type: table
+    head: What customers say the target does well
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Pattern across respondents
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S070_target_development_areas
+  'no': 70
+  section: competition
+  archetype: quotes
+  exhibit: quote_wall
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Target Development Areas — Customer Evidence
+  purpose: Report the improvement areas honestly — credibility depends on it.
+  must_contain:
+  - Development-area rows (e.g., issue-resolution support, specific feature polish) with commentary.
+  - Verbatim quotes per area carrying the specific criticism, attributed by role.
+  - 'Context on severity and frequency: irritant vs churn risk.'
+  - Product implication noted where the fix is clear.
+  source_spec: Customer interviews.
+  analysis: Surface fixable gaps; distinguish irritants from genuine churn risks.
+  exhibit_spec: Development-area table with quote cells.
+  quality_bar: Weaknesses are reported unvarnished — a sanitized page destroys report credibility.
+  primary_modules:
+  - CSA
+  - SWO
+  fallback_modules: []
+  secondary_modules:
+  - IRK
+  - OPR
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T12-COMPANY-VS-MARKET
+  - T3-SUMMARISE
+  - T8-FACT-VS-VIEW
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    quotes_head: Where customers say the target falls short
+    right_head: Severity and remediability
+  elements:
+  - name: quotes
+    type: table
+    head: Where customers say the target falls short
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Severity and remediability
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S071_div_growth
+  'no': 71
+  section: growth
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Growth Opportunities
+  purpose: Re-show the findings divider with this chapter highlighted.
+  must_contain:
+  - Four-chapter list with Growth Opportunities highlighted as current.
+  - Standard divider branding.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with chapter list, current chapter emphasised.
+  quality_bar: Highlight state matches the reader's position in the deck.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S072_growth_levers_overview
+  'no': 72
+  section: growth
+  archetype: numbered_rows
+  exhibit: banded_table
+  gate: core
+  provenance: blueprint
+  blueprint_title: Growth Levers — Overview
+  purpose: Restate the seven-lever agenda that the chapter now proves lever by lever.
+  must_contain:
+  - Opportunity matrix plotting numbered levers by proximity to core vs horizon (core / near adjacency
+    / expansion).
+  - 'Lever table: growth area, horizon, and the advisor''s perspectives / considerations per lever.'
+  - Identical structure to the Investment Highlights lever page.
+  - Each lever numbered to match its deep-dive pages that follow.
+  source_spec: Findings sections; management strategy materials.
+  analysis: Sequence levers by readiness and proximity; keep perspectives specific and actionable.
+  exhibit_spec: Opportunity matrix + lever perspective table.
+  quality_bar: Mirrors the Investment Highlights lever page exactly — no drift.
+  primary_modules:
+  - GRO
+  fallback_modules:
+  - STR
+  - REC
+  - SYN
+  secondary_modules:
+  - STR
+  - SYN
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T3-SUMMARISE
+  - T6-CONCLUDE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: rows
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+- id: S073_l1_new_customers
+  'no': 73
+  section: growth
+  archetype: chart_commentary
+  exhibit: walkup
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 1 — New Customer Acquisition & Market Liquidity
+  purpose: Quantify the annually contestable spend the Target can win.
+  must_contain:
+  - 'Left panel: SAM walkdown recap ($ by size band, removals shown) to anchor the runway.'
+  - 'Right panel: likelihood-to-continue distribution from the survey (mean, top-2, n).'
+  - 'Callout: estimated % of the ICP market turning over annually and the resulting $ ''jump ball'' opportunity.'
+  - Derivation of the jump-ball figure shown or referenced.
+  source_spec: Market model; web survey.
+  analysis: Convert switching rates into annually contestable spend; keep the arithmetic visible.
+  exhibit_spec: Walkdown bars + likelihood stacked bar + jump-ball callout stat.
+  quality_bar: The jump-ball arithmetic is shown on-page or referenced to the appendix.
+  primary_modules:
+  - GRO
+  - MSS
+  fallback_modules: []
+  secondary_modules:
+  - MVG
+  - CSG
+  metrics:
+  - mkt.som
+  - comp.share
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    chart_head: Contestable pool and capture path
+    right_head: Assumptions behind the build
+  elements:
+  - name: chart
+    type: chart
+    head: Contestable pool and capture path
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Assumptions behind the build
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S074_l1_right_to_win
+  'no': 74
+  section: growth
+  archetype: table_full
+  exhibit: scorecard
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 1 — Right to Win the Contestable Pool
+  purpose: Match the contestable spend to the criteria where the Target outperforms.
+  must_contain:
+  - 'Left panel: SAM by channel and end-market with served-market shading and provider-mix note.'
+  - 'Right panel: performance-by-competitor-type table across purchasing criteria, ordered by increasing
+    customer importance, heat-rated.'
+  - Note on the share of the provider mix held by the most displaceable incumbent type.
+  - Sub-line connecting differentiated capabilities to capture of available liquidity.
+  source_spec: Market model; web survey; interviews.
+  analysis: Overlay the Target's comparative strengths onto the contestable pools.
+  exhibit_spec: Stacked SAM bars + criteria × competitor heat table.
+  quality_bar: Win-rate logic is consistent with the competitive chapter's evidence.
+  primary_modules:
+  - MSS
+  - CDF
+  fallback_modules: []
+  secondary_modules:
+  - GRO
+  - BBH
+  metrics:
+  - comp.differentiation
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S075_l1_channel_expansion
+  'no': 75
+  section: growth
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 1 — Go-to-Market Channel Expansion
+  purpose: Grade each acquisition channel for headroom and economics.
+  must_contain:
+  - 'Channel rows: direct salesforce, reseller / intermediary partners, institutional referral partners.'
+  - Estimated share of economics per channel (management-sourced) with the margin trade-off noted.
+  - Growth-potential commentary per channel with supporting quotes from market participants.
+  - Implication column; the nascent high-headroom channel highlighted as the near-term opportunity.
+  source_spec: Interviews; management data.
+  analysis: Evaluate channel headroom, margin profile, and scalability; prioritise accordingly.
+  exhibit_spec: Channel table with economics chips, quote cells, and implication rail.
+  quality_bar: Channel economics are management-sourced or triangulated — not guessed.
+  primary_modules:
+  - MSS
+  - GRO
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  metrics:
+  - comp.share
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Channel, reach and economics
+    right_head: Build, buy or partner
+  elements:
+  - name: left
+    type: table
+    head: Channel, reach and economics
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Build, buy or partner
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S076_l2_partner_whitespace
+  'no': 76
+  section: growth
+  archetype: table_full
+  exhibit: heat_grid
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Lever 2 — Partner Whitespace Mapping
+  purpose: Locate the unpenetrated partner cells worth the most.
+  must_contain:
+  - 'Twin 100% stacked panels: whitespace by vertical (count of firms) and by size tier ($ value), each
+    split penetrated vs unpenetrated.'
+  - Totals above every column (firm counts; $ values).
+  - 'Framing bullets: where penetration remains lowest and new-logo potential is highest.'
+  - Note that most of the $ whitespace concentrates in the largest tier.
+  source_spec: Web survey; firmographic data.
+  analysis: Cross low-penetration cells with high value to rank the whitespace.
+  exhibit_spec: Twin stacked panels with totals and whitespace shading.
+  quality_bar: Whitespace is defined identically in both panels — count and value views reconcile.
+  primary_modules:
+  - GRO
+  - SUP
+  fallback_modules: []
+  secondary_modules:
+  - MSS
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S077_l2_partner_willingness
+  'no': 77
+  section: growth
+  archetype: chart_commentary
+  exhibit: grouped_bar
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Lever 2 — Partner Adoption Willingness
+  purpose: Show the whitespace is willing, not just present.
+  must_contain:
+  - 'Panel 1: non-adopters'' likelihood-to-adopt distribution (1–7 scale; mean, likely-share, n).'
+  - 'Panel 2: adopters'' willingness to extend to a full-suite solution (same scale; mean, likely-share,
+    n).'
+  - 'Commentary rail: adoption barriers are largely perceptual, not technical — with quotes; where the
+    Target eases friction (security, compliance, onboarding).'
+  - Conversion implication stated plainly.
+  source_spec: Web survey; interviews.
+  analysis: Quantify the conversion runway; identify the friction the Target must remove.
+  exhibit_spec: Paired distribution stacks + commentary rail.
+  quality_bar: The 'likely to adopt' threshold is defined on-page.
+  primary_modules:
+  - GRO
+  - SUP
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C12-AVERAGE
+  - C9-INDEX
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    chart_head: Partner adoption willingness
+    right_head: What partners need to say yes
+  elements:
+  - name: chart
+    type: chart
+    head: Partner adoption willingness
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: What partners need to say yes
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S078_l2_partner_scaling
+  'no': 78
+  section: growth
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Lever 2 — Scaling Within Partner Ecosystems
+  purpose: Show adoption deepening inside existing partners — volume growth without new logos.
+  must_contain:
+  - 'Trend bars: share of partner-customer volume flowing through the embedded solution — past, present,
+    and expected future — with deltas.'
+  - 'Commentary: what accelerates end-customer uptake inside a partner base, with quotes (integration
+    value, faster delivery, packaged incentives).'
+  - The Target's role in accelerating adoption stated explicitly.
+  source_spec: Web survey; interviews.
+  analysis: Project embedded adoption within existing partner bases from respondent expectations.
+  exhibit_spec: Three-bar adoption trend with delta chips + quote commentary.
+  quality_bar: The forecast bar is labelled as respondent expectation — not an advisor projection.
+  primary_modules:
+  - GRO
+  - SUP
+  fallback_modules: []
+  secondary_modules:
+  - SCR
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    left_head: Scaling mechanics within a partner
+    right_head: Evidence and constraints
+  elements:
+  - name: left
+    type: table
+    head: Scaling mechanics within a partner
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Evidence and constraints
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S079_l3_expand_accounts
+  'no': 79
+  section: growth
+  archetype: chart_commentary
+  exhibit: walkup
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 3 — Expanding Existing Accounts
+  purpose: 'Prove the base itself grows: volume expansion plus service attach.'
+  must_contain:
+  - 'Left panel: average account value trend over the last 3 periods (rising bars).'
+  - 'Middle panel: customers'' spend trajectory — past 3 years vs next 3 years (increased / unchanged
+    / decreased, n).'
+  - 'Right rail: the two expansion mechanisms labelled — growing transaction volume and value-added service
+    attach — each with a supporting quote.'
+  - Stickiness evidence quoted to underpin the expansion runway.
+  source_spec: Management KPIs; web survey; interviews.
+  analysis: Decompose account growth into volume vs attach; evidence both.
+  exhibit_spec: Account-value bars + spend-trajectory panel + mechanism rail.
+  quality_bar: The expansion claim rests on data and quotes together.
+  primary_modules:
+  - CST
+  - RVQ
+  fallback_modules: []
+  secondary_modules:
+  - GRO
+  - MPR
+  - CFL
+  metrics:
+  - fin.recurring_share
+  - cust.retention
+  transform:
+  - T1-EXTRACT
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T5-CALCULATE
+  - T8-FACT-VS-VIEW
+  calc:
+  - C11-MARGIN
+  - C4-MIX
+  - C7-CAGR
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R1
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E6-SUITABILITY
+  heads:
+    chart_head: Expansion within existing accounts
+    right_head: Cross-sell and upsell evidence
+  elements:
+  - name: chart
+    type: chart
+    head: Expansion within existing accounts
+    limits:
+      max_series: 4
+      max_points: 12
+  - name: right
+    type: bullets
+    head: Cross-sell and upsell evidence
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S080_l4_pricing
+  'no': 80
+  section: growth
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 4 — Pricing Optimization
+  purpose: Show the market will absorb price moves — then name the structures to use.
+  must_contain:
+  - Expected price-change distribution stack (increase / no change / decrease bands with %, mean expected
+    change, n).
+  - 'Commentary: share anticipating increases; the pricing structures available (differentiated models,
+    value-based, service-backed).'
+  - 'Headroom evidence: quotes indicating the Target is competitively priced with room to move.'
+  - 'Positioning: optimization framed as opportunity, sequenced after value delivery.'
+  source_spec: Web survey; interviews.
+  analysis: Read elasticity signals; match pricing structures to segments and value delivered.
+  exhibit_spec: Price-expectation stack + commentary rail with quotes.
+  quality_bar: Pricing recommendations are flagged as opportunities — not committed plans.
+  primary_modules:
+  - MPR
+  - RVQ
+  fallback_modules: []
+  secondary_modules:
+  - CSC
+  - BBH
+  metrics:
+  - mkt.price_benchmark
+  - fin.gross_margin
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C11-MARGIN
+  - C4-MIX
+  source_priority:
+  - R1
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  - E6-SUITABILITY
+  heads:
+    left_head: Pricing action, uplift and risk
+    right_head: Evidence of headroom
+  elements:
+  - name: left
+    type: table
+    head: Pricing action, uplift and risk
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Evidence of headroom
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S081_l5_adjacent_segments
+  'no': 81
+  section: growth
+  archetype: table_full
+  exhibit: scorecard
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 5 — Adjacent Segment Expansion
+  purpose: Size the adjacencies and show the capabilities that carry over.
+  must_contain:
+  - 'Walkup waterfall: current SAM + named adjacent verticals ($ increment each) = expanded SAM.'
+  - 'Resonance annotations on the waterfall: which existing capabilities transfer to each adjacency.'
+  - 'Key-levers rail: numbered actions to unlock the expansion (tailored onboarding, distribution partnerships,
+    workflow alignment, bundled services).'
+  - Vertical composition stacked inside each bar.
+  source_spec: Market model; interviews.
+  analysis: Size adjacencies with the same rigor as the core; test capability transfer honestly.
+  exhibit_spec: Walkup waterfall with resonance callouts + numbered lever rail.
+  quality_bar: Adjacency sizing uses the identical methodology as core sizing.
+  primary_modules:
+  - GRO
+  - MDF
+  fallback_modules: []
+  secondary_modules:
+  - CSG
+  - MVG
+  metrics:
+  - mkt.sam
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S082_l6_product_expansion
+  'no': 82
+  section: growth
+  archetype: table_commentary
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 6 — Product Expansion Requirements
+  purpose: Specify what must be built to win each expansion vertical.
+  must_contain:
+  - Rows per target vertical (the named adjacencies).
+  - 'Column 1: vertical-specific integration / API requirements, 2–3 per vertical with use cases.'
+  - 'Column 2: vertical-specific value-added service chips (6–9 per vertical).'
+  - Requirements sourced from operators in each vertical; build-vs-buy noted where relevant.
+  source_spec: Interviews with vertical operators; product benchmarking.
+  analysis: Map required capabilities per vertical against the current stack; gap-list the build.
+  exhibit_spec: Vertical × capability requirement grid with service chips.
+  quality_bar: Requirements come from vertical operators — not internal assumption.
+  primary_modules:
+  - IPT
+  - GRO
+  fallback_modules: []
+  secondary_modules:
+  - STR
+  - CDF
+  metrics:
+  - ops.tech_stack
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads:
+    left_head: Capability required vs capability held
+    right_head: Build effort and sequencing
+  elements:
+  - name: left
+    type: table
+    head: Capability required vs capability held
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Build effort and sequencing
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S083_l7_ma
+  'no': 83
+  section: growth
+  archetype: table_full
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Lever 7 — Strategic M&A
+  purpose: Use the acquisition track record to underwrite the forward M&A thesis.
+  must_contain:
+  - 'Track-record table: numbered past acquisitions with dates and one-line rationale each.'
+  - 'Forward thesis panels grouped by objective: distribution expansion · technology / product enhancement
+    · vertical market entry.'
+  - Sample acquisition criteria per objective (target profiles, characteristics).
+  - 'Integration-capability note: playbook and tools that de-risk execution.'
+  source_spec: Management information; interviews.
+  analysis: Derive repeatable acquisition criteria from what past integrations actually delivered.
+  exhibit_spec: Track-record table + three objective panels with criteria.
+  quality_bar: Forward criteria are consistent with demonstrated integration capacity.
+  primary_modules:
+  - SYN
+  - STR
+  fallback_modules: []
+  secondary_modules:
+  - GRO
+  - FVR
+  - VAL
+  metrics:
+  - val.synergy
+  - val.multiple
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C14-SUM
+  - C15-NET
+  source_priority:
+  - R1
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E6-SUITABILITY
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+- id: S084_div_appx_partners
+  'no': 84
+  section: appx_partners
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Appendices
+  purpose: Open the appendix and list its lettered parts.
+  must_contain:
+  - 'Appendix list: A — Landscape · B — Market Sizing Methodology · C — Case Studies · D — Supplementary
+    Data.'
+  - Standard divider branding; re-shown before each part with the current part highlighted.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with lettered appendix list.
+  quality_bar: Appendix letters and titles match the contents page.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S085_landscape_by_category
+  'no': 85
+  section: appx_partners
+  archetype: table_full
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Landscape Map (1 of 2) — By Category
+  purpose: Reference map of the partner / vendor universe, grouped by category.
+  must_contain:
+  - Logo wall grouped into major categories (generalist tools, vertical specialists by industry, marketplaces).
+  - Sub-category labels inside each group (by function or industry).
+  - Non-exhaustive marker.
+  - Categorization consistent with the segmentation used in the body.
+  source_spec: Secondary research.
+  analysis: None — reference material supporting the market and growth chapters.
+  exhibit_spec: Category-grouped logo wall with sub-labels.
+  quality_bar: The categorization scheme matches the market chapters exactly.
+  primary_modules:
+  - CID
+  fallback_modules: []
+  secondary_modules:
+  - MDF
+  metrics:
+  - comp.set
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true
+- id: S086_landscape_by_size
+  'no': 86
+  section: appx_partners
+  archetype: table_full
+  exhibit: banded_table
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Landscape Map (2 of 2) — By Category & Size
+  purpose: The same universe cut by customer-size tier.
+  must_contain:
+  - 'Table: category rows (one per vertical / function) × two logo columns (smaller-tier examples vs enterprise
+    examples).'
+  - Row grouping mirrors page 1 of the landscape.
+  - Logos current and correctly classified.
+  source_spec: Secondary research.
+  analysis: None — reference material.
+  exhibit_spec: Category × size-tier logo table.
+  quality_bar: Examples are current, correctly tiered, and correctly categorized.
+  primary_modules:
+  - CID
+  fallback_modules: []
+  secondary_modules:
+  - MSS
+  metrics:
+  - comp.set
+  - comp.share
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true
+- id: S087_partner_counts
+  'no': 87
+  section: appx_partners
+  archetype: table_full
+  exhibit: banded_table
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Partner Counts & Retention Data
+  purpose: The reference table behind the whitespace and retention claims.
+  must_contain:
+  - 'Table rows by partner size tier: revenue opportunity per partner, firm count, total opportunity,
+    retention benchmarks by relationship type.'
+  - Retention shown for both relationship archetypes (embedded customer-level and partner-level).
+  - Sourcing note for counts and retention estimates.
+  source_spec: Firmographic data; web survey; interviews.
+  analysis: Reconcile counts × per-firm value against the whitespace sizing in the growth chapter.
+  exhibit_spec: Single reference table with tier rows.
+  quality_bar: Totals tie to the whitespace page — one source of truth.
+  primary_modules:
+  - SUP
+  - CST
+  fallback_modules: []
+  secondary_modules:
+  - GRO
+  metrics:
+  - ops.supplier_concentration
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true
+- id: S088_div_appx_sizing
+  'no': 88
+  section: appx_sizing
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Appendix B
+  purpose: Re-show the appendix divider with Market Sizing Methodology highlighted.
+  must_contain:
+  - Lettered appendix list with part B highlighted as current.
+  - Standard divider branding.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with appendix list, current part emphasised.
+  quality_bar: Highlight state matches the reader's position.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S089_sizing_method_core
+  'no': 89
+  section: appx_sizing
+  archetype: method_flow
+  exhibit: method_flow
+  gate: core
+  provenance: blueprint
+  blueprint_title: Market Sizing Methodology — Core Opportunity
+  purpose: Document the core-market model step by step so it can be rebuilt.
+  must_contain:
+  - 'Top flow: total volume (by size / vertical) → channel share → maximum economics → TAM, with source
+    and approach labels per step.'
+  - 'Bottom flow: addressable volume → observed economics by mode → adoption % → penetration % → vended
+    market.'
+  - Source tags on every box (statistical data, primary research, survey, benchmarks).
+  - Key assumptions stated inline (e.g., mode mix, excluded volumes, tier boundaries).
+  source_spec: Statistical series; web survey; primary research; benchmarks.
+  analysis: Document every step and assumption so the model is fully reproducible.
+  exhibit_spec: Left-to-right methodology flow diagrams with source tags.
+  quality_bar: A reviewer can rebuild the model from this page alone.
+  primary_modules:
+  - MVG
+  - MDF
+  fallback_modules:
+  - MDF
+  - SCM
+  secondary_modules:
+  - SCM
+  metrics:
+  - mkt.tam
+  - mkt.sam
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C2-COVERAGE
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E3-CONFLICT
+  - E4-UNIT-MISMATCH
+  heads:
+    flow_head: Core opportunity - step by step
+    right_head: Assumptions, sources and sensitivity
+  elements:
+  - name: flow
+    type: table
+    head: Core opportunity - step by step
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Assumptions, sources and sensitivity
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S090_sizing_method_adjacent
+  'no': 90
+  section: appx_sizing
+  archetype: method_flow
+  exhibit: method_flow
+  gate: conditional
+  provenance: blueprint
+  blueprint_title: Market Sizing Methodology — Adjacent Opportunity
+  purpose: Document the value-added opportunity model to the same standard.
+  must_contain:
+  - 'Top flow: eligible customer counts × average spend per period × annualization → TAM, with sources
+    per input.'
+  - 'Bottom flow: TAM → adoption % → penetration % → vended market, survey-sourced.'
+  - Eligibility filter stated (only adopters of the core service count).
+  - 'Segmentation note: primary cuts by vertical and size.'
+  source_spec: Firmographic counts; price benchmarks / management price sheets; web survey.
+  analysis: Apply the same reproducibility standard as the core model; keep segmentation consistent.
+  exhibit_spec: Two methodology flow rows with source tags.
+  quality_bar: Segmentation is consistent with the core model — the two reconcile.
+  primary_modules:
+  - MVG
+  - GRO
+  fallback_modules: []
+  secondary_modules:
+  - MPR
+  metrics:
+  - mkt.sam
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T11-TRIANGULATE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T5-CALCULATE
+  - T7-CONFIDENCE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C2-COVERAGE
+  - C8-UNIT-NORMALISE
+  source_priority:
+  - R2
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E4-UNIT-MISMATCH
+  heads:
+    flow_head: Adjacent opportunity - step by step
+    right_head: Assumptions, sources and sensitivity
+  elements:
+  - name: flow
+    type: table
+    head: Adjacent opportunity - step by step
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: right
+    type: bullets
+    head: Assumptions, sources and sensitivity
+    limits:
+      max_items: 5
+      max_chars_item: 170
+- id: S091_div_appx_cases
+  'no': 91
+  section: appx_cases
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Appendix C
+  purpose: Re-show the appendix divider with Case Studies highlighted.
+  must_contain:
+  - Lettered appendix list with part C highlighted as current.
+  - Standard divider branding.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with appendix list, current part emphasised.
+  quality_bar: Highlight state matches the reader's position.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S092_case_lost_prospect
+  'no': 92
+  section: appx_cases
+  archetype: three_panel
+  exhibit: case_study
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Case Study — Lost Prospect
+  purpose: Tell the story of a deal the Target lost — and what would reopen it.
+  must_contain:
+  - 'Profile rail: organisation logo, name, and descriptor.'
+  - 'Adoption history: how and why the organisation built its current approach, with quotes.'
+  - 'Evaluation & decision: why the winning competitor was chosen; how the Target was perceived, including
+    the specific concern that lost the deal — quoted verbatim.'
+  - 'Future outlook: openness to adding providers, and the conditions that would favour the Target.'
+  source_spec: Prospect interview.
+  analysis: Extract the loss reasons and re-entry conditions without varnish.
+  exhibit_spec: Profile rail + three-block narrative (adoption / decision / outlook) with quotes.
+  quality_bar: Loss reasons are reported unvarnished — this page is credibility currency.
+  primary_modules:
+  - BBH
+  - CSA
+  fallback_modules: []
+  secondary_modules:
+  - CDF
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T3-SUMMARISE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    p1_head: Situation
+    p2_head: Evaluation
+    p3_head: Outcome and lesson
+  elements:
+  - name: p1
+    type: bullets
+    head: Situation
+    limits:
+      max_items: 5
+      max_chars_item: 120
+  - name: p2
+    type: bullets
+    head: Evaluation
+    limits:
+      max_items: 5
+      max_chars_item: 120
+  - name: p3
+    type: bullets
+    head: Outcome and lesson
+    limits:
+      max_items: 5
+      max_chars_item: 120
+- id: S093_case_competitor_customer
+  'no': 93
+  section: appx_cases
+  archetype: three_panel
+  exhibit: case_study
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Case Study — Competitor's Customer
+  purpose: Profile a customer of a competitor whose dissatisfaction creates an opening.
+  must_contain:
+  - 'Profile rail: organisation logo, name, descriptor.'
+  - 'Adoption history: initial provider choices and the rationale, quoted.'
+  - 'Evaluation & decision: the criteria that drove the current selection (liability, coverage, economics),
+    quoted.'
+  - 'Future outlook: the pain points (e.g., vertical-support limits, onboarding friction) that open the
+    door for the Target — mapped to Target capabilities.'
+  source_spec: Competitor-customer interview.
+  analysis: Identify whether the opening is displacement or supplement; map pains to Target strengths.
+  exhibit_spec: Profile rail + three-block narrative with quotes.
+  quality_bar: Opening claims tie directly to the customer's stated pain points.
+  primary_modules:
+  - CID
+  - CSA
+  fallback_modules: []
+  secondary_modules:
+  - BBH
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T3-SUMMARISE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    p1_head: Situation
+    p2_head: Evaluation
+    p3_head: Outcome and lesson
+  elements:
+  - name: p1
+    type: bullets
+    head: Situation
+    limits:
+      max_items: 5
+      max_chars_item: 120
+  - name: p2
+    type: bullets
+    head: Evaluation
+    limits:
+      max_items: 5
+      max_chars_item: 120
+  - name: p3
+    type: bullets
+    head: Outcome and lesson
+    limits:
+      max_items: 5
+      max_chars_item: 120
+- id: S094_case_existing_customer
+  'no': 94
+  section: appx_cases
+  archetype: three_panel
+  exhibit: case_study
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Case Study — Existing Customer
+  purpose: Evidence entrenchment and expansion potential inside the Target's own base.
+  must_contain:
+  - 'Profile rail: customer logo, name, respondent title, plus scored metrics (advocacy score, likelihood-to-continue)
+    with scales.'
+  - 'Usage journey: how the customer adopted and how the solution is embedded in daily operations, quoted.'
+  - 'Satisfaction and future expectations: what they value, what they would improve, and expansion asks
+    — quoted.'
+  - 'Key-takeaways rail: 3 synthesis bullets (mission-critical integration; retention with upside; scalability).'
+  source_spec: Customer interview.
+  analysis: Evidence entrenchment mechanisms and the concrete product asks that unlock expansion.
+  exhibit_spec: Profile rail with score chips + narrative blocks + takeaways column.
+  quality_bar: Scores are displayed with their scales; improvement asks are included, not filtered.
+  primary_modules:
+  - CSA
+  - CST
+  fallback_modules: []
+  secondary_modules:
+  - CDF
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T3-SUMMARISE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  heads:
+    p1_head: Situation
+    p2_head: Evaluation
+    p3_head: Outcome and lesson
+  elements:
+  - name: p1
+    type: bullets
+    head: Situation
+    limits:
+      max_items: 5
+      max_chars_item: 120
+  - name: p2
+    type: bullets
+    head: Evaluation
+    limits:
+      max_items: 5
+      max_chars_item: 120
+  - name: p3
+    type: bullets
+    head: Outcome and lesson
+    limits:
+      max_items: 5
+      max_chars_item: 120
+- id: S095_div_appx_supp
+  'no': 95
+  section: appx_supp
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: blueprint
+  blueprint_title: Section Divider — Appendix D
+  purpose: Re-show the appendix divider with Supplementary Data highlighted.
+  must_contain:
+  - Lettered appendix list with part D highlighted as current.
+  - Standard divider branding.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Branded divider with appendix list, current part emphasised.
+  quality_bar: Highlight state matches the reader's position.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S096_supp_entrenchment
+  'no': 96
+  section: appx_supp
+  archetype: table_full
+  exhibit: heat_grid
+  gate: research_gated
+  provenance: blueprint
+  blueprint_title: Supplementary Data — Entrenchment Evidence
+  purpose: Backing detail for the stickiness claims made in the body.
+  must_contain:
+  - 'Twin distribution panels (1–7 scale): likelihood to continue using the current solution, one per
+    customer group.'
+  - Means, top-2 shares, and n beneath each panel.
+  - 'Framing line: both relationship archetypes exhibit similar stickiness.'
+  - Cross-reference to the body pages this data supports.
+  source_spec: Web survey.
+  analysis: Hold the full distributions here so body pages stay clean; keep scales identical.
+  exhibit_spec: Paired distribution stacks with stat labels.
+  quality_bar: Cross-referenced from the body — supplementary data is never orphaned.
+  primary_modules:
+  - CST
+  fallback_modules: []
+  secondary_modules:
+  - CSA
+  - RVQ
+  - APX
+  metrics:
+  - cust.retention
+  - cust.tenure
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T4-RECLASSIFY
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R4
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  - E11-NO-PRIMARY
+  - E3-CONFLICT
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true
+- id: S097_back_cover
+  'no': 97
+  section: appx_supp
+  archetype: back_cover
+  exhibit: cover
+  gate: always
+  provenance: blueprint
+  blueprint_title: Back Cover
+  purpose: Close the report with the standard brand page.
+  must_contain:
+  - Firm logo, tagline, and copyright / web line only.
+  - No content, findings, or contact-specific data beyond the standard block.
+  - Design identical to the front-cover brand treatment.
+  source_spec: Brand assets.
+  analysis: None.
+  exhibit_spec: Full-bleed branded closing page.
+  quality_bar: Branding matches the front cover exactly.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: back_contact
+    type: text
+    limits:
+      max_chars: 320
+- id: S098_div_appx_audit
+  'no': 98
+  section: appx_audit
+  archetype: divider
+  exhibit: divider
+  gate: always
+  provenance: diligenceiq_extension
+  blueprint_title: Section Divider — Evidence & Audit Trail
+  purpose: Open the audit trail that makes every preceding page checkable.
+  must_contain:
+  - Section number and name.
+  - One line naming what the appendix contains.
+  source_spec: Deck template.
+  analysis: None.
+  exhibit_spec: Section divider.
+  quality_bar: A reviewer knows, before turning the page, that every figure in the report can be traced.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T0-AUTO
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements: []
+- id: S099_module_verdicts
+  'no': 99
+  section: appx_audit
+  archetype: table_full
+  exhibit: banded_table
+  gate: always
+  provenance: diligenceiq_extension
+  blueprint_title: Module Verdicts & Confidence
+  purpose: Show what each diligence module concluded and how much weight its conclusion carries.
+  must_contain:
+  - 'One row per agent module: verdict, stated confidence, evidence-adjusted confidence (T7), coverage
+    %.'
+  - Modules that returned insufficient or inconclusive findings visually marked.
+  - Core modules distinguished from supporting modules.
+  - Slides that depend on a weak module cross-referenced.
+  source_spec: 'Run data: module registry, evidence index, coverage computation.'
+  analysis: Apply T7-CONFIDENCE. Do not restate the module's own confidence without the coverage adjustment.
+  exhibit_spec: Banded table, one band per module role, RAG pills on confidence.
+  quality_bar: A reader can see at a glance which conclusions in the report are thinly evidenced.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C2-COVERAGE
+  - C3-VERDICT-COUNT
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true
+- id: S100_source_register
+  'no': 100
+  section: appx_audit
+  archetype: table_full
+  exhibit: banded_table
+  gate: always
+  provenance: diligenceiq_extension
+  blueprint_title: Source Register
+  purpose: List every source the report rests on, with what it evidenced.
+  must_contain:
+  - 'One row per distinct source artefact: name, data-room node, doc type, provenance class, citation
+    count.'
+  - Web and analyst sources listed separately from data-room documents.
+  - Sources cited by the agents but absent from the data room flagged (E10).
+  - Synthetic or illustrative sources marked.
+  source_spec: 'Run data: evidence index citation graph.'
+  analysis: Mechanical. No interpretation.
+  exhibit_spec: Banded table grouped by provenance class.
+  quality_bar: Every source line on every slide resolves to exactly one row here.
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules:
+  - APX
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc:
+  - C1-COUNT
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true
+- id: S101_exceptions
+  'no': 101
+  section: appx_audit
+  archetype: table_full
+  exhibit: banded_table
+  gate: always
+  provenance: diligenceiq_extension
+  blueprint_title: Exceptions & Diligence Gaps
+  purpose: State plainly what the report could not establish and what follow-up is required.
+  must_contain:
+  - 'One row per exception: severity, rule id, issue, slides affected, source, treatment applied.'
+  - Slides dropped by a coverage gate listed with the reason and what would unlock them.
+  - Critical exceptions repeated at the top, not buried in severity order alone.
+  - A named follow-up request for each HIGH and CRITICAL item.
+  source_spec: 'Run data: exception log from ingest, evidence index, content check and QA.'
+  analysis: Mechanical assembly; severity per the E-rules.
+  exhibit_spec: Banded table grouped by severity, critical band first.
+  quality_bar: 'Nothing the deck could not evidence is invisible: every gap appears here with a named
+    next step.'
+  primary_modules: []
+  fallback_modules: []
+  secondary_modules: []
+  metrics: []
+  transform:
+  - T1-EXTRACT
+  - T10-NARRATIVE-TO-TABLE
+  - T12-COMPANY-VS-MARKET
+  - T2-COMBINE
+  - T8-FACT-VS-VIEW
+  - T9-DEDUP
+  calc: []
+  source_priority:
+  - R3
+  - R5
+  exception:
+  - E1-NOT-PROVIDED
+  heads: {}
+  elements:
+  - name: table
+    type: table
+    limits:
+      max_rows: 9
+      max_cols: 6
+      max_chars_cell: 90
+  - name: takeaway
+    type: text
+    limits:
+      max_chars: 320
+  repeatable: true

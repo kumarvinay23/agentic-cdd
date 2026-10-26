@@ -1,0 +1,28 @@
+# Glossary terms. The drafter includes a term only if it appears somewhere in the deck text,
+# so the glossary describes this report rather than the industry. Deal-specific terms can be
+# added in content.json -> glossary_extra: {term: definition}.
+version: 1
+terms:
+  ARR: "Annual recurring revenue - contracted or subscription revenue at a point in time, annualised."
+  MRR: "Monthly recurring revenue."
+  ARPA: "Average revenue per account per month."
+  ARPU: "Average revenue per user (subscriber or household) per month."
+  AAOV: "Average annual order value per account."
+  GRR: "Gross revenue retention - revenue kept from a starting cohort after churn and contraction, before any expansion."
+  NRR: "Net revenue retention - GRR plus expansion from the same cohort; above 100% means the cohort grew."
+  Logo retention: "Share of customers (accounts, subscribers) still active at the end of a period."
+  Cohort: "The group of customers acquired in the same period, tracked over time."
+  LTV: "Lifetime value - cumulative revenue expected from a customer over a stated horizon at actual ARPU and retention."
+  TAM: "Total addressable market - every customer in the defined territory multiplied by average spend."
+  SAM: "Serviceable addressable market - the part of TAM the business model can serve."
+  SOM: "Serviceable obtainable market - the part of SAM a single operator can realistically win."
+  CAGR: "Compound annual growth rate over the stated period."
+  TTM: "Trailing twelve months to the stated date."
+  YTD: "Year to date."
+  EBITDA: "Earnings before interest, tax, depreciation and amortisation, as reported in the management accounts."
+  Gross margin: "Gross profit as a share of revenue; gross profit is revenue less cost of operations."
+  P (suffix): "Plan or projection year, e.g. 2030P - management's forecast, not a result."
+  ICP: "Ideal customer profile - the customer types the company targets."
+  Module of record: "The diligence agent module whose finding governs a metric when sources disagree."
+  Data-room computed: "A figure read or calculated directly from a data-room workbook, the highest evidence basis in this report."
+  Withheld page: "A page of the standard report structure that the evidence could not support; listed in the exceptions appendix."

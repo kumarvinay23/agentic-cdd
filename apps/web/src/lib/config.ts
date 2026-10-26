@@ -1,6 +1,6 @@
 export const product = {
-  name: "Agentic CDD",
-  shortName: "ACDD",
+  name: "DiligenceIQ",
+  shortName: "DiligenceIQ",
 } as const;
 
 /** Backend base URL (no trailing slash). Default matches B3 local API port. */

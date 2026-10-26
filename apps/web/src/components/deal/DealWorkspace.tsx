@@ -31,7 +31,7 @@ import {
   vdrUploadRequest,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-store";
-import { product } from "@/lib/config";
+import { BrandMark } from "@/components/brand/BrandMark";
 import type { UsageStats } from "@/lib/deal-types";
 
 type DealView = "dashboard" | "vdr" | "workflow" | "documents" | "reports" | "databook" | "fdd";
@@ -444,14 +444,7 @@ export function DealWorkspace({ dealId }: { dealId: string }) {
     <div className="flex min-h-screen flex-col bg-[#f3f4f6]">
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border-primary bg-white/95 px-3 backdrop-blur">
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2">
-            <span className="inline-grid h-7 w-7 place-items-center rounded-lg bg-[#1e3a5f] text-white">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M13 2 4.5 13.5h6L11 22l8.5-11.5h-6L13 2z" />
-              </svg>
-            </span>
-            <span className="text-[15px] font-bold tracking-tight text-text-primary">{product.name}</span>
-          </div>
+          <BrandMark height={28} />
           <span className="mx-1 h-[18px] w-px bg-border-secondary" />
           <Link href="/" className="text-[13px] font-medium text-text-secondary hover:text-text-primary">
             Portfolio

@@ -321,7 +321,7 @@ def _header_footer(company: str):
         canvas.drawRightString(A4[0] - 0.75 * inch, A4[1] - 0.45 * inch, "Strictly Private & Confidential")
         canvas.setFillColor(_MUTED)
         canvas.setFont("Helvetica", 8)
-        canvas.drawString(0.75 * inch, 0.45 * inch, "© Agentic CDD · Investment Due Diligence")
+        canvas.drawString(0.75 * inch, 0.45 * inch, "© DiligenceIQ · Investment Due Diligence")
         canvas.drawRightString(A4[0] - 0.75 * inch, 0.45 * inch, f"{doc.page}")
         canvas.restoreState()
 
@@ -508,7 +508,7 @@ def _cover(styles: dict, ctx: BuildContext) -> list:
     meta_rows = [
         ["Document", "Investment Committee Memorandum", "Target", company],
         ["Sector", sector, "Scope", "Risk · Valuation · Synthesis"],
-        ["Report Date", today_s, "Prepared By", "Agentic CDD"],
+        ["Report Date", today_s, "Prepared By", "DiligenceIQ"],
         ["Document Reference", doc_ref, "Classification", "IC — Voting Members"],
     ]
     meta = Table(meta_rows, colWidths=[1.45 * inch, 2.05 * inch, 1.35 * inch, 1.65 * inch])
@@ -669,7 +669,7 @@ def _divider(styles: dict, number: str, title: str, subtitle: str) -> list:
             [Paragraph(_esc(subtitle), styles["divider_sub"])],
             [Spacer(1, 48)],
             [Paragraph(
-                "AGENTIC CDD  ·  INVESTMENT DUE DILIGENCE  ·  STRICTLY PRIVATE &amp; CONFIDENTIAL",
+                "DILIGENCEIQ  ·  INVESTMENT DUE DILIGENCE  ·  STRICTLY PRIVATE &amp; CONFIDENTIAL",
                 ParagraphStyle(
                     "df",
                     fontName="Helvetica",
@@ -1775,7 +1775,7 @@ def _closing_attestation(styles: dict, ctx: BuildContext) -> list:
             )],
             [Spacer(1, 12)],
             [Paragraph(
-                "Distribution control: Strictly Private &amp; Confidential — Agentic CDD deal workspace.",
+                "Distribution control: Strictly Private &amp; Confidential — DiligenceIQ deal workspace.",
                 styles["muted"],
             )],
         ],
@@ -1903,7 +1903,7 @@ class ICMemoBuilder(ReportBuilder):
             topMargin=0.7 * inch,
             bottomMargin=0.65 * inch,
             title=f"IC Memo — {company}",
-            author="Agentic CDD",
+            author="DiligenceIQ",
             subject=f"Generated {date.today().isoformat()} · sector {_sector_display(ctx)}",
         )
         doc.build(story, onFirstPage=_header_footer(company), onLaterPages=_header_footer(company))

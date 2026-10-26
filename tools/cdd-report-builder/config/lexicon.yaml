@@ -1,0 +1,995 @@
+version: 2
+doc: Surface forms -> ontology ids, used by scripts/ontology.py resolve(). Generated aliases come from
+  the registries; `bundles` are hand-authored because practitioners name chunks of work, not slide ids.
+  Resolution order is fixed in ontology/cdd_ontology.yaml -> prompt_resolution.
+slide_aliases:
+  cover page: S001_cover
+  slide 1: S001_cover
+  disclaimer & reliance limitations: S002_disclaimer
+  slide 2: S002_disclaimer
+  engagement overview & objectives: S003_engagement
+  slide 3: S003_engagement
+  contents: S004_contents
+  slide 4: S004_contents
+  research approach & interview sample: S005_research_approach
+  slide 5: S005_research_approach
+  survey sample distribution: S006_survey_sample
+  slide 6: S006_survey_sample
+  glossary: S007_glossary
+  slide 7: S007_glossary
+  section divider — business introduction & market primer: S008_div_business
+  business introduction & market primer: S008_div_business
+  slide 8: S008_div_business
+  company overview & financial snapshot: S009_company_snapshot
+  slide 9: S009_company_snapshot
+  platform evolution & acquisition integration: S010_platform_evolution
+  slide 10: S010_platform_evolution
+  value chain & stakeholder map: S011_value_chain
+  slide 11: S011_value_chain
+  business model routes & value-chain flow: S012_business_model_flow
+  slide 12: S012_business_model_flow
+  business model comparison: S013_business_model_comparison
+  slide 13: S013_business_model_comparison
+  model scorecard vs customer selection criteria: S014_model_scorecard
+  slide 14: S014_model_scorecard
+  structural barriers to replication: S015_barriers
+  slide 15: S015_barriers
+  incumbent pain points vs target value proposition: S016_pain_points
+  slide 16: S016_pain_points
+  platform roadmap beyond the core: S017_roadmap
+  slide 17: S017_roadmap
+  industry trends & implications: S018_industry_trends
+  slide 18: S018_industry_trends
+  investment highlights: S019_div_highlights
+  section divider — investment highlights: S019_div_highlights
+  slide 19: S019_div_highlights
+  investment highlights summary: S020_highlights_summary
+  slide 20: S020_highlights_summary
+  market size (tam / sam / served): S021_h1_market_size
+  highlight 1 — market size (tam / sam / served): S021_h1_market_size
+  slide 21: S021_h1_market_size
+  highlight 1 — sam expansion walkup: S022_h1_sam_walkup
+  sam expansion walkup: S022_h1_sam_walkup
+  slide 22: S022_h1_sam_walkup
+  market growth drivers: S023_h1_growth_drivers
+  highlight 1 — market growth drivers: S023_h1_growth_drivers
+  slide 23: S023_h1_growth_drivers
+  highlight 1 — recession resilience: S024_h1_recession
+  recession resilience: S024_h1_recession
+  slide 24: S024_h1_recession
+  highlight 2 — demand alignment: S025_h2_demand_alignment
+  demand alignment: S025_h2_demand_alignment
+  slide 25: S025_h2_demand_alignment
+  highlight 2 — customer lifecycle fit: S026_h2_lifecycle_fit
+  customer lifecycle fit: S026_h2_lifecycle_fit
+  slide 26: S026_h2_lifecycle_fit
+  customer satisfaction: S027_h3_satisfaction
+  highlight 3 — customer satisfaction: S027_h3_satisfaction
+  slide 27: S027_h3_satisfaction
+  highlight 4 — incumbent dissatisfaction: S028_h4_incumbent_dissatisfaction
+  incumbent dissatisfaction: S028_h4_incumbent_dissatisfaction
+  slide 28: S028_h4_incumbent_dissatisfaction
+  highlight 4 — competitive differentiation: S029_h4_differentiation
+  competitive differentiation: S029_h4_differentiation
+  slide 29: S029_h4_differentiation
+  full-suite offering receptivity: S030_h4_full_suite
+  highlight 4 — full-suite offering receptivity: S030_h4_full_suite
+  slide 30: S030_h4_full_suite
+  growth levers: S031_h5_growth_levers
+  highlight 5 — growth levers: S031_h5_growth_levers
+  slide 31: S031_h5_growth_levers
+  detailed findings: S032_div_market
+  section divider — detailed findings: S032_div_market
+  slide 32: S032_div_market
+  ideal customer profile mapping: S033_icp_mapping
+  slide 33: S033_icp_mapping
+  market opportunity definitions: S034_market_definitions
+  slide 34: S034_market_definitions
+  addressable volume narrowing: S035_volume_narrowing
+  slide 35: S035_volume_narrowing
+  addressable volume by channel: S036_volume_by_channel
+  slide 36: S036_volume_by_channel
+  tam by segment & walkdown to sam: S037_tam_walkdown
+  slide 37: S037_tam_walkdown
+  sam by end-market & channel — served market: S038_sam_by_endmarket
+  slide 38: S038_sam_by_endmarket
+  value-added services opportunity: S039_value_added_services
+  slide 39: S039_value_added_services
+  market growth factors — overview: S040_growth_factors_overview
+  slide 40: S040_growth_factors_overview
+  underlying demand growth: S041_gf1_demand
+  growth factor 1 — underlying demand growth: S041_gf1_demand
+  slide 41: S041_gf1_demand
+  growth factor 2 — mix shift to monetizable modes: S042_gf2_mix_shift
+  mix shift to monetizable modes: S042_gf2_mix_shift
+  slide 42: S042_gf2_mix_shift
+  growth factor 3 — channel adoption: S043_gf3_channel_adoption
+  channel adoption: S043_gf3_channel_adoption
+  slide 43: S043_gf3_channel_adoption
+  growth factor 3 — stickiness of the emerging channel: S044_gf3_channel_stickiness
+  stickiness of the emerging channel: S044_gf3_channel_stickiness
+  slide 44: S044_gf3_channel_stickiness
+  growth factor 4 — pricing & margin stability: S045_gf4_pricing_stability
+  pricing & margin stability: S045_gf4_pricing_stability
+  slide 45: S045_gf4_pricing_stability
+  sam growth build (detailed): S046_sam_growth_build
+  slide 46: S046_sam_growth_build
+  scenario analysis: S047_scenario_analysis
+  slide 47: S047_scenario_analysis
+  downturn resilience (detailed): S048_downturn_resilience
+  slide 48: S048_downturn_resilience
+  risk assessment: S049_risk_assessment
+  slide 49: S049_risk_assessment
+  section divider — decision-making dynamics: S050_div_decisions
+  decision-making dynamics: S050_div_decisions
+  slide 50: S050_div_decisions
+  partner switching lifecycle: S051_partner_switching_lifecycle
+  slide 51: S051_partner_switching_lifecycle
+  customer switching drivers: S052_switching_drivers
+  slide 52: S052_switching_drivers
+  customer decision tree: S053_decision_tree
+  slide 53: S053_decision_tree
+  decision process & stakeholders by segment: S054_decision_process
+  slide 54: S054_decision_process
+  purchase criteria by customer type & size: S055_purchase_criteria
+  slide 55: S055_purchase_criteria
+  vertical-specific functionality needs: S056_vertical_needs
+  slide 56: S056_vertical_needs
+  switching complexity by segment: S057_switching_complexity
+  slide 57: S057_switching_complexity
+  section divider — competitive landscape: S058_div_competition
+  competitive landscape: S058_div_competition
+  slide 58: S058_div_competition
+  routes to market & where competition happens: S059_routes_to_market
+  slide 59: S059_routes_to_market
+  competitor archetype comparison: S060_competitor_archetypes
+  slide 60: S060_competitor_archetypes
+  competitive positioning map: S061_positioning_map
+  slide 61: S061_positioning_map
+  criteria performance vs key archetypes: S062_criteria_vs_archetypes
+  slide 62: S062_criteria_vs_archetypes
+  feature-module performance benchmarking: S063_feature_benchmarking
+  slide 63: S063_feature_benchmarking
+  price benchmarking: S064_price_benchmarking
+  slide 64: S064_price_benchmarking
+  incumbent nps by provider type: S065_incumbent_nps
+  slide 65: S065_incumbent_nps
+  competitor pain-point synthesis: S066_competitor_painpoints
+  slide 66: S066_competitor_painpoints
+  full-suite demand & willingness to pay: S067_full_suite_wtp
+  slide 67: S067_full_suite_wtp
+  churn triggers: S068_churn_triggers
+  slide 68: S068_churn_triggers
+  target strengths — customer evidence: S069_target_strengths
+  slide 69: S069_target_strengths
+  target development areas — customer evidence: S070_target_development_areas
+  slide 70: S070_target_development_areas
+  growth opportunities: S071_div_growth
+  section divider — growth opportunities: S071_div_growth
+  slide 71: S071_div_growth
+  growth levers — overview: S072_growth_levers_overview
+  slide 72: S072_growth_levers_overview
+  lever 1 — new customer acquisition & market liquidity: S073_l1_new_customers
+  new customer acquisition & market liquidity: S073_l1_new_customers
+  slide 73: S073_l1_new_customers
+  right to win the contestable pool: S074_l1_right_to_win
+  lever 1 — right to win the contestable pool: S074_l1_right_to_win
+  slide 74: S074_l1_right_to_win
+  go-to-market channel expansion: S075_l1_channel_expansion
+  lever 1 — go-to-market channel expansion: S075_l1_channel_expansion
+  slide 75: S075_l1_channel_expansion
+  lever 2 — partner whitespace mapping: S076_l2_partner_whitespace
+  partner whitespace mapping: S076_l2_partner_whitespace
+  slide 76: S076_l2_partner_whitespace
+  partner adoption willingness: S077_l2_partner_willingness
+  lever 2 — partner adoption willingness: S077_l2_partner_willingness
+  slide 77: S077_l2_partner_willingness
+  scaling within partner ecosystems: S078_l2_partner_scaling
+  lever 2 — scaling within partner ecosystems: S078_l2_partner_scaling
+  slide 78: S078_l2_partner_scaling
+  expanding existing accounts: S079_l3_expand_accounts
+  lever 3 — expanding existing accounts: S079_l3_expand_accounts
+  slide 79: S079_l3_expand_accounts
+  lever 4 — pricing optimization: S080_l4_pricing
+  pricing optimization: S080_l4_pricing
+  slide 80: S080_l4_pricing
+  lever 5 — adjacent segment expansion: S081_l5_adjacent_segments
+  adjacent segment expansion: S081_l5_adjacent_segments
+  slide 81: S081_l5_adjacent_segments
+  lever 6 — product expansion requirements: S082_l6_product_expansion
+  product expansion requirements: S082_l6_product_expansion
+  slide 82: S082_l6_product_expansion
+  strategic m&a: S083_l7_ma
+  lever 7 — strategic m&a: S083_l7_ma
+  slide 83: S083_l7_ma
+  section divider — appendices: S084_div_appx_partners
+  appendices: S084_div_appx_partners
+  slide 84: S084_div_appx_partners
+  landscape map— by category: S085_landscape_by_category
+  landscape map (1 of 2) — by category: S085_landscape_by_category
+  slide 85: S085_landscape_by_category
+  landscape map (2 of 2) — by category & size: S086_landscape_by_size
+  landscape map— by category & size: S086_landscape_by_size
+  slide 86: S086_landscape_by_size
+  partner counts & retention data: S087_partner_counts
+  slide 87: S087_partner_counts
+  appendix b: S088_div_appx_sizing
+  section divider — appendix b: S088_div_appx_sizing
+  slide 88: S088_div_appx_sizing
+  market sizing methodology — core opportunity: S089_sizing_method_core
+  slide 89: S089_sizing_method_core
+  market sizing methodology — adjacent opportunity: S090_sizing_method_adjacent
+  slide 90: S090_sizing_method_adjacent
+  appendix c: S091_div_appx_cases
+  section divider — appendix c: S091_div_appx_cases
+  slide 91: S091_div_appx_cases
+  case study — lost prospect: S092_case_lost_prospect
+  slide 92: S092_case_lost_prospect
+  case study — competitor's customer: S093_case_competitor_customer
+  slide 93: S093_case_competitor_customer
+  case study — existing customer: S094_case_existing_customer
+  slide 94: S094_case_existing_customer
+  section divider — appendix d: S095_div_appx_supp
+  appendix d: S095_div_appx_supp
+  slide 95: S095_div_appx_supp
+  supplementary data — entrenchment evidence: S096_supp_entrenchment
+  slide 96: S096_supp_entrenchment
+  back cover: S097_back_cover
+  slide 97: S097_back_cover
+  section divider — evidence & audit trail: S098_div_appx_audit
+  evidence & audit trail: S098_div_appx_audit
+  slide 98: S098_div_appx_audit
+  module verdicts & confidence: S099_module_verdicts
+  slide 99: S099_module_verdicts
+  source register: S100_source_register
+  slide 100: S100_source_register
+  exceptions & diligence gaps: S101_exceptions
+  slide 101: S101_exceptions
+module_aliases:
+  deal context & objectives: DCO
+  deal context: DCO
+  deal context and objectives: DCO
+  scope & methodology: SCM
+  scope and methodology: SCM
+  company background: CBG
+  company overview: CBG
+  business background: CBG
+  management quality: MGQ
+  management assessment: MGQ
+  leadership quality: MGQ
+  strategic direction: STR
+  strategy: STR
+  strategic plan: STR
+  regulatory compliance: RCO
+  regulatory & compliance: RCO
+  regulation: RCO
+  ip & technology: IPT
+  ip and technology: IPT
+  technology & ip: IPT
+  esg & sustainability: ESG
+  esg: ESG
+  esg and sustainability: ESG
+  sustainability: ESG
+  market definition: MDF
+  market map: MDF
+  market perimeter: MDF
+  market volume & growth: MVG
+  market size & growth: MVG
+  market volume and growth: MVG
+  market pricing: MPR
+  pricing: MPR
+  demand drivers: DDR
+  market drivers: DDR
+  competitor identification: CID
+  competitor landscape: CID
+  competitive landscape: CID
+  competitive differentiation: CDF
+  differentiation: CDF
+  competitive advantage: CDF
+  market share strategy: MSS
+  market share: MSS
+  market position: MSS
+  swot analysis: SWO
+  swot: SWO
+  customer segmentation: CSG
+  customer segments: CSG
+  customer satisfaction: CSA
+  customer sentiment: CSA
+  customer stickiness: CST
+  customer retention: CST
+  retention: CST
+  supplier dependence: SUP
+  supplier concentration: SUP
+  cost structure: CSC
+  cost base: CSC
+  supply chain resilience: SCR
+  supply chain: SCR
+  operational risk: OPR
+  operations risk: OPR
+  historical performance: HPF
+  financial performance: HPF
+  historical financials: HPF
+  revenue quality: RVQ
+  quality of revenue: RVQ
+  cash flow: CFL
+  cash flow analysis: CFL
+  capital structure: CAP
+  capitalisation: CAP
+  capitalization: CAP
+  market risk: MRK
+  market risks: MRK
+  growth opportunities: GRO
+  growth levers: GRO
+  value creation opportunities: GRO
+  synergies: SYN
+  synergy analysis: SYN
+  internal risk: IRK
+  internal risks: IRK
+  valuation model: VAL
+  valuation: VAL
+  recommendations: REC
+  recommendation: REC
+  investment recommendation: REC
+  appendices: APX
+  appendix: APX
+  executive summary: EXS
+  executive deal summary: EXS
+  exec summary: EXS
+  deal snapshot: EXS
+  buying behavior: BBH
+  buyer behaviour: BBH
+  buying behaviour: BBH
+  purchase behavior: BBH
+  customer buying behavior: BBH
+  sensitivity analysis: SNS
+  scenario analysis: SNS
+  sensitivity & scenarios: SNS
+  stress test: SNS
+  final valuation range: FVR
+  valuation range: FVR
+  bid range: FVR
+  final valuation: FVR
+  football field: FVR
+metric_aliases:
+  total addressable market: mkt.tam
+  tam: mkt.tam
+  total market size: mkt.tam
+  overall market: mkt.tam
+  serviceable addressable market: mkt.sam
+  sam: mkt.sam
+  addressable market: mkt.sam
+  serviceable obtainable / served market: mkt.som
+  som: mkt.som
+  served market: mkt.som
+  obtainable market: mkt.som
+  serviceable obtainable market: mkt.som
+  market growth rate (cagr): mkt.cagr
+  market cagr: mkt.cagr
+  market growth: mkt.cagr
+  industry growth rate: mkt.cagr
+  addressable volume (units / tonnes / accounts): mkt.volume
+  addressable volume: mkt.volume
+  market volume: mkt.volume
+  unit volume: mkt.volume
+  tonnage: mkt.volume
+  market definition and boundary: mkt.definition
+  market definition: mkt.definition
+  market boundary: mkt.definition
+  scope of the market: mkt.definition
+  in-scope market: mkt.definition
+  segment share of market: mkt.segment_share
+  segment mix: mkt.segment_share
+  share by segment: mkt.segment_share
+  market split: mkt.segment_share
+  market price benchmark: mkt.price_benchmark
+  price benchmark: mkt.price_benchmark
+  market pricing: mkt.price_benchmark
+  going rate: mkt.price_benchmark
+  benchmark price: mkt.price_benchmark
+  demand driver and its magnitude: mkt.demand_driver
+  demand driver: mkt.demand_driver
+  growth driver: mkt.demand_driver
+  what drives demand: mkt.demand_driver
+  downturn / recession sensitivity: mkt.recession_sensitivity
+  recession resilience: mkt.recession_sensitivity
+  downturn resilience: mkt.recession_sensitivity
+  cyclicality: mkt.recession_sensitivity
+  revenue: fin.revenue
+  turnover: fin.revenue
+  topline: fin.revenue
+  sales: fin.revenue
+  revenue growth: fin.revenue_growth
+  topline growth: fin.revenue_growth
+  growth rate: fin.revenue_growth
+  gross margin: fin.gross_margin
+  gm: fin.gross_margin
+  gross profit margin: fin.gross_margin
+  ebitda: fin.ebitda
+  operating profit: fin.ebitda
+  adjusted ebitda: fin.ebitda
+  ebitda margin: fin.ebitda_margin
+  operating margin: fin.ebitda_margin
+  cost structure / cost base: fin.cost_base
+  cost base: fin.cost_base
+  cost structure: fin.cost_base
+  opex: fin.cost_base
+  cost lines: fin.cost_base
+  cash conversion: fin.cash_conversion
+  fcf conversion: fin.cash_conversion
+  cash generation: fin.cash_conversion
+  net debt: fin.net_debt
+  borrowings: fin.net_debt
+  leverage: fin.net_debt
+  debt: fin.net_debt
+  revenue mix by line or segment: fin.revenue_mix
+  revenue mix: fin.revenue_mix
+  revenue split: fin.revenue_mix
+  revenue by line: fin.revenue_mix
+  revenue by segment: fin.revenue_mix
+  contracted / recurring revenue share: fin.recurring_share
+  recurring revenue: fin.recurring_share
+  contracted revenue: fin.recurring_share
+  arr share: fin.recurring_share
+  revenue quality: fin.recurring_share
+  management forecast: fin.projection
+  forecast: fin.projection
+  plan: fin.projection
+  budget: fin.projection
+  management case: fin.projection
+  projections: fin.projection
+  customer count: cust.count
+  number of customers: cust.count
+  accounts: cust.count
+  logos: cust.count
+  customer segmentation: cust.segments
+  segments: cust.segments
+  icp: cust.segments
+  customer types: cust.segments
+  customer concentration: cust.concentration
+  top-10 share: cust.concentration
+  concentration risk: cust.concentration
+  retention / renewal rate: cust.retention
+  retention: cust.retention
+  renewal rate: cust.retention
+  logo retention: cust.retention
+  stickiness: cust.retention
+  churn rate: cust.churn
+  churn: cust.churn
+  attrition: cust.churn
+  defection: cust.churn
+  loss rate: cust.churn
+  average customer tenure: cust.tenure
+  tenure: cust.tenure
+  average relationship length: cust.tenure
+  years with the company: cust.tenure
+  net promoter score: cust.nps
+  nps: cust.nps
+  net promoter: cust.nps
+  promoter score: cust.nps
+  advocacy: cust.nps
+  satisfaction rating: cust.satisfaction
+  satisfaction: cust.satisfaction
+  csat: cust.satisfaction
+  customer sentiment: cust.satisfaction
+  purchase criteria and their rank: cust.purchase_criteria
+  purchase criteria: cust.purchase_criteria
+  selection criteria: cust.purchase_criteria
+  what buyers care about: cust.purchase_criteria
+  decision criteria: cust.purchase_criteria
+  decision process and stakeholders: cust.decision_process
+  decision process: cust.decision_process
+  buying process: cust.decision_process
+  procurement cycle: cust.decision_process
+  stakeholders: cust.decision_process
+  dmu: cust.decision_process
+  switching trigger and barrier: cust.switching_trigger
+  switching trigger: cust.switching_trigger
+  why they switch: cust.switching_trigger
+  switching barrier: cust.switching_trigger
+  entry trigger: cust.switching_trigger
+  willingness to pay: cust.wtp
+  wtp: cust.wtp
+  price sensitivity: cust.wtp
+  what they will pay: cust.wtp
+  competitor set: comp.set
+  competitors: comp.set
+  the field: comp.set
+  who else is in the market: comp.set
+  competitor archetypes: comp.archetypes
+  archetypes: comp.archetypes
+  competitor types: comp.archetypes
+  player categories: comp.archetypes
+  market share: comp.share
+  share of market: comp.share
+  share position: comp.share
+  differentiator and its durability: comp.differentiation
+  differentiation: comp.differentiation
+  usp: comp.differentiation
+  right to win: comp.differentiation
+  competitive advantage: comp.differentiation
+  moat: comp.differentiation
+  positioning on price / capability axes: comp.positioning
+  positioning: comp.positioning
+  positioning map: comp.positioning
+  where they sit: comp.positioning
+  competitive position: comp.positioning
+  barrier to replication / entry: comp.barrier
+  barriers to entry: comp.barrier
+  barriers to replication: comp.barrier
+  entry barriers: comp.barrier
+  defensibility: comp.barrier
+  operating capacity and utilisation: ops.capacity
+  capacity: ops.capacity
+  utilisation: ops.capacity
+  throughput: ops.capacity
+  supplier concentration / dependence: ops.supplier_concentration
+  supplier dependence: ops.supplier_concentration
+  supplier concentration: ops.supplier_concentration
+  vendor risk: ops.supplier_concentration
+  supply-chain resilience rating: ops.supply_resilience
+  supply chain resilience: ops.supply_resilience
+  supply risk: ops.supply_resilience
+  continuity: ops.supply_resilience
+  headcount: ops.headcount
+  employees: ops.headcount
+  fte: ops.headcount
+  staff: ops.headcount
+  technology and ip position: ops.tech_stack
+  technology: ops.tech_stack
+  ip: ops.tech_stack
+  tech stack: ops.tech_stack
+  platform: ops.tech_stack
+  patents: ops.tech_stack
+  valuation range: val.range
+  valuation: val.range
+  enterprise value: val.range
+  ev: val.range
+  price: val.range
+  valuation multiple: val.multiple
+  multiple: val.multiple
+  ev/ebitda: val.multiple
+  revenue multiple: val.multiple
+  entry multiple: val.multiple
+  valuation sensitivity / scenario: val.sensitivity
+  sensitivity: val.sensitivity
+  scenario: val.sensitivity
+  downside case: val.sensitivity
+  upside case: val.sensitivity
+  stress test: val.sensitivity
+  synergy value: val.synergy
+  synergies: val.synergy
+  cost savings: val.synergy
+  run-rate synergies: val.synergy
+  impact / sustainability metric: esg.impact
+  impact: esg.impact
+  esg metrics: esg.impact
+  diversion: esg.impact
+  emissions avoided: esg.impact
+  sustainability: esg.impact
+  risk, impact and likelihood: risk.item
+  risks: risk.item
+  risk register: risk.item
+  key risks: risk.item
+  what could go wrong: risk.item
+  regulatory exposure: risk.regulatory
+  regulatory: risk.regulatory
+  compliance: risk.regulatory
+  licensing: risk.regulatory
+  permits: risk.regulatory
+  regulation: risk.regulatory
+section_aliases:
+  engagement overview: front
+  front: front
+  business introduction & market primer: business
+  business: business
+  investment highlights: highlights
+  highlights: highlights
+  market dynamics & opportunity: market
+  market: market
+  decision-making dynamics: decisions
+  decisions: decisions
+  competitive landscape: competition
+  competition: competition
+  growth opportunities: growth
+  growth: growth
+  appendix a - partner & vendor landscape: appx_partners
+  appx_partners: appx_partners
+  appendix b - market sizing methodology: appx_sizing
+  appx_sizing: appx_sizing
+  appendix c - case studies: appx_cases
+  appx_cases: appx_cases
+  appendix d - supplementary data: appx_supp
+  appx_supp: appx_supp
+  appendix e - evidence & audit trail: appx_audit
+  appx_audit: appx_audit
+bundles:
+  market sizing:
+  - S021_h1_market_size
+  - S022_h1_sam_walkup
+  - S034_market_definitions
+  - S035_volume_narrowing
+  - S036_volume_by_channel
+  - S037_tam_walkdown
+  - S038_sam_by_endmarket
+  - S046_sam_growth_build
+  - S089_sizing_method_core
+  - S090_sizing_method_adjacent
+  - MVG
+  - MDF
+  - mkt.tam
+  - mkt.sam
+  - mkt.som
+  tam:
+  - S021_h1_market_size
+  - S037_tam_walkdown
+  - S089_sizing_method_core
+  - mkt.tam
+  sam:
+  - S022_h1_sam_walkup
+  - S037_tam_walkdown
+  - S038_sam_by_endmarket
+  - S046_sam_growth_build
+  - mkt.sam
+  market growth:
+  - S023_h1_growth_drivers
+  - S040_growth_factors_overview
+  - S041_gf1_demand
+  - S042_gf2_mix_shift
+  - S043_gf3_channel_adoption
+  - S045_gf4_pricing_stability
+  - S046_sam_growth_build
+  - MVG
+  - DDR
+  - mkt.cagr
+  growth drivers:
+  - S023_h1_growth_drivers
+  - S040_growth_factors_overview
+  - S041_gf1_demand
+  - DDR
+  - mkt.demand_driver
+  competition:
+  - S058_div_competition
+  - S059_routes_to_market
+  - S060_competitor_archetypes
+  - S061_positioning_map
+  - S062_criteria_vs_archetypes
+  - S063_feature_benchmarking
+  - S064_price_benchmarking
+  - S065_incumbent_nps
+  - S066_competitor_painpoints
+  - S067_full_suite_wtp
+  - S068_churn_triggers
+  - S069_target_strengths
+  - S070_target_development_areas
+  - CID
+  - CDF
+  - MSS
+  competitive landscape:
+  - S058_div_competition
+  - S059_routes_to_market
+  - S060_competitor_archetypes
+  - S061_positioning_map
+  - S062_criteria_vs_archetypes
+  - S063_feature_benchmarking
+  - S064_price_benchmarking
+  - S065_incumbent_nps
+  - S066_competitor_painpoints
+  - S067_full_suite_wtp
+  - S068_churn_triggers
+  - S069_target_strengths
+  - S070_target_development_areas
+  - CID
+  - CDF
+  - MSS
+  competitors:
+  - S060_competitor_archetypes
+  - S061_positioning_map
+  - S062_criteria_vs_archetypes
+  - S085_landscape_by_category
+  - S086_landscape_by_size
+  - CID
+  - comp.set
+  positioning:
+  - S061_positioning_map
+  - S062_criteria_vs_archetypes
+  - comp.positioning
+  differentiation:
+  - S029_h4_differentiation
+  - S015_barriers
+  - S016_pain_points
+  - S074_l1_right_to_win
+  - CDF
+  - comp.differentiation
+  pricing:
+  - S045_gf4_pricing_stability
+  - S064_price_benchmarking
+  - S080_l4_pricing
+  - S039_value_added_services
+  - MPR
+  - mkt.price_benchmark
+  - cust.wtp
+  customers:
+  - S050_div_decisions
+  - S051_partner_switching_lifecycle
+  - S052_switching_drivers
+  - S053_decision_tree
+  - S054_decision_process
+  - S055_purchase_criteria
+  - S056_vertical_needs
+  - S057_switching_complexity
+  - S033_icp_mapping
+  - S027_h3_satisfaction
+  - CSG
+  - CSA
+  - CST
+  - BBH
+  customer dynamics:
+  - S050_div_decisions
+  - S051_partner_switching_lifecycle
+  - S052_switching_drivers
+  - S053_decision_tree
+  - S054_decision_process
+  - S055_purchase_criteria
+  - S056_vertical_needs
+  - S057_switching_complexity
+  - BBH
+  - CST
+  - CSA
+  buying behaviour:
+  - S050_div_decisions
+  - S051_partner_switching_lifecycle
+  - S052_switching_drivers
+  - S053_decision_tree
+  - S054_decision_process
+  - S055_purchase_criteria
+  - S056_vertical_needs
+  - S057_switching_complexity
+  - BBH
+  - cust.purchase_criteria
+  - cust.decision_process
+  buying behavior:
+  - S050_div_decisions
+  - S051_partner_switching_lifecycle
+  - S052_switching_drivers
+  - S053_decision_tree
+  - S054_decision_process
+  - S055_purchase_criteria
+  - S056_vertical_needs
+  - S057_switching_complexity
+  - BBH
+  - cust.purchase_criteria
+  - cust.decision_process
+  churn:
+  - S068_churn_triggers
+  - S052_switching_drivers
+  - S057_switching_complexity
+  - CST
+  - cust.churn
+  retention:
+  - S026_h2_lifecycle_fit
+  - S044_gf3_channel_stickiness
+  - S068_churn_triggers
+  - S096_supp_entrenchment
+  - CST
+  - cust.retention
+  satisfaction:
+  - S027_h3_satisfaction
+  - S065_incumbent_nps
+  - S069_target_strengths
+  - S070_target_development_areas
+  - CSA
+  - cust.nps
+  nps:
+  - S027_h3_satisfaction
+  - S065_incumbent_nps
+  - cust.nps
+  growth levers:
+  - S071_div_growth
+  - S072_growth_levers_overview
+  - S073_l1_new_customers
+  - S074_l1_right_to_win
+  - S075_l1_channel_expansion
+  - S076_l2_partner_whitespace
+  - S077_l2_partner_willingness
+  - S078_l2_partner_scaling
+  - S079_l3_expand_accounts
+  - S080_l4_pricing
+  - S081_l5_adjacent_segments
+  - S082_l6_product_expansion
+  - S083_l7_ma
+  - S031_h5_growth_levers
+  - GRO
+  growth opportunities:
+  - S071_div_growth
+  - S072_growth_levers_overview
+  - S073_l1_new_customers
+  - S074_l1_right_to_win
+  - S075_l1_channel_expansion
+  - S076_l2_partner_whitespace
+  - S077_l2_partner_willingness
+  - S078_l2_partner_scaling
+  - S079_l3_expand_accounts
+  - S080_l4_pricing
+  - S081_l5_adjacent_segments
+  - S082_l6_product_expansion
+  - S083_l7_ma
+  - GRO
+  - SYN
+  - STR
+  investment highlights:
+  - S019_div_highlights
+  - S020_highlights_summary
+  - S021_h1_market_size
+  - S022_h1_sam_walkup
+  - S023_h1_growth_drivers
+  - S024_h1_recession
+  - S025_h2_demand_alignment
+  - S026_h2_lifecycle_fit
+  - S027_h3_satisfaction
+  - S028_h4_incumbent_dissatisfaction
+  - S029_h4_differentiation
+  - S030_h4_full_suite
+  - S031_h5_growth_levers
+  - EXS
+  - REC
+  highlights:
+  - S019_div_highlights
+  - S020_highlights_summary
+  - S021_h1_market_size
+  - S022_h1_sam_walkup
+  - S023_h1_growth_drivers
+  - S024_h1_recession
+  - S025_h2_demand_alignment
+  - S026_h2_lifecycle_fit
+  - S027_h3_satisfaction
+  - S028_h4_incumbent_dissatisfaction
+  - S029_h4_differentiation
+  - S030_h4_full_suite
+  - S031_h5_growth_levers
+  - EXS
+  - REC
+  risks:
+  - S049_risk_assessment
+  - S024_h1_recession
+  - S048_downturn_resilience
+  - MRK
+  - IRK
+  - OPR
+  - SCR
+  - risk.item
+  risk register:
+  - S049_risk_assessment
+  - MRK
+  - IRK
+  - risk.item
+  valuation:
+  - S047_scenario_analysis
+  - S083_l7_ma
+  - FVR
+  - SNS
+  - VAL
+  - val.range
+  - val.multiple
+  - val.sensitivity
+  scenarios:
+  - S047_scenario_analysis
+  - S048_downturn_resilience
+  - SNS
+  - val.sensitivity
+  synergies:
+  - S083_l7_ma
+  - S010_platform_evolution
+  - SYN
+  - val.synergy
+  financials:
+  - S009_company_snapshot
+  - S045_gf4_pricing_stability
+  - S079_l3_expand_accounts
+  - HPF
+  - RVQ
+  - CSC
+  - CFL
+  - CAP
+  - fin.revenue
+  - fin.ebitda
+  unit economics:
+  - S045_gf4_pricing_stability
+  - S080_l4_pricing
+  - CSC
+  - MPR
+  - fin.gross_margin
+  esg:
+  - S018_industry_trends
+  - ESG
+  - esg.impact
+  regulatory:
+  - S018_industry_trends
+  - S049_risk_assessment
+  - RCO
+  - risk.regulatory
+  supply chain:
+  - S011_value_chain
+  - S087_partner_counts
+  - SUP
+  - SCR
+  - ops.supplier_concentration
+  partners:
+  - S076_l2_partner_whitespace
+  - S077_l2_partner_willingness
+  - S078_l2_partner_scaling
+  - S087_partner_counts
+  - SUP
+  case studies:
+  - S091_div_appx_cases
+  - S092_case_lost_prospect
+  - S093_case_competitor_customer
+  - S094_case_existing_customer
+  methodology:
+  - S005_research_approach
+  - S089_sizing_method_core
+  - S090_sizing_method_adjacent
+  - SCM
+  front matter:
+  - S001_cover
+  - S002_disclaimer
+  - S003_engagement
+  - S004_contents
+  - S005_research_approach
+  - S006_survey_sample
+  - S007_glossary
+  appendix:
+  - S084_div_appx_partners
+  - S085_landscape_by_category
+  - S086_landscape_by_size
+  - S087_partner_counts
+  - S088_div_appx_sizing
+  - S089_sizing_method_core
+  - S090_sizing_method_adjacent
+  - S091_div_appx_cases
+  - S092_case_lost_prospect
+  - S093_case_competitor_customer
+  - S094_case_existing_customer
+  - S095_div_appx_supp
+  - S096_supp_entrenchment
+  - S097_back_cover
+  - S098_div_appx_audit
+  - S099_module_verdicts
+  - S100_source_register
+  - S101_exceptions
+  audit trail:
+  - S098_div_appx_audit
+  - S099_module_verdicts
+  - S100_source_register
+  - S101_exceptions
+  exceptions:
+  - S101_exceptions
+  source register:
+  - S100_source_register
+  module verdicts:
+  - S099_module_verdicts
+  executive summary:
+  - S020_highlights_summary
+  - S003_engagement
+  - EXS
+  recommendation:
+  - S020_highlights_summary
+  - S031_h5_growth_levers
+  - REC
+  swot:
+  - S069_target_strengths
+  - S070_target_development_areas
+  - SWO
+  management:
+  - S009_company_snapshot
+  - MGQ
+  - ops.headcount
+  technology:
+  - S063_feature_benchmarking
+  - S082_l6_product_expansion
+  - IPT
+  - ops.tech_stack
+never_infer:
+- target perimeter - ask which entity is being acquired
+- reporting currency - ask, never assume from the data room's units
+- the module-of-record for a metric - it is declared, not guessed
+- a figure for a metric with no admissible evidence - return the gap

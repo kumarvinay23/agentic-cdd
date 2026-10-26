@@ -1,0 +1,237 @@
+# VdrNode instances — the canonical data-room address space.
+# ---------------------------------------------------------------------------
+# Agent modules cite evidence as
+#   (DOC: <Project> VDR__<section>__<subsection>__<topic>__<filename>)
+# so this tree is what turns a citation string into a resolved provenance node.
+# Codes and titles below are the observed Compost Crew structure [O]; `aliases`
+# absorb the common variants seen in other data rooms so the resolver does not
+# need an exact title match.
+#
+# match: ordered list of regexes tried against the citation segment, case- and
+#        punctuation-insensitive, after stripping the leading numeric code.
+# canonical_for: the DocTypes this node is expected to hold. Used to (a) infer a
+#        SourceArtifact's doc_type when the filename is uninformative and
+#        (b) raise a diligence gap when a `required` node is empty.
+version: 2
+separator: "__"
+root_pattern: "^(?P<project>.+?)\\s+VDR$"
+
+sections:
+
+  "1":
+    code: "1"
+    title: "Corporate, Organizational & Governance"
+    aliases: [corporate, governance, organizational, legal structure, company]
+    required: true
+    canonical_for: [cap_table, legal]
+    subsections:
+      "1_1":
+        title: "Equity & Capitalization"
+        aliases: [equity, capitalization, cap table, shareholding]
+        canonical_for: [cap_table]
+        topics:
+          "1_1_1": {title: "Capitalization Table", canonical_for: [cap_table], required: true}
+          "1_1_2": {title: "Equity Ledger",        canonical_for: [cap_table]}
+      "1_2":
+        title: "Corporate Governance"
+        aliases: [governance, board, officers]
+        canonical_for: [legal]
+        topics:
+          "1_2_1": {title: "Legal Entity",     canonical_for: [legal], required: true}
+          "1_2_2": {title: "List of Officers", canonical_for: [legal]}
+
+  "2":
+    code: "2"
+    title: "Financial Information"
+    aliases: [financials, finance, financial]
+    required: true
+    canonical_for: [financials, kpi_pack, projections, market_model]
+    subsections:
+      "2_1":
+        title: "Historical Financial Statement"
+        aliases: [historical financials, statutory accounts, audited]
+        canonical_for: [financials]
+        topics:
+          "2_1_1": {title: "Financial Statements",         canonical_for: [financials], required: true}
+          "2_1_2": {title: "Audited Accounts",             canonical_for: [financials]}
+          "2_1_3": {title: "Monthly Financial Statements", canonical_for: [financials]}
+          "2_1_4": {title: "Balance Sheet Details",        canonical_for: [financials]}
+          "2_1_5": {title: "Statement of Cash Flows",      canonical_for: [financials]}
+      "2_2":
+        title: "Management Reporting & KPIs"
+        aliases: [kpis, management reporting, mis]
+        canonical_for: [kpi_pack]
+        topics:
+          "2_2_1": {title: "Revenue by Service Line",    canonical_for: [kpi_pack], required: true}
+          "2_2_2": {title: "Revenue by Customer Segment",canonical_for: [kpi_pack], required: true}
+          "2_2_3": {title: "Operating KPIs",             canonical_for: [kpi_pack]}
+      "2_3":
+        title: "Projections & Budget"
+        aliases: [forecast, budget, plan, projections]
+        canonical_for: [projections, market_model]
+        topics:
+          "2_3_1": {title: "Financial Projections",            canonical_for: [projections], required: true}
+          "2_3_2": {title: "Assumption Supporting Projections",canonical_for: [projections]}
+          "2_3_3": {title: "Market Sizing",                    canonical_for: [market_model], required: true}
+      "2_4":
+        title: "Working Capital & Debt"
+        aliases: [debt, working capital, leverage]
+        canonical_for: [financials]
+        topics:
+          "2_4_1": {title: "Debt Schedules",      canonical_for: [financials]}
+          "2_4_2": {title: "Working Capital Analysis", canonical_for: [financials]}
+
+  "3":
+    code: "3"
+    title: "Customers & Commercial"
+    aliases: [customers, commercial, sales, go to market]
+    required: true
+    canonical_for: [kpi_pack, marketing, contract, survey]
+    subsections:
+      "3_1":
+        title: "Customer Data & Analytics"
+        aliases: [customer data, analytics, cohorts]
+        canonical_for: [kpi_pack, marketing]
+        topics:
+          "3_1_1": {title: "Marketing Materials and Service Area Maps", canonical_for: [marketing]}
+          "3_1_2": {title: "Customer Contract List",                    canonical_for: [contract], required: true}
+          "3_1_3": {title: "Cohort / Retention Analysis",               canonical_for: [kpi_pack], required: true}
+          "3_1_4": {title: "Pipeline & Win-Loss",                       canonical_for: [kpi_pack]}
+      "3_2":
+        title: "Voice of Customer"
+        aliases: [voc, survey, nps, interviews, primary research]
+        canonical_for: [survey, interviews]
+        note: >
+          Absent in the Compost Crew VDR. This is the node that unlocks the
+          research_gated slides (5, 6, 14, 25-30, 43-44, 51-57, 62-70, 76-80,
+          92-94, 96). Its absence is a scope finding, not a defect.
+        topics:
+          "3_2_1": {title: "Customer Survey Export",       canonical_for: [survey]}
+          "3_2_2": {title: "Interview Programme & Notes",  canonical_for: [interviews]}
+          "3_2_3": {title: "NPS / Satisfaction Tracking",  canonical_for: [survey]}
+
+  "4":
+    code: "4"
+    title: "Real Estate, Facilities & Fleet"
+    aliases: [real estate, property, facilities, fleet, assets]
+    canonical_for: [contract]
+    subsections:
+      "4_1":
+        title: "Real Property"
+        aliases: [property, leases, sites]
+        canonical_for: [contract]
+        topics:
+          "4_1_1": {title: "Facility Lease Agreements", canonical_for: [contract]}
+      "4_2":
+        title: "Fleet & Equipment"
+        aliases: [fleet, vehicles, equipment, plant]
+        canonical_for: [contract]
+        topics:
+          "4_2_1": {title: "Vehicle List",   canonical_for: [contract]}
+          "4_2_2": {title: "Equipment List", canonical_for: [contract]}
+
+  "5":
+    code: "5"
+    title: "Material Contracts"
+    aliases: [contracts, agreements, material agreements]
+    required: true
+    canonical_for: [contract]
+    subsections:
+      "5_1":
+        title: "Other Material Agreements"
+        aliases: [material agreements, grants, municipal agreements]
+        canonical_for: [contract]
+        topics:
+          "5_1_1": {title: "Customer Agreements", canonical_for: [contract]}
+          "5_1_2": {title: "Supplier Agreements", canonical_for: [contract]}
+
+  "6":
+    code: "6"
+    title: "Litigation, Claims & Regulatory"
+    aliases: [litigation, legal, claims, regulatory, compliance]
+    required: true
+    canonical_for: [legal]
+    subsections:
+      "6_1":
+        title: "Legal Proceedings"
+        aliases: [proceedings, disputes, claims]
+        canonical_for: [legal]
+        topics:
+          "6_1_1": {title: "Litigation Register", canonical_for: [legal]}
+      "6_2":
+        title: "Licences & Permits"
+        aliases: [licences, licenses, permits, authorisations]
+        canonical_for: [legal]
+        topics:
+          "6_2_1": {title: "Operating Licences", canonical_for: [legal]}
+
+  "7":
+    code: "7"
+    title: "ESG, Impact & Sustainability"
+    aliases: [esg, impact, sustainability, carbon]
+    canonical_for: [esg]
+    subsections:
+      "7_1":
+        title: "Impact Metrics"
+        aliases: [impact, metrics, diversion, ghg]
+        canonical_for: [esg]
+        topics:
+          "7_1_1": {title: "Landfill Diversion Reporting", canonical_for: [esg]}
+          "7_1_2": {title: "Carbon and GHG Impact Report", canonical_for: [esg]}
+          "7_1_3": {title: "Community and Municipal Partnership Impact Summaries", canonical_for: [esg]}
+
+  "8":
+    code: "8"
+    title: "Deal-Specific & Marketing Materials"
+    aliases: [deal materials, transaction, cim, teaser, process]
+    required: true
+    canonical_for: [cim, projections]
+    subsections:
+      "8_1":
+        title: "Transaction Materials"
+        aliases: [transaction materials, deal documents]
+        canonical_for: [cim, projections]
+        topics:
+          "8_1_1": {title: "CIM",              canonical_for: [cim], required: true}
+          "8_1_2": {title: "Investor Workbook",canonical_for: [projections], required: true}
+          "8_1_3": {title: "Teaser Document",  canonical_for: [cim]}
+          "8_1_4": {title: "Process Letter",   canonical_for: [cim]}
+
+# ---------------------------------------------------------------------------
+# External source space — cited but not inside the VDR tree.
+external:
+  web:
+    doc: "Cited in module text as [n] followed by a title. Resolves to a SourceArtifact with provenance=web."
+    pattern: "\\[(\\d{1,3})\\]\\s*(?P<title>[^\\n\\[]{4,160})"
+    doc_type_default: web
+    promote_to_analyst_if: "the title names a known research house, statistical agency or regulator"
+  loose:
+    doc: >
+      A (DOC: filename) citation with no VDR path. Observed in the Compost Crew
+      corpus for CIM and process-letter versions that differ from the VDR copy
+      (e.g. CC_CIM_JPC_FINAL_082426.pdf cited while the VDR holds
+      CC_CIM_JPC_FINAL_090126.pptx).
+    treatment: >
+      Resolve by fuzzy filename match to a VDR artefact. On a match with a
+      different version token, flag STALE_VERSION and apply R5. On no match, set
+      present=false, flag SOURCE_ABSENT and raise E10-SOURCE-DRIFT.
+
+# ---------------------------------------------------------------------------
+# Redirect stubs — a .txt whose entire content points elsewhere. [O]
+redirects:
+  patterns:
+    - "^\\s*Please see\\s+(?P<target>.+?)\\s*\\.?$"
+    - "^\\s*(?P<target>.+?)\\s*[-–]\\s*see\\s+.+$"
+    - "^\\s*Refer to\\s+(?P<target>.+?)\\s*\\.?$"
+  resolution:
+    - "Target of the form '<code> <Title>' resolves to that VdrNode."
+    - "Target of the form '<Doc> P<n>' resolves to that artefact, page n."
+    - "Target naming an artefact by name resolves by fuzzy filename match."
+    - "Unresolvable target: the node counts as EMPTY, not as populated, and is listed as a diligence gap."
+  negative_stubs:
+    doc: >
+      A stub that asserts a fact rather than redirecting — e.g.
+      "No pending or scheduled threatened litigation.txt" — is a
+      management_representation, not a redirect and not a gap. It is admissible
+      evidence, attributed as a representation, never as a verified fact. [O]
+    patterns: ["^\\s*(No|None|Nil|Not applicable)\\b"]

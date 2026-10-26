@@ -1,0 +1,65 @@
+# Diligence controls C1-C6 (references/08_diligence_controls.md)
+# ---------------------------------------------------------------------------
+# Applied to every material claim, calculation, chart and conclusion by check_content.py
+# (lib/controls.py) and summarised by review_register.py into the prioritised issue register.
+version: 1
+
+# --- C5: source classes, strongest first. A ref is classified by its evidence item
+#     (source, basis, flags) and the artefact it was read from (file-name regexes below).
+source_classes:
+  reviewed_record:      "Primary record read directly from the data room: ledger / management accounts, bank or billing export, signed contract"
+  computed:             "Analyst calculation on cited inputs (declared in calculations)"
+  primary_research:     "Survey or interview programme run for this diligence"
+  management_analysis:  "Management-prepared workbook, model or databook - computed by the company, not tested"
+  external:             "Third-party or public source (web research, reports), dated"
+  management_assertion: "CIM, teaser, presentation or other statement by management without support"
+  agent_restatement:    "An agent output repeating a document - not a review of that document"
+  assumption:           "Plan driver, model assumption or analyst scoring input"
+
+artefact_classes:           # regex on the source file name -> class (first match wins)
+  contract: "contract|agreement|\\bmsa\\b|\\bsow\\b|order form|purchase order|\\blease\\b|grant|award letter|tender|rfp response|terms and conditions"
+  record: "monthly financials|management accounts|trial balance|general ledger|\\bgl\\b|audited|statutory|bank statement|invoice|billing|stripe|payroll|\\bqbo\\b|quickbooks|xero|sage|netsuite|financials? \\d{2}"
+  management_analysis: "workbook|model|databook|forecast|budget|projection|analysis|summary|kpi|tam|sam|som|market siz|expansion|scoring|schedule"
+  management_assertion: "cim|teaser|presentation|memorandum|process.?letter|\\bim\\b|pitch|deck"
+
+# Grade = best support for the claim (T16 / C5):
+#   established  a reviewed record (or a calculation on one) AND one further independent class
+#                (another record, primary research, external) - or two independent records
+#   indicated    one reviewed record, or management analysis, or external evidence
+#   asserted     management assertion, agent restatement or assumption only
+#   unsupported  no admissible ref
+
+# --- C1: contractual commitment claims need a reviewed contract
+contract_claim_rx: "\\b(contracted|contractual(?:ly)?|committed|locked[- ]in|under contract|guaranteed|secured revenue|backlog|take-or-pay|minimum volume)\\b"
+recurring_terms: "recurring, subscription, repeat, retained - not contracted unless a reviewed contract shows duration, termination rights and minimums"
+
+# --- C2: reconciliation
+reconcile:
+  tolerance_pct: 0.5            # differences above this (after rounding allowance) are conflicts
+  metrics:
+    revenue: "^(total )?(net )?revenues?$|^total (net )?sales$|^turnover$|^revenue \\d{4}p?$|^ttm revenue"
+    gross_profit: "^gross profit( \\d{4}p?)?$"
+    gross_margin: "^gross margin( %)?( \\d{4}p?| ttm)?$"
+    ebitda: "^(adjusted )?ebitda( \\d{4}p?)?$"
+    ebitda_margin: "^ebitda margin( %)?( \\d{4}p?)?$"
+    net_income: "^net (income|profit)|^profit after tax"
+    arr: "^(total )?arr( at| \\d{4}p?)?"
+
+# --- C3: bases a single calculation may not mix without `mixes_bases: "<reason>"`
+incompatible_bases:
+  - [actual, plan]
+  - [record, management_analysis]
+
+# --- C4: populations that may not be compared as if equivalent
+populations:
+  accounts: "\\baccounts?\\b|\\bcustomers?\\b|\\bclients?\\b"
+  locations: "\\blocations?\\b|\\bsites?\\b|\\bstops?\\b"
+  subscriptions: "subscri\\w*|\\bsubs\\b"
+  households: "households?|\\bhomes?\\b|\\bhh\\b"
+  logos: "\\blogos?\\b"
+  revenue: "revenue retention|\\bgrr\\b|\\bnrr\\b|dollar retention"
+comparison_rx: "\\b(vs\\.?|versus|against|compared|above|below|than|exceeds?|higher|lower)\\b"
+
+# --- C6: benefit claims must be net
+benefit_rx: "\\b(synerg\\w*|cost sav\\w*|savings?|in-sourc\\w*|accretive|uplift|incremental (?:ebitda|revenue|profit|margin)|value creation|margin expansion)\\b"
+net_markers: "\\b(net of|net\\b|after (?:costs|capex|integration)|gross\\b|before (?:costs|capex|integration)|one-off cost|cost to achieve|capex)\\b"

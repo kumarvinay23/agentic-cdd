@@ -1,0 +1,24 @@
+{
+  "name": "DiligenceIQ",
+  "colors": {
+    "ink": "14213D",
+    "navy2": "2E4A6F",
+    "steel": "5E81AC",
+    "sky": "A9C1DD",
+    "amber": "B7791F",
+    "amber_light": "F2C879",
+    "slate": "5B6B7F",
+    "mist": "B9C3D1",
+    "tint": "EEF1F5",
+    "tint2": "F6F8FA",
+    "line": "D5DBE3",
+    "text": "1F2937",
+    "white": "FFFFFF",
+    "rag_high": "2F7D4F",
+    "rag_med": "C98A1B",
+    "rag_low": "B03A2E",
+    "rag_na": "9AA5B1"
+  },
+  "chart_palette": ["14213D", "5E81AC", "B7791F", "A9C1DD", "2E4A6F", "9AA5B1"],
+  "fonts": {"head": "Calibri", "body": "Calibri"}
+}

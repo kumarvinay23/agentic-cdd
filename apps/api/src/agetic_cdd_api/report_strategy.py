@@ -670,7 +670,7 @@ def _compose_cover(doc: Document, ctx: BuildContext) -> None:
         ("Target", company),
         ("Sector", sector or "Other / Generic"),
         ("Report Date", today),
-        ("Prepared By", "Agentic CDD"),
+        ("Prepared By", "DiligenceIQ"),
         ("Document Reference", f"STRAT / {date.today().strftime('%y')} / 001"),
     ]
     # 2-col metadata grid
@@ -784,7 +784,7 @@ def _compose_divider(doc: Document, number: str, title: str, subtitle: str) -> N
         cell.add_paragraph()
     foot = cell.add_paragraph()
     foot.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = foot.add_run("AGENTIC CDD  ·  INVESTMENT DUE DILIGENCE  ·  STRICTLY PRIVATE & CONFIDENTIAL")
+    run = foot.add_run("DILIGENCEIQ  ·  INVESTMENT DUE DILIGENCE  ·  STRICTLY PRIVATE & CONFIDENTIAL")
     _set_run_font(run, size=8, color=RGBColor(0xB0, 0xBA, 0xCC))
     _page_break(doc)
 
@@ -1641,7 +1641,7 @@ class StrategyReportBuilder(ReportBuilder):
             footer.is_linked_to_previous = False
             fp = footer.paragraphs[0]
             fp.text = ""
-            run = fp.add_run("© Agentic CDD | Investment Due Diligence")
+            run = fp.add_run("© DiligenceIQ | Investment Due Diligence")
             _set_run_font(run, size=8, color=_MUTED)
 
         has_exec = bool(

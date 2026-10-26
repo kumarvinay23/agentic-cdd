@@ -1,0 +1,60 @@
+# Claim-strength rules (T16-EVIDENCE-GRADED)
+# ---------------------------------------------------------------------------
+# A CDD title is an assertion an investment committee will act on. An early run repeated
+# agent verdicts verbatim - "Recommendation: Invest in <target>", "High moat",
+# "competitive pricing" - on evidence that could not carry them. Every title, subtitle and
+# takeaway is now graded against the evidence on its own slide.
+#
+# Evidence grades are computed from the CLASS of each source (control C5, lib/controls.py,
+# config/controls.yaml), never from how many times something is cited:
+#   established  a reviewed primary record (ledger, contract, billing export) plus an independent
+#                source (a second record, primary research or external evidence)
+#   indicated    one reviewed record, a management-prepared workbook / model, or external evidence
+#   asserted     management assertion (CIM), agent restatement, or any forward-looking claim
+#                resting only on management's model (plan years, scenarios, 'modelled')
+#   unsupported  no admissible ref
+#
+# A pattern below may appear only when the slide reaches `requires`. Otherwise check_content
+# raises an error naming the pattern, the grade reached and the phrasing that grade allows.
+version: 1
+
+ladder:
+  established: "is / shows / has"
+  indicated:   "indicates / points to / on the evidence available"
+  asserted:    "management states / the CIM claims / per the company"
+  unsupported: "cannot be assessed from the evidence provided"
+
+patterns:
+  - id: invest_call
+    rx: "\\b(recommend(?:ation)?:?\\s*(?:to\\s*)?invest|we recommend investing|invest in [A-Z]|proceed with (?:the )?investment|\\bgo recommendation|buy recommendation)\\b"
+    requires: never
+    why: >
+      A CDD report states what the evidence shows; the investment decision is the IC's. State the
+      conditions under which the thesis holds instead.
+  - id: moat
+    rx: "\\b(high|strong|durable|wide|significant|sustainable)\\s+moat\\b|\\bmoat is (?:high|strong|durable)"
+    requires: established
+    why: "Durability of advantage needs customer, competitor or switching evidence, not a self-assessment."
+  - id: pricing_power
+    rx: "\\b(competitive pricing|pricing power|premium pric\\w+|price leader\\w*)\\b"
+    requires: established
+    why: "Needs a price benchmark against named competitors or realised price evidence."
+  - id: leader
+    rx: "\\b(market leader|leading (?:player|provider|position)|\\bthe leader\\b|dominant|#1|number one|strong market position)\\b"
+    requires: established
+    why: "Needs a share estimate from a market model or third-party source, not the CIM's own label."
+  - id: superlative
+    rx: "\\b(best-in-class|world-class|unmatched|unrivall?ed|unique(?:ly)?)\\b"
+    requires: established
+    why: "Superlatives need a named comparison."
+  - id: certainty
+    rx: "\\b(will (?:grow|reach|achieve|deliver|double)|guaranteed|certain(?:ly)?|clearly (?:positioned|superior))\\b"
+    requires: established
+    why: "Forward statements are plan, not fact: attribute them ('the plan assumes ...')."
+  - id: strong
+    rx: "\\b(strong|robust|excellent|exceptional|outstanding)\\s+(?:growth|performance|retention|margins?|position|demand|profitability)\\b"
+    requires: indicated
+    why: "Qualitative strength needs at least one data-room figure on the slide."
+
+# Words that mark a forward-looking number; a slide that shows one must show it as plan.
+plan_markers: "\\b(20\\d\\dP|20\\d\\dF|20\\d\\dE|plan|budget|forecast|projected|target|ambition|management case)\\b"

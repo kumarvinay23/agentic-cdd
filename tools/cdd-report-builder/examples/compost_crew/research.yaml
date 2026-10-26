@@ -1,0 +1,39 @@
+retrieved: 2026-09-21
+items:
+  - id: WEB-CID-01
+    module: CID
+    title: Compost Cab - home page
+    url: https://compostcab.com/
+    cells: {Competitor: Compost Cab, Footprint: "DC and Baltimore regions", Segments: "Residential, multi-unit, commercial, offices", Residential price: "$32 per month", Commercial entry price: "from $90 per month", Processing: "Partner farms and facilities"}
+    measures: [comp.set, mkt.price_benchmark]
+  - id: WEB-CID-02
+    module: CID
+    title: Veteran Compost - Our Services
+    url: https://www.veterancompost.com/our-services/
+    cells: {Competitor: Veteran Compost, Footprint: "Residential DC metro; commercial Baltimore / Annapolis", Segments: "Residential, commercial, events, depackaging", Residential price: "Not published", Commercial entry price: "Not published", Processing: "Own permitted sites in Aberdeen MD and Alexandria VA"}
+    measures: [comp.set]
+  - id: WEB-CID-03
+    module: CID
+    title: Monster Organics - home page
+    url: https://monster-organics.com/
+    cells: {Competitor: Monster Organics, Footprint: "DC, MD, VA and NC; HQ Springfield VA", Segments: "Commercial and industrial organics, glass, events", Residential price: "No residential service", Commercial entry price: "Not published", Processing: "Not disclosed"}
+    measures: [comp.set]
+  - id: WEB-CID-04
+    module: CID
+    title: Litterless - Where to compost in Washington DC
+    url: https://www.litterless.com/where-to-compost/washington-dc
+    cells: {Competitor: "Pluvr", Footprint: "Washington DC", Segments: "Commercial (restaurants)", Residential price: "No residential service", Commercial entry price: "Not published", Processing: "Not disclosed"}
+    measures: [comp.set]
+  - id: WEB-CID-05
+    module: CID
+    title: Litterless - Where to compost in Washington DC
+    url: https://www.litterless.com/where-to-compost/washington-dc
+    text: "Litterless lists Compost Cab, Compost Crew and Veteran Compost for residential pickup in Washington DC, and Key Compost, Pluvr and Veteran Compost for commercial pickup. Key Compost is Compost Crew's own acquired Key City brand."
+    measures: [comp.set]
+  - id: WEB-CID-06
+    module: CID
+    title: Compost Crew - home page
+    url: https://compostcrew.com/
+    text: "Compost Crew advertises residential and commercial service with no commitment or contract (pay as you go); prices are not published on the home page."
+    measures: [cust.switching_trigger]
+    subject: target

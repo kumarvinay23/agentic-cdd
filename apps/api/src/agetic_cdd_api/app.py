@@ -69,7 +69,7 @@ async def health() -> dict:
         "ok": True,
         "service": "agetic-cdd-api",
         "version": __version__,
-        "product": "Agentic CDD",
+        "product": "DiligenceIQ",
         "wave": "W5",
     }
 
@@ -91,7 +91,7 @@ def list_permissions(_auth: AuthContext = Depends(get_current_auth)) -> dict:
 @app.get("/")
 async def root() -> dict:
     return {
-        "product": "Agentic CDD",
+        "product": "DiligenceIQ",
         "api": settings.api_prefix,
         "docs": "/docs",
         "health": f"{settings.api_prefix}/health",

@@ -1,0 +1,270 @@
+# DEAL PROFILE - Compost Crew (Project Compost). Extends config/vdr_extractors.yaml.
+# Pass with: run_pipeline.py prepare ... --recipes examples/compost_crew/vdr_extractors.yaml
+# Recipes here are tried before the generic ones; a recipe with the same id replaces the generic one.
+# Each recipe:
+#   file:    regex on the artefact filename
+#   sheet:   regex on the sheet name
+#   module:  module-of-record the evidence is attributed to (keeps axiom A2 intact)
+#   section: {n, key, title} - the evidence section; n >= 90 keeps VDR sections apart from the
+#            agent's own numbered sections
+#   subject: target | market | customer ...
+#   units:   how to format raw workbook numbers:
+#              money_M   - value already in $M          -> "$13.28M"
+#              money     - value in $                   -> "$5,613,004" (or $M if >= 1e6 and scale_M)
+#              pct_frac  - fraction                     -> "92.4%"
+#              count     - integer                      -> "25,546"
+#              auto      - per-row: label with % / margin / retention / share -> pct_frac, else money_M
+#   rows:    optional {label regex: metric id} - evidence rows whose label matches are tagged
+#            `measures: [metric]`; other rows are kept, untagged
+#   plan_after: last actual year; later year columns, or headers carrying P/F/E, are flagged as
+#            plan. "auto" reads it from the monthly accounts when present.
+#   max_rows / max_cols: bounds so a 12,000-row data tab is never read as a table
+# Recipes are tried in order; the first match per sheet wins. Sheets with no recipe are ignored -
+# raw data tabs are not evidence until someone says what they mean.
+version: 1
+plan_after: auto
+
+recipes:
+
+  - id: fin_summary
+    file: "investor.?workbook|financial.?model|model"
+    sheet: "^financial summary$"
+    module: HPF
+    section: {n: 91, key: vdr_fin_summary, title: "Financial summary (investor workbook)"}
+    subject: target
+    units: auto
+    rows:
+      "^revenue$": fin.revenue
+      "gross profit": fin.gross_margin
+      "gross margin": fin.gross_margin
+      "^ebitda$": fin.ebitda
+      "ebitda margin": fin.ebitda_margin
+    max_rows: 12
+
+  - id: pnl_annual
+    file: "monthly financials|financial statements|p&l|management accounts"
+    sheet: "p&l|income|profit"
+    module: HPF
+    section: {n: 90, key: vdr_pnl, title: "Statement of operations (monthly accounts, annual roll-up)"}
+    subject: target
+    units: money
+    scale_M: true
+    columns: annual            # use the year-total columns, not the months
+    derive: [ttm, ytd_vs_py]   # add computed TTM and year-to-date comparisons from the months
+    rows:
+      "^total revenues?$": fin.revenue
+      "^gross profit$": fin.gross_margin
+      "^gross margin$": fin.gross_margin
+      "^ebitda$": fin.ebitda
+      "^ebitda margin$": fin.ebitda_margin
+      "residential sales|municipal sales|commercial sales|compost sales|key compostables|utica|other revenue": fin.revenue_mix
+      "total cost of operations|total selling": fin.cost_base
+    max_rows: 60
+
+  - id: rev_segment
+    file: "investor.?workbook|model"
+    sheet: "^revenue by segment$"
+    module: RVQ
+    section: {n: 91, key: vdr_rev_segment, title: "Revenue by segment (investor workbook)"}
+    subject: target
+    units: auto
+    rows:
+      ".": fin.revenue_mix
+    max_rows: 16
+
+  - id: arr
+    file: "investor.?workbook|model"
+    sheet: "^arr$"
+    module: RVQ
+    section: {n: 92, key: vdr_arr, title: "Annual recurring revenue by segment"}
+    subject: target
+    units: money_M
+    rows:
+      ".": fin.recurring_share
+    max_rows: 10
+
+  - id: unit_econ
+    file: "investor.?workbook|model"
+    sheet: "^unit economics$"
+    module: CST
+    section: {n: 91, key: vdr_unit_econ, title: "Unit economics and retention by segment"}
+    subject: target
+    units: auto
+    rows:
+      "retention": cust.retention
+      "active locations": cust.count
+      "ltv": cust.tenure
+    max_rows: 26
+
+  - id: comm_summary
+    file: "investor.?workbook|model"
+    sheet: "^commercial summary$"
+    module: CST
+    section: {n: 92, key: vdr_comm_summary, title: "Commercial book: accounts, retention and concentration"}
+    subject: target
+    units: auto
+    rows:
+      "active accounts": cust.count
+      "retention|grr|nrr": cust.retention
+      "churn": cust.churn
+      "top-\\d+": cust.concentration
+    max_rows: 18
+
+  - id: comm_cohorts
+    file: "investor.?workbook|model"
+    sheet: "^commercial cohorts$"
+    module: CST
+    section: {n: 93, key: vdr_comm_cohorts, title: "Commercial logo retention by cohort"}
+    subject: target
+    units: pct_frac
+    stop_at: "revenue by cohort"
+    rows:
+      "cohort": cust.retention
+    max_rows: 10
+
+  - id: res_summary
+    file: "investor.?workbook|model"
+    sheet: "^residential summary$"
+    module: CST
+    continue: true
+    section: {n: 94, key: vdr_res_summary, title: "Residential book: subscriptions, retention, ARPU"}
+    subject: target
+    units: auto
+    stop_at: "reconciliation"
+    rows:
+      "retention|grr|nrr": cust.retention
+      "churned": cust.churn
+      "subscriptions": cust.count
+    max_rows: 14
+
+  - id: res_reconciliation
+    file: "investor.?workbook|model"
+    sheet: "^residential summary$"
+    module: CST
+    section: {n: 97, key: vdr_res_recon, title: "Residential book: Stripe subscriptions reconciled to the paying book"}
+    subject: target
+    header_match: "^subscriptions$"
+    label_col: 0
+    units: auto
+    notes: true
+    rows:
+      "subscriptions|book": cust.count
+    max_rows: 30
+
+  - id: cim_crosswalk
+    file: "investor.?workbook|model"
+    sheet: "^cim crosswalk$"
+    module: CBG
+    section: {n: 98, key: vdr_cim_crosswalk, title: "CIM crosswalk: every CIM figure traced to its support"}
+    subject: target
+    header_match: "^where the support lives$"
+    label_col: 1
+    units: label
+    max_rows: 80
+
+  - id: res_curve
+    file: "investor.?workbook|model"
+    sheet: "^residential retention curve$"
+    module: CST
+    section: {n: 95, key: vdr_res_curve, title: "Residential retention by tenure"}
+    subject: target
+    units: pct_frac
+    label_is_number: true
+    rows:
+      ".": cust.retention
+    max_rows: 16
+
+  - id: muni_contracts
+    file: "investor.?workbook|model"
+    sheet: "^municipal contracts$"
+    module: RVQ
+    section: {n: 93, key: vdr_muni, title: "Municipal contracts and concentration"}
+    subject: target
+    units: money
+    scale_M: true
+    keep_rows: "account 0?[1-5]$|total|% of municipal|top-5"
+    stop_at: "upside spectrum"
+    continue: true            # the same sheet also feeds muni_dc_scenarios
+    rows:
+      "% of municipal|top-5": cust.concentration
+    max_rows: 80
+
+  - id: muni_dc_scenarios
+    file: "investor.?workbook|model"
+    sheet: "^municipal contracts$"
+    module: RVQ
+    section: {n: 96, key: vdr_dc_scenarios, title: "DC contract 2030 scenarios"}
+    subject: target
+    header_match: "^scenario$"
+    units: auto
+    rows:
+      ".": fin.projection
+    max_rows: 80
+
+  - id: comm_concentration
+    file: "investor.?workbook|model"
+    sheet: "^commercial concentration$"
+    module: RVQ
+    section: {n: 94, key: vdr_comm_conc, title: "Commercial revenue concentration"}
+    subject: target
+    units: auto
+    header_match: "^rank$"
+    label_col: 0
+    stop_at: "total recurring"
+    keep_rows: "^\\d{1,2}$"
+    dq_duplicate_column: Account
+    rows:
+      ".": cust.concentration
+    max_rows: 36
+
+  - id: market_model
+    file: "tam|sam|som|market siz"
+    sheet: "tamsamsom2|tam.?sam.?som"
+    module: MVG
+    section: {n: 90, key: vdr_market_model, title: "Bottom-up market model (company)"}
+    subject: market
+    units: money_M_if_header
+    carry_label: true
+    rows:
+      "total": mkt.tam
+      ".": mkt.segment_share
+    max_rows: 28
+
+  - id: zip_priority_md
+    file: "zip.?expansion|expansion analysis"
+    sheet: "^summary"
+    module: GRO
+    section: {n: 90, key: vdr_zip_md, title: "Geographic prioritisation - top Maryland ZIP codes"}
+    subject: market
+    units: count
+    header_match: "^rank$"
+    col_range: [1, 5]
+    label_col: 2
+    continue: true
+    max_rows: 16
+    max_cols: 16
+
+  - id: zip_priority_nova
+    file: "zip.?expansion|expansion analysis"
+    sheet: "^summary"
+    module: GRO
+    section: {n: 92, key: vdr_zip_nova, title: "Geographic prioritisation - top Northern Virginia ZIP codes"}
+    subject: market
+    units: count
+    header_match: "^rank$"
+    col_range: [9, 13]
+    label_col: 10
+    max_rows: 16
+    max_cols: 16
+
+  - id: zip_weights
+    file: "zip.?expansion|expansion analysis"
+    sheet: "control.?panel"
+    module: GRO
+    section: {n: 91, key: vdr_zip_weights, title: "ZIP scoring weights"}
+    subject: market
+    kv: {label_col: 1, value_col: 2, header: "Weight"}
+    label_col: 1
+    units: pct_frac
+    max_rows: 36
+    max_cols: 3
