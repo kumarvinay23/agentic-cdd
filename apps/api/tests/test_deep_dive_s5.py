@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from agetic_cdd_api.app import app
 from agetic_cdd_api.deep_dive_financial import (
     FINANCIAL_SLUGS,
+    _parse_pnl_values,
     extract_financial_spec,
     findings_from_financial_spec,
 )
@@ -219,3 +220,7 @@ def test_financial_extractors_on_test1_vdr_snippets() -> None:
         val = json.loads(val_path.read_text(encoding="utf-8"))["text"]
         rev = extract_financial_spec("revenue_quality", val, coverage="full")
         assert rev["retention_metrics"].get("nrr_pct") == 81.0
+
+
+def test_pnl_values_skip_a_lone_period() -> None:
+    assert _parse_pnl_values("13.41 . 4.3% N/M (0.57)") == [13.41, 4.3, None, -0.57]

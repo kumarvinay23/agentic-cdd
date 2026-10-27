@@ -1,0 +1,239 @@
+# Phase 0 answer key for the CDD deck.
+# Negative cases are statements the scored deck made that the facts contradict.
+# Positive cases are the findings the deck must compute. Wording can change.
+# open: true means the current engine still misses the case. The test xfails it.
+# When a fix lands, the test fails until open is set to false.
+# None of these names or figures belong in the deck engine. They are fixtures.
+
+deals:
+  - id: harbor
+    company: Harbor Bend
+    slug: phase0-harbor
+    accounts: {2023: 4.00, 2024: 6.00, 2025: 7.20}
+    workbook: {2025: 7.00, 2030: 20.00}
+    ytd: {2025: 3.40, 2026: 3.55}
+    ebitda: {2024: 1.20, 2025: 0.80}
+    costs:
+      Labor & related benefits: 2.10
+      Subcontractors: 0.60
+      Compost facility operating costs: 0.50
+      Total selling, general and administrative: 1.40
+      Transfer & disposal: 0.70
+      Cost of goods sold: 0.80
+      Other operating costs: 0.20
+    ebitda_line: 0.90
+    decoy: {year: 2020, amount: 6.25, contract_year: 2030}
+    retention: [[1, 90.0, 90.4], [6, 80.0, 80.3], [12, 70.0, 70.6]]
+    prices: {commercial: 480, municipal: 22, residential: 31}
+    mix: "18.0%"
+    gross_margin: {2024: 28.0, 2025: 31.0}
+    ebitda_margin: {2024: 16.0, 2025: 9.0}
+    model_price_year: 360
+    monthly_retention: 0.98
+    stale_margin: "EBITDA margin was -8.0% in 2023"
+    tam: 220
+    sam: 80
+    som: 24
+
+  - id: northwind
+    company: Northwind Organics
+    slug: phase0-northwind
+    accounts: {2023: 5.10, 2024: 7.40, 2025: 8.50}
+    workbook: {2025: 8.20, 2030: 24.00}
+    ytd: {2025: 4.10, 2026: 4.30}
+    ebitda: {2024: 0.90, 2025: 0.40}
+    costs:
+      Labor & related benefits: 2.40
+      Subcontractors: 0.50
+      Compost facility operating costs: 0.40
+      Total selling, general and administrative: 1.60
+      Transfer & disposal: 0.70
+      Cost of goods sold: 0.80
+      Other operating costs: 0.20
+    ebitda_line: 1.90
+    decoy: {year: 2020, amount: 4.10, contract_year: 2030}
+    retention: [[1, 88.0, 88.2], [6, 79.0, 79.5], [12, 71.0, 71.4]]
+    prices: {commercial: 510, municipal: 18, residential: 27}
+    mix: "14.5%"
+    gross_margin: {2024: 26.0, 2025: 29.0}
+    ebitda_margin: {2024: 14.0, 2025: 8.0}
+    model_price_year: 280
+    monthly_retention: 0.97
+    stale_margin: "EBITDA margin was -6.2% in 2023"
+    tam: 180
+    sam: 60
+    som: 18
+
+  - id: compost-crew
+    company: Compost Crew
+    slug: phase0-compost-crew
+    accounts: {2023: 7.56, 2024: 11.87, 2025: 13.41}
+    workbook: {2025: 13.28, 2030: 50.17}
+    ytd: {2025: 7.82, 2026: 8.05}
+    ebitda: {2024: 1.14, 2025: 0.57}
+    costs:
+      Labor & related benefits: 4.46
+      Subcontractors: 1.18
+      Compost facility operating costs: 1.00
+      Total selling, general and administrative: 4.22
+      Transfer & disposal: 0.99
+      Cost of goods sold: 0.94
+      Other operating costs: 0.09
+    ebitda_line: 0.53
+    decoy: {year: 2020, amount: 10.42, contract_year: 2030}
+    retention: [[1, 96.0, 96.4], [6, 90.0, 90.5], [12, 84.0, 84.8]]
+    prices: {commercial: 566, municipal: 24.84, residential: 29.19}
+    mix: "22.6%"
+    gross_margin: {2024: 30.0, 2025: 31.0}
+    ebitda_margin: {2024: 9.6, 2025: 4.3}
+    model_price_year: 300
+    monthly_retention: 0.98
+    stale_margin: "EBITDA margin was -9.5% in 2023"
+    tam: 1546.2
+    sam: 463.9
+    som: 139.2
+
+cases:
+  - id: N-diverge
+    fix: F1
+    open: false
+    polarity: negative
+    rule: Do not say the retention curves diverge when every paired point is within 1 point.
+
+  - id: N-returned-to-profit
+    fix: F1
+    open: false
+    polarity: negative
+    rule: Do not say EBITDA returned to profit in the latest year when an earlier actual year is already positive.
+
+  - id: N-evidenced-model
+    fix: F8
+    open: false
+    polarity: negative
+    rule: Do not call the company workbook an evidenced model.
+
+  - id: N-cost-tie
+    fix: F2
+    open: false
+    polarity: negative
+    rule: Cost lines on the page plus EBITDA must equal revenue within 0.01.
+
+  - id: N-decoy-revenue
+    fix: F1
+    open: false
+    polarity: negative
+    rule: A modelled contract amount must not be stored as historical company revenue.
+
+  - id: N-wrong-column
+    fix: F3
+    open: false
+    polarity: negative
+    rule: A percentage must not sit under a column headed Not established.
+
+  - id: N-date-column
+    fix: F3
+    open: false
+    polarity: negative
+    rule: The history date column must hold years, not section labels.
+
+  - id: N-plan-as-milestone
+    fix: F3
+    open: false
+    polarity: negative
+    rule: An uncompleted plan item must not be listed as a milestone that happened.
+
+  - id: N-picture-title
+    fix: F3
+    open: false
+    polarity: negative
+    rule: A picture description must not be the page title.
+
+  - id: N-mixed-price-axis
+    fix: F10
+    open: false
+    polarity: negative
+    rule: A household monthly price and a location monthly price must not share one axis when the larger is more than 8 times the smaller.
+
+  - id: N-period-debug
+    fix: F3
+    open: false
+    polarity: negative
+    rule: Debug text such as period counts and CIM-gap counts must not reach a page.
+
+  - id: N-stale-margin-lead
+    fix: F3
+    open: false
+    polarity: negative
+    rule: The snapshot must not lead with an earlier year's margin when a later year is on the page.
+
+  - id: N-databook-promoted
+    fix: F3
+    open: false
+    polarity: negative
+    rule: Databook-promoted debug text must not reach a page.
+
+  - id: N-margin-chart
+    fix: F10
+    open: false
+    polarity: negative
+    rule: Gross margin and EBITDA margin must not be categories of one series.
+
+  - id: N-bridge-waterfall
+    fix: F10
+    open: false
+    polarity: negative
+    rule: The plan bridge must be a waterfall.
+
+  - id: N-bridge-basis
+    fix: F2
+    open: false
+    polarity: negative
+    rule: The bridge must use one revenue basis for the actual and the plan.
+
+  - id: P-ytd
+    fix: F4
+    open: false
+    polarity: positive
+    rule: The snapshot must compare year-to-date with the same months of the prior year.
+
+  - id: P-margin-compare
+    fix: F5
+    open: false
+    polarity: positive
+    rule: The margin title must state that gross margin held and EBITDA margin fell.
+
+  - id: P-trading
+    fix: F4
+    open: false
+    polarity: positive
+    rule: The scenario page must show the trading case and the plan together.
+
+  - id: P-model-vs-billed
+    fix: F4
+    open: false
+    polarity: positive
+    rule: The model price per home per year must be set against the billed price per month.
+
+  - id: P-annualize
+    fix: F7
+    open: false
+    polarity: positive
+    rule: A monthly retention claim must be shown as an annual rate, monthly rate to the power of 12.
+
+  - id: P-competitors
+    fix: F9
+    open: false
+    polarity: positive
+    rule: Name at least three competitors read outside the data room and one published price, or state that no outside competitor research was loaded.
+
+  - id: P-graded-summary
+    fix: F6
+    open: false
+    polarity: positive
+    rule: Investment highlights must open with graded findings and what to test before signing.
+
+  - id: P-insight-title
+    fix: F5
+    open: false
+    polarity: positive
+    rule: A margin title must not be only one restated number.

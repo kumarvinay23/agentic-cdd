@@ -201,9 +201,13 @@ def _parse_pnl_values(raw: str) -> list[float | None]:
             continue
         neg = token.startswith("(") and token.endswith(")")
         num = re.sub(r"[^\d.]", "", token.replace("%", ""))
-        if not num:
+        # A lone "." or "," matches the token pattern and is not a number.
+        if not num or not re.search(r"\d", num):
             continue
-        val = float(num)
+        try:
+            val = float(num)
+        except ValueError:
+            continue
         if neg:
             val = -val
         out.append(val)

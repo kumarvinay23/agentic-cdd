@@ -778,8 +778,10 @@ def test_vdr_total_revenue_collapses_to_one_series():
     assert math.yoy[-1]["earlier"] == "2024"
     assert math.yoy[-1]["later"] == "2025"
     assert math.yoy[-1]["pct"] == 25.0
-    assert math.bridge["actual"] == 10.0
+    assert math.bridge["actual"] == 9.0
+    assert math.bridge["actual_id"] == "HPF-B"
     assert math.bridge["plan"] == 20.0
+    assert math.bridge["plan_id"] == "HPF-B"
     assert math.bridge["plan_label"] == "2030P"
     assert math.mix_calculated is True
     assert {item["name"] for item in math.mix} == {"Hauling", "Products"}

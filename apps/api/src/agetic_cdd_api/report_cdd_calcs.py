@@ -99,6 +99,7 @@ class DeckMath:
     milestones: list[dict[str, Any]] = field(default_factory=list)
     web_competitors: list[dict[str, Any]] = field(default_factory=list)
     conclusion: dict[str, Any] | None = None
+    model_price: dict[str, Any] | None = None
 
     def payload(self) -> list[dict[str, Any]]:
         return [calc.as_dict() for calc in self.calculations]
@@ -127,6 +128,9 @@ def _inp(value: float, ref: str) -> dict[str, Any]:
 
 
 def derive(ctx: BuildContext, book: EvidenceBook) -> DeckMath:
+    from agetic_cdd_api.report_cdd_factcheck import drop_mislabeled_contract_revenue
+
+    drop_mislabeled_contract_revenue(book)
     math = DeckMath()
     _margins(ctx, book, math)
     _lines(ctx, book, math)
@@ -391,8 +395,12 @@ def _mix(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> None:
 
 
 def _bridge_and_momentum(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> None:
-    actual = _vdr_endpoint(book.vdr_points, "actual") or _last_amount(book, "revenue_actual")
-    plan = _vdr_endpoint(getattr(book, "vdr_plan", []), "forecast") or _last_amount(book, "revenue_plan")
+    paired = _one_basis_bridge(book.facts)
+    if paired:
+        actual, plan = paired
+    else:
+        actual = _vdr_endpoint(book.vdr_points, "actual") or _last_amount(book, "revenue_actual")
+        plan = _vdr_endpoint(getattr(book, "vdr_plan", []), "forecast") or _last_amount(book, "revenue_plan")
     if actual and plan and actual["amount"] and actual["year"] and plan["year"] and plan["year"] > actual["year"]:
         delta = round(plan["amount"] - actual["amount"], 2)
         multiple = round(plan["amount"] / actual["amount"], 2)
@@ -637,6 +645,26 @@ def _last_amount(book: EvidenceBook, bucket: str) -> dict[str, Any] | None:
         if chosen is None or year >= chosen["year"]:
             chosen = {"id": fid, "amount": float(amount), "label": label, "year": year}
     return chosen
+
+
+def _one_basis_bridge(facts: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Actual and plan from the same total-revenue row, so the bridge does not mix two bases."""
+    from agetic_cdd_api.report_cdd_evidence import _fact_period_points, _total_revenue_facts
+
+    for fact in _total_revenue_facts(facts):
+        actuals = [point for point in _fact_period_points(fact, {"actual"}) if _year(point[0])]
+        plans = [point for point in _fact_period_points(fact, {"forecast", "plan"}) if _year(point[0])]
+        if not actuals or not plans:
+            continue
+        actual = max(actuals, key=lambda point: _year(point[0]) or 0)
+        plan = max(plans, key=lambda point: _year(point[0]) or 0)
+        if (_year(plan[0]) or 0) <= (_year(actual[0]) or 0):
+            continue
+        return (
+            {"id": actual[2], "amount": round(float(actual[1]), 2), "label": actual[0], "year": _year(actual[0])},
+            {"id": plan[2], "amount": round(float(plan[1]), 2), "label": plan[0], "year": _year(plan[0])},
+        )
+    return None
 
 
 def _vdr_endpoint(points: list[tuple[str, float, str, str]], kind: str) -> dict[str, Any] | None:
@@ -2789,6 +2817,22 @@ def _room_costs(math: DeckMath, facts: list[dict[str, Any]]) -> None:
                 used_on=["S011_value_chain"],
             ))
             chosen.append(("Fleet: maintenance, fuel, risk, other", f"${total:.2f}M", total, [fid for _text, _amount, fid in parts], "CALC"))
+    covered = {fid for item in chosen for fid in item[3]}
+    skip = re.compile(
+        r"(?i)ebitda|net income|gross profit|depreciation|amortiz|^interest\b|^tax\b|margin"
+    )
+    for fact in facts:
+        if not _in_section(fact, "statement of operations"):
+            continue
+        label = str(fact.get("row_label") or "").strip()
+        fid = str(fact.get("id") or "")
+        if not label or not fid or fid in covered or _TOTAL_REVENUE_LABEL.match(label) or skip.search(label):
+            continue
+        _line_year, text, amount = _latest_cost_cell(fact.get("cells") or {}, year)
+        if amount is None or amount == 0:
+            continue
+        chosen.append((label, text, amount, [fid]))
+        covered.add(fid)
     if len(chosen) < 2:
         return
     for index, item in enumerate(chosen, start=1):
@@ -3226,6 +3270,47 @@ def _cim_claims(book: EvidenceBook, math: DeckMath, slides: list[str], docs: lis
             },
         ])
         break
+    retention = re.search(r"(\d+(?:\.\d+)?)%\s+monthly retention", text, re.I)
+    if retention:
+        monthly = float(retention.group(1))
+        annual = round((monthly / 100) ** 12 * 100, 1)
+        sentence = (
+            f"The CIM states {monthly:g}% monthly retention, which is {annual:.1f}% a year."
+        )
+        fact_id = book.add(
+            module="CBG", title="Company Background", text=sentence, docs=docs, bucket="claims", grade="asserted",
+        )
+        if fact_id:
+            math.claims.append({
+                "name": "Monthly retention",
+                "stated": f"{monthly:g}% a month",
+                "test": f"{annual:.1f}% a year",
+                "id": fact_id,
+            })
+    priced = re.search(
+        r"(?i)pric\w*\s+homes?\s+at\s+\$(\d+(?:\.\d+)?)\s+(?:a|per)\s+year",
+        text,
+    )
+    if priced:
+        annual_price = float(priced.group(1))
+        shown = f"{annual_price:.0f}" if annual_price == int(annual_price) else f"{annual_price:g}"
+        billed = str((math.unit_basis or {}).get("price") or "")
+        sentence = f"The model prices homes at ${shown} a year."
+        test = "Not set against a billed monthly price"
+        if billed:
+            sentence = f"{sentence[:-1]}, set against the billed {billed} a month."
+            test = f"Set against the billed {billed} a month"
+        fact_id = book.add(
+            module="CBG", title="Company Background", text=sentence, docs=docs, bucket="claims", grade="asserted",
+        )
+        if fact_id:
+            math.model_price = {"annual": annual_price, "shown": shown, "id": fact_id}
+            math.claims.append({
+                "name": "Model price per home",
+                "stated": f"${shown} a year",
+                "test": test,
+                "id": fact_id,
+            })
 
 
 _ROLE = re.compile(
@@ -3281,9 +3366,14 @@ def _cim_milestones(book: EvidenceBook, math: DeckMath, slides: list[str], docs:
         if match:
             acquired = " ".join(match.group(0).split())
     milestones = []
+    from agetic_cdd_api.report_cdd_factcheck import is_plan_milestone
+
     for when, what, raw in rows:
+        if is_plan_milestone(raw) or is_plan_milestone(what):
+            continue
         text = f"{when}. {what}."
         shown = what
+        years = re.findall(r"\b(20\d{2})\b", raw)
         if when == "Acceleration" and "Key City" in raw and "Washington, DC in 2023" in raw:
             shown = "Acquired Key City in June 2024 and signed the Washington, DC contract in 2023"
             text = f"{when}. {what}. {shown}."
@@ -3291,6 +3381,10 @@ def _cim_milestones(book: EvidenceBook, math: DeckMath, slides: list[str], docs:
             text = f"2018. Ben Parry acquires Compost Crew and Fat Worm Compost. {acquired}"
             when = "2018"
             shown = "Acquired in 2018, from three trucks and five people to $13M+ revenue and 25K customers"
+        elif years:
+            when = max(years)
+        else:
+            continue
         fid = book.add(
             module="CBG", title="Company Background", text=text, docs=docs, bucket="history", grade="asserted",
         )
