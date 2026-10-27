@@ -38,6 +38,11 @@ COPY apps/api/pyproject.toml apps/api/README.md /app/apps/api/
 COPY apps/api/src /app/apps/api/src
 RUN pip install --no-deps /app/apps/api
 
+# Installed package resolves the renderer as parents[4]/tools/cdd-report-builder,
+# which is /usr/local/tools/cdd-report-builder. No application code change.
+COPY tools/cdd-report-builder /usr/local/tools/cdd-report-builder
+RUN chmod -R a+rX /usr/local/tools/cdd-report-builder
+
 # Persistent deal / VDR storage (mount a volume in compose / Cloud Run)
 RUN mkdir -p /data/deals \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \

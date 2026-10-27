@@ -776,7 +776,7 @@ def _page_sizing(ctx: BuildContext, company: str) -> Page | None:
     return Page(
         kind="content",
         section="INVESTMENT HIGHLIGHTS",
-        title=f"On the evidenced model the market for {company} is {joined}",
+        title=f"On the company workbook the market for {company} is {joined}",
         subtitle="TAM, SAM and SOM from the market-volume module. The figure is the company's or the agent's only when that module says so.",
         kpis=[(label, value) for label, value in metrics],
         chart=ChartSpec(kind="column", categories=cats, series=[("Market", values)]),

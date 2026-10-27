@@ -515,10 +515,18 @@ def _extract_growth_margins(
         trough_p, trough_v = min(use, key=lambda x: x[1])
         last_p, last_v = use[-1]
         if trough_v < 0 and last_v > trough_v and last_v >= 0:
-            headline = (
-                f"EBITDA trough was {trough_p} ({_fmt_amt(trough_v)}); "
-                f"returned to profit by {last_p} at {_fmt_amt(last_v)}."
-            )
+            positives = [(p, v) for p, v in use if v >= 0]
+            first_p, first_v = positives[0] if positives else (last_p, last_v)
+            if first_p != last_p:
+                headline = (
+                    f"EBITDA was already positive in {first_p} ({_fmt_amt(first_v)}); "
+                    f"latest {last_p} is {_fmt_amt(last_v)}."
+                )
+            else:
+                headline = (
+                    f"EBITDA trough was {trough_p} ({_fmt_amt(trough_v)}); "
+                    f"returned to profit by {last_p} at {_fmt_amt(last_v)}."
+                )
         elif trough_p != last_p and last_v > trough_v and trough_v < 0:
             headline = (
                 f"EBITDA trough was {trough_p} ({_fmt_amt(trough_v)}); "

@@ -10,6 +10,7 @@ from the Compost Crew analyst script are not copied.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -24,6 +25,7 @@ from agetic_cdd_api.report_builder_base import BuildContext
 from agetic_cdd_api.report_cdd_audit import audit_exceptions, glossary_terms, slide_blob, verdict_rows
 from agetic_cdd_api.report_cdd_calcs import DeckMath, derive
 from agetic_cdd_api.report_cdd_evidence import EvidenceBook, build_agent_evidence, prepare_evidence
+from agetic_cdd_api.report_cdd_factcheck import contradicts_profit_return, is_debug_line, is_plan_milestone
 from agetic_cdd_api.report_cdd_deck_v4 import (
     _clean,
     _company,
@@ -38,7 +40,10 @@ from agetic_cdd_api.report_cdd_deck_v4 import (
     _revenue_millions,
     _sizing_metrics,
     _spec,
+    _year_sort_key,
 )
+
+logger = logging.getLogger(__name__)
 
 _REF = "RUN-1"
 _slide_refs: ContextVar[list[str] | None] = ContextVar("cdd_slide_refs", default=None)
@@ -129,6 +134,195 @@ def _chart(
     return payload
 
 
+_PRICE_AXIS = 8
+
+
+def _published_web_prices(rows: list[dict[str, Any]]) -> list[tuple[str, float, str]]:
+    """A single residential list price. A missing price and a range stay off the axis."""
+    published = []
+    for row in rows:
+        text = str(row.get("price") or "")
+        if re.search(r"(?i)not published|no residential|from\s+\$", text):
+            continue
+        match = re.search(r"\$(\d+(?:\.\d+)?)\b", text)
+        if not match or not row.get("id"):
+            continue
+        published.append((str(row.get("name") or "Web price"), float(match.group(1)), str(row["id"])))
+    return published
+
+
+def _scale_indexes(values: list[Any]) -> list[int]:
+    """Indexes that can share one axis. A value more than eight times the smallest is left off."""
+    positive = [(index, float(value)) for index, value in enumerate(values) if isinstance(value, (int, float)) and value > 0]
+    if len(positive) < 2:
+        return list(range(len(values)))
+    floor = min(value for _index, value in positive)
+    if max(value for _index, value in positive) / floor <= _PRICE_AXIS:
+        return list(range(len(values)))
+    kept = [index for index, value in positive if value / floor <= _PRICE_AXIS]
+    return kept or [positive[0][0]]
+
+
+def _margin_series(margins: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
+    """One series per margin. Years are the categories, so gross and EBITDA are not one column."""
+    labels: list[str] = []
+    for item in margins:
+        label = str(item.get("label") or "")
+        if label and label not in labels:
+            labels.append(label)
+    grouped: dict[str, dict[str, dict[str, Any]]] = {}
+    for item in margins:
+        grouped.setdefault(str(item.get("metric") or "Margin"), {})[str(item.get("label") or "")] = item
+    series = []
+    for metric, by_label in grouped.items():
+        series.append({
+            "name": metric,
+            "values": [by_label[label]["value"] if label in by_label else None for label in labels],
+            "point_refs": [by_label[label]["id"] for label in labels if label in by_label],
+        })
+    return labels, series
+
+
+def _rejected_statement(text: str, book: EvidenceBook) -> bool:
+    return bool(
+        is_debug_line(text)
+        or is_plan_milestone(text)
+        or contradicts_profit_return(text, book)
+        or re.search(r"(?i)evidenced model", text)
+    )
+
+
+def _review_pages(slides: dict[str, Any], book: EvidenceBook) -> None:
+    """Last pass. A statement the fact store rejects does not stay on the page."""
+    for sid, payload in slides.items():
+        pages = payload if isinstance(payload, list) else [payload]
+        for page in pages:
+            if not isinstance(page, dict):
+                continue
+            _review_page(sid, page, book)
+
+
+def _review_page(sid: str, page: dict[str, Any], book: EvidenceBook) -> None:
+    for key in ("title", "subtitle"):
+        block = page.get(key)
+        if isinstance(block, dict) and _rejected_statement(str(block.get("text") or ""), book):
+            logger.info("Review rewrote %s %s; the fact store rejects the sentence", sid, key)
+            block["text"] = "This page keeps only statements the loaded facts support."
+    elements = page.get("elements") or {}
+    for element in elements.values():
+        if not isinstance(element, dict):
+            continue
+        if element.get("type") == "bullets":
+            kept = []
+            for item in element.get("items") or []:
+                text = item.get("text") if isinstance(item, dict) else str(item)
+                if _rejected_statement(str(text or ""), book):
+                    logger.info("Review removed a statement from %s", sid)
+                    continue
+                kept.append(item)
+            element["items"] = kept
+        elif element.get("type") == "text" and _rejected_statement(str(element.get("text") or ""), book):
+            logger.info("Review removed a statement from %s", sid)
+            element["text"] = "This page keeps only statements the loaded facts support."
+        elif element.get("type") == "table":
+            for row in element.get("rows") or []:
+                for index, cell in enumerate(row):
+                    if _rejected_statement(str(cell or ""), book):
+                        logger.info("Review cleared a table cell on %s", sid)
+                        row[index] = "—"
+        elif element.get("type") == "chart" and element.get("unit_label") == "$":
+            _clamp_price_chart(element)
+    if sid == "S046_sam_growth_build":
+        chart = elements.get("right")
+        if isinstance(chart, dict) and chart.get("type") == "chart":
+            _as_waterfall(chart)
+    if sid == "S045_gf4_pricing_stability":
+        chart = elements.get("chart")
+        if isinstance(chart, dict) and chart.get("type") == "chart":
+            _split_margin_chart(chart)
+
+
+def _clamp_price_chart(chart: dict[str, Any]) -> None:
+    series = chart.get("series") or []
+    if len(series) != 1:
+        return
+    values = list(series[0].get("values") or [])
+    indexes = _scale_indexes(values)
+    if len(indexes) == len(values):
+        return
+    categories = list(chart.get("categories") or [])
+    chart["categories"] = [categories[index] for index in indexes if index < len(categories)]
+    series[0]["values"] = [values[index] for index in indexes]
+    traced = chart.get("point_refs") or []
+    if traced and isinstance(traced[0], list):
+        chart["point_refs"] = [[traced[0][index] for index in indexes if index < len(traced[0])]]
+    logger.info("Review left a price off the axis because it is more than eight times the smallest")
+
+
+def _as_waterfall(chart: dict[str, Any]) -> None:
+    """Turn a start and an end into a bridge. A longer series stays as it was drawn.
+
+    The renderer treats the first and last points as totals and every point between
+    them as a delta. A series that is already three or more levels is not a start
+    and an end, so it is not relabelled as a waterfall.
+    """
+    if chart.get("chart_type") == "waterfall":
+        return
+    series = chart.get("series") or []
+    if len(series) != 1:
+        return
+    values = list(series[0].get("values") or [])
+    categories = [str(item) for item in chart.get("categories") or []]
+    if (
+        len(values) != 2
+        or len(categories) != 2
+        or not all(isinstance(value, (int, float)) for value in values)
+    ):
+        logger.info("Review left the bridge chart unchanged; it is not a start and an end")
+        return
+    delta = round(float(values[1]) - float(values[0]), 2)
+    chart["categories"] = [categories[0], "Bridge", categories[1]]
+    series[0]["values"] = [values[0], delta, values[1]]
+    chart["totals"] = [0, 2]
+    traced = chart.get("point_refs") or []
+    if traced and isinstance(traced[0], list) and len(traced[0]) == 2:
+        chart["point_refs"] = [[traced[0][0], "CALC-BRIDGE-DELTA", traced[0][1]]]
+    chart["chart_type"] = "waterfall"
+    logger.info("Review drew the plan bridge as a waterfall")
+
+
+def _split_margin_chart(chart: dict[str, Any]) -> None:
+    series = chart.get("series") or []
+    categories = [str(item) for item in chart.get("categories") or []]
+    blob = " ".join(categories)
+    if len(series) != 1 or not (re.search(r"(?i)gross", blob) and re.search(r"(?i)ebitda", blob)):
+        return
+    values = list(series[0].get("values") or [])
+    years: list[str] = []
+    gross: dict[str, float] = {}
+    ebitda: dict[str, float] = {}
+    for category, value in zip(categories, values):
+        match = re.search(r"20\d{2}", category)
+        year = match.group(0) if match else category
+        if year not in years:
+            years.append(year)
+        if not isinstance(value, (int, float)):
+            continue
+        if re.search(r"(?i)ebitda", category):
+            ebitda[year] = value
+        elif re.search(r"(?i)gross", category):
+            gross[year] = value
+    if not gross or not ebitda:
+        return
+    chart["categories"] = years
+    chart["series"] = [
+        {"name": "Gross margin", "values": [gross.get(year) for year in years]},
+        {"name": "EBITDA margin", "values": [ebitda.get(year) for year in years]},
+    ]
+    chart["chart_type"] = "column"
+    logger.info("Review split gross margin and EBITDA margin into two series")
+
+
 def _slide_ids(skill: Path) -> list[str]:
     data = yaml.safe_load((skill / "config" / "slide_map.yaml").read_text())
     return [slide["id"] for slide in data["slides"]]
@@ -195,6 +389,133 @@ def _withheld_page_gaps(skill: Path, filled: set[str]) -> list[dict[str, Any]]:
     return gaps
 
 
+def _direction(earlier: float, later: float) -> str:
+    """A move under 1.5 percentage points is held. Larger moves are rose or fell."""
+    if later > earlier + 1.5:
+        return "rose"
+    if later + 1.5 < earlier:
+        return "fell"
+    return "held"
+
+
+def _margin_number(raw: object) -> float | None:
+    """A margin cell as a number. A blank, a dash, or N/A is not a margin."""
+    if isinstance(raw, bool) or raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    text = str(raw).strip().replace(",", "").replace("%", "")
+    if not text or text in {"—", "–", "-", "N/A", "n/a", "NA"}:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _numeric_margins(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    kept = []
+    for item in rows:
+        number = _margin_number(item.get("value"))
+        if number is None:
+            if item.get("value") not in (None, ""):
+                logger.info("Skipped a margin cell that is not a number: %r", item.get("value"))
+            continue
+        kept.append({**item, "value": number})
+    return kept
+
+
+def _latest_pair(rows: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    if len(rows) < 2:
+        return None
+    return rows[-2], rows[-1]
+
+
+def _margin_groups(margins: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for item in margins:
+        grouped.setdefault(str(item.get("metric") or "Margin"), []).append(item)
+    return (
+        _numeric_margins(grouped.get("Gross margin") or []),
+        _numeric_margins(grouped.get("EBITDA margin") or []),
+    )
+
+
+def _margin_move(margins: list[dict[str, Any]]) -> tuple[str, str] | None:
+    """Direction of gross margin and EBITDA margin over the latest two numeric years."""
+    gross, ebitda = _margin_groups(margins)
+    g_pair, e_pair = _latest_pair(gross), _latest_pair(ebitda)
+    if not g_pair or not e_pair:
+        return None
+    return (
+        _direction(float(g_pair[0]["value"]), float(g_pair[1]["value"])),
+        _direction(float(e_pair[0]["value"]), float(e_pair[1]["value"])),
+    )
+
+
+def _margin_title(margins: list[dict[str, Any]]) -> str:
+    """Say how gross margin and EBITDA margin moved over the latest two numeric years."""
+    gross, ebitda = _margin_groups(margins)
+    move = _margin_move(margins)
+    g_pair, e_pair = _latest_pair(gross), _latest_pair(ebitda)
+    if move and g_pair and e_pair:
+        g_word, e_word = move
+        return (
+            f"Gross margin {g_word} from {g_pair[0]['value']:.1f}% to {g_pair[1]['value']:.1f}% "
+            f"while EBITDA margin {e_word} from {e_pair[0]['value']:.1f}% to {e_pair[1]['value']:.1f}%"
+        )
+    if gross and ebitda:
+        return (
+            f"Gross margin is {gross[-1]['value']:.1f}% and "
+            f"EBITDA margin is {ebitda[-1]['value']:.1f}%"
+        )
+    last_number = next((item["value"] for item in reversed(gross + ebitda)), None)
+    if last_number is None:
+        return "Margin on record is not a number in the loaded cells"
+    last = (gross or ebitda)[-1]
+    return f"Margin on record is {last_number:.1f}% in {last['label']}"
+
+
+def _market_source(raw: object) -> str:
+    """A workbook name, not a Python list of filenames."""
+    if isinstance(raw, (list, tuple)):
+        bits = [str(item).strip() for item in raw if str(item).strip()]
+        named = [bit for bit in bits if not re.search(r"\.(xlsx|xls|xlsm|csv|txt|pdf)\b", bit, re.I)]
+        raw = named[0] if len(named) == 1 else ""
+    text = str(raw or "").strip()
+    if not text or text.startswith("[") or re.search(r"\.(xlsx|xls|xlsm|csv|txt|pdf)\b", text, re.I):
+        text = "company workbook"
+    if re.search(r"(?i)evidenced", text):
+        logger.info("Market sizing source %r is not labelled an evidenced model", text)
+        text = "company workbook"
+    return _clean(text, 40)
+
+
+def _graded_rows(math: DeckMath) -> list[list[str]]:
+    """Five to seven findings. The grade follows the source, not a score."""
+    rows: list[list[str]] = []
+    if any(str(item.get("metric") or "") == "Gross margin" for item in math.margins) and any(
+        str(item.get("metric") or "") == "EBITDA margin" for item in math.margins
+    ):
+        move = _margin_move(math.margins)
+        if move:
+            g_word, e_word = move
+            rows.append([f"Gross margin {g_word} while EBITDA margin {e_word}", "Established", "Margins"])
+    if math.bridge:
+        rows.append(["The plan and the latest actual use one revenue basis", "Indicated", "Plan bridge"])
+    if math.trading:
+        rows.append(["A trading case is set against the plan", "Indicated", "Trading case"])
+    if math.unit_basis and math.unit_basis.get("price"):
+        rows.append(["The billed monthly price is the workbook price", "Established", "Prices"])
+    if math.model_price:
+        rows.append(["The model price per home per year is set against that billed price", "Asserted", "Model price"])
+    if any(item.get("name") == "Monthly retention" for item in math.claims):
+        rows.append(["Monthly retention is shown as a rate for the year", "Asserted", "Claims"])
+    if math.ties:
+        rows.append(["Accounts and the workbook do not tie on revenue", "Established", "Tie-out"])
+    return rows[:7]
+
+
 def _put_room_slides(slides: dict[str, Any], put, math: DeckMath, company: str) -> None:
     def open_slot(*ids: str) -> str:
         for sid in ids:
@@ -202,8 +523,23 @@ def _put_room_slides(slides: dict[str, Any], put, math: DeckMath, company: str) 
                 return sid
         return ""
 
+    findings = _graded_rows(math)
+    if findings:
+        put("S020_highlights_summary", {
+            "title": _title("Graded findings, and what to test before signing"),
+            "subtitle": _title(
+                "Accounts are established, the workbook is indicated, and a CIM sentence is asserted."
+            ),
+            "elements": {
+                "rows": _table(
+                    ["Finding", "Grade", "Page"],
+                    findings,
+                    row_refs=[["RUN-1"] for _row in findings],
+                ),
+            },
+        })
     if math.ties:
-        sid = open_slot("S020_highlights_summary", "S040_growth_factors_overview")
+        sid = open_slot("S031_h5_growth_levers")
         if sid:
             math.ties["slide"] = sid
             _bind_ids(math.ties["ids"])
@@ -282,8 +618,17 @@ def _put_room_slides(slides: dict[str, Any], put, math: DeckMath, company: str) 
         if sid:
             curve = math.subscriber_curve
             _bind_ids(curve["ids"])
+            gap = max(
+                abs(subscriber - revenue)
+                for subscriber, revenue in zip(curve["subscriber"], curve["revenue"])
+            )
+            title = (
+                f"Subscriber retention and revenue retention for {company} diverge as the book ages"
+                if gap > 1
+                else f"Subscriber retention and revenue retention for {company} stay together as the book ages"
+            )
             put(sid, {
-                "title": _title(f"Subscriber retention and revenue retention for {company} diverge as the book ages"),
+                "title": _title(title),
                 "subtitle": _title("Both series are the retention curve in the workbook. One is not converted into the other."),
                 "heads": {
                     "chart_head": "Subscriber retention and revenue retention",
@@ -334,40 +679,68 @@ def _put_room_slides(slides: dict[str, Any], put, math: DeckMath, company: str) 
                 },
             })
     if math.web_competitors and "S060_competitor_archetypes" not in slides:
-        rows = math.web_competitors[:6]
-        _bind_ids([row["id"] for row in rows])
-        priced = next((row for row in rows if re.search(r"\$\d", row["price"])), None)
-        title = (
-            f"{priced['name']} lists {priced['price']}, read outside the data room"
-            if priced else
-            "Local competitors read on web pages, outside the data room"
-        )
-        note = "These pages are outside the data room and are not CIM statements."
-        if priced and re.search(r"\d", priced.get("commercial") or ""):
-            note = (
-                f"{priced['name']} lists a residential price of {priced['price']} "
-                f"and a commercial entry {priced['commercial']}. {note}"
+        rows = []
+        for row in math.web_competitors:
+            if str(row.get("name") or "").strip().lower() == company.strip().lower():
+                logger.info("Kept %s off the competitor page; it is the company", row.get("name"))
+                continue
+            rows.append(row)
+        rows = rows[:6]
+        if not rows:
+            math.web_competitors = []
+        if rows:
+            _bind_ids([row["id"] for row in rows])
+            priced = next((row for row in rows if re.search(r"\$\d", row["price"])), None)
+            title = (
+                f"{priced['name']} lists {priced['price']}, read outside the data room"
+                if priced else
+                "Local competitors read on web pages, outside the data room"
             )
-        retrieved = next((row["retrieved"] for row in rows if row.get("retrieved")), "")
-        if retrieved:
-            note = f"{retrieved}. {note}"
-        put("S060_competitor_archetypes", {
-            "title": _title(title),
-            "subtitle": _title("These pages are not in the CIM and not in the data room."),
-            "elements": {
-                "table": _table(
-                    ["Competitor", "Footprint", "Residential price", "Record"],
-                    [
+            note = "These pages are outside the data room and are not CIM statements."
+            if priced and re.search(r"\d", priced.get("commercial") or ""):
+                note = (
+                    f"{priced['name']} lists a residential price of {priced['price']} "
+                    f"and a commercial entry {priced['commercial']}. {note}"
+                )
+            retrieved = next((row["retrieved"] for row in rows if row.get("retrieved")), "")
+            if retrieved:
+                note = f"{retrieved}. {note}"
+            put("S060_competitor_archetypes", {
+                "title": _title(title),
+                "subtitle": _title("These pages are not in the CIM and not in the data room."),
+                "elements": {
+                    "table": _table(
+                        ["Competitor", "Footprint", "Residential price", "Record"],
                         [
-                            _fit_line(row["name"], 40),
-                            _fit_line(row["footprint"], 70),
-                            _fit_line(row["price"], 40),
-                            "Web, outside the data room",
-                        ]
-                        for row in rows
-                    ],
-                ),
-                "takeaway": _text(note),
+                            [
+                                _fit_line(row["name"], 40),
+                                _fit_line(row["footprint"], 70),
+                                _fit_line(row["price"], 40),
+                                "Web, outside the data room",
+                            ]
+                            for row in rows
+                        ],
+                    ),
+                    "takeaway": _text(note),
+                },
+            })
+    if not math.web_competitors and "S060_competitor_archetypes" not in slides:
+        gap = "No outside competitor research was loaded"
+        put("S060_competitor_archetypes", {
+            "title": {"text": gap, "refs": ["RUN:research-gap"], "kind": "gap"},
+            "subtitle": {
+                "text": "The data room does not name local operating companies or their prices.",
+                "refs": ["RUN:research-gap"],
+                "kind": "gap",
+            },
+            "elements": {
+                "table": {
+                    "type": "table",
+                    "columns": ["Record", "What was loaded"],
+                    "rows": [["Outside research", gap]],
+                    "row_refs": [["RUN:research-gap"]],
+                },
+                "takeaway": {"type": "text", "text": gap, "refs": ["RUN:research-gap"], "kind": "gap"},
             },
         })
     if math.conclusion and "S018_industry_trends" not in slides:
@@ -428,29 +801,53 @@ def build_skill_content(
             ),
         },
     })
-    put("S003_engagement", {
-        "title": _title(
-            f"The mandate: test whether {company}'s trading, customers and market support the management plan"
-        ),
-        "subtitle": _title("Each finding is graded by the evidence behind it: established, indicated or asserted."),
-        "heads": {
-            "col1_head": "Business & Financials",
-            "col2_head": "Market & Geography",
-            "col3_head": "Customers & Retention",
-            "col4_head": "Competitive Landscape",
-            "col5_head": "Growth Opportunities",
-        },
-        "elements": {
+    opening = _graded_rows(math)
+    if opening:
+        heads = {}
+        elements: dict[str, Any] = {
             "lead": _text(
-                f"Commercial due diligence on {company} using the data room and the diligence modules loaded for this deal."
+                "What to test before signing is set out here, before the business section. "
+                "Accounts are established, the workbook is indicated, and a CIM sentence is asserted."
             ),
-            "col1_body": _bullets(["What has the business delivered?", "How do margins trend?", "What is contracted?"]),
-            "col2_body": _bullets(["How large is the serviceable market?", "Is the sizing method sound?", "Which geographies are next?"]),
-            "col3_body": _bullets(["How are customers retained?", "How concentrated is revenue?", "What is untested without research?"]),
-            "col4_body": _bullets(["Who competes for the same customers?", "Is price in line?", "Which differentiators hold?"]),
-            "col5_body": _bullets(["Which levers are in the plan?", "What must be true for each?", "What would change the view?"]),
-        },
-    })
+        }
+        shown = opening[:5]
+        while len(shown) < 5:
+            shown.append(["The pages that follow carry the support.", "—", "Record"])
+        for index, row in enumerate(shown, 1):
+            heads[f"col{index}_head"] = _clean(str(row[2]), 28)
+            elements[f"col{index}_body"] = _bullets([f"{row[0]} Grade: {row[1]}."])
+        put("S003_engagement", {
+            "title": _title("What to test before signing"),
+            "subtitle": _title(
+                f"The case on {company}, graded, before the business section. It is not a recommendation to invest."
+            ),
+            "heads": heads,
+            "elements": elements,
+        })
+    else:
+        put("S003_engagement", {
+            "title": _title(
+                f"The mandate: test whether {company}'s trading, customers and market support the management plan"
+            ),
+            "subtitle": _title("Each finding is graded by the evidence behind it: established, indicated or asserted."),
+            "heads": {
+                "col1_head": "Business & Financials",
+                "col2_head": "Market & Geography",
+                "col3_head": "Customers & Retention",
+                "col4_head": "Competitive Landscape",
+                "col5_head": "Growth Opportunities",
+            },
+            "elements": {
+                "lead": _text(
+                    f"Commercial due diligence on {company} using the data room and the diligence modules loaded for this deal."
+                ),
+                "col1_body": _bullets(["What has the business delivered?", "How do margins trend?", "What is contracted?"]),
+                "col2_body": _bullets(["How large is the serviceable market?", "Is the sizing method sound?", "Which geographies are next?"]),
+                "col3_body": _bullets(["How are customers retained?", "How concentrated is revenue?", "What is untested without research?"]),
+                "col4_body": _bullets(["Who competes for the same customers?", "Is price in line?", "Which differentiators hold?"]),
+                "col5_body": _bullets(["Which levers are in the plan?", "What must be true for each?", "What would change the view?"]),
+            },
+        })
     _bind(book, "method")
     put("S005_research_approach", {
         "title": _title(
@@ -494,10 +891,28 @@ def build_skill_content(
                 for calc in math.calculations:
                     if calc.id == matched["pct_id"] and "S009_company_snapshot" not in calc.used_on:
                         calc.used_on.append("S009_company_snapshot")
-            headline = (
-                f"Revenue was {_fmt_number(prior[1], scale='million')} in {prior[0]} and "
-                f"{_fmt_number(latest[1], scale='million')} in {latest[0]}{change}"
-            )
+            prior_step = next((row for row in math.yoy if row["later"] == prior[0]), None)
+            if prior_step:
+                for calc in math.calculations:
+                    if calc.id == prior_step["pct_id"] and "S009_company_snapshot" not in calc.used_on:
+                        calc.used_on.append("S009_company_snapshot")
+            if matched and prior_step and prior_step["pct"] - matched["pct"] >= 5:
+                headline = (
+                    f"Revenue growth slowed to {matched['pct']:.1f}% in {latest[0]}, "
+                    f"from {prior_step['pct']:.1f}% the year before"
+                )
+            elif matched and prior_step and matched["pct"] - prior_step["pct"] >= 5:
+                headline = (
+                    f"Revenue growth quickened to {matched['pct']:.1f}% in {latest[0]}, "
+                    f"from {prior_step['pct']:.1f}% the year before"
+                )
+            elif matched:
+                headline = f"Revenue grew {matched['pct']:.1f}% in {latest[0]}"
+            else:
+                headline = (
+                    f"Revenue was {_fmt_number(prior[1], scale='million')} in {prior[0]} and "
+                    f"{_fmt_number(latest[1], scale='million')} in {latest[0]}{change}"
+                )
         else:
             headline = f"{_fmt_number(latest[1], scale='million')} revenue in {latest[0]}"
         _bind(book, "revenue_actual", "revenue_partial", "narrative_hpf")
@@ -531,14 +946,33 @@ def build_skill_content(
             })
         facts = [
             line for line in _findings(hist, 6)
-            if not _is_qa_meta(line) and not _is_cap_table_text(line) and not _is_ownership_perimeter(line)
-        ] or [headline]
+            if not _is_qa_meta(line)
+            and not _is_cap_table_text(line)
+            and not _is_ownership_perimeter(line)
+            and not is_debug_line(line)
+            and not contradicts_profit_return(line, book)
+        ]
+        latest_year = max((_year_sort_key(label) for label, _value, _fid in points), default=0)
+        facts = [
+            line for line in facts
+            if not (
+                re.search(r"(?i)margin", line)
+                and (match := re.search(r"(20\d{2})", line))
+                and int(match.group(1)) < latest_year
+            )
+        ]
+        ytd_note = ""
+        if len(partials) >= 2:
+            earlier, later = partials[-2], partials[-1]
+            ytd_note = (
+                f"Year-to-date {later[0]} is set against the same months of {earlier[0]}. "
+            )
         put("S009_company_snapshot", {
             "title": _title(headline),
-            "subtitle": _title("Actuals from the accounts extract. Plan years are not on this chart."),
+            "subtitle": _title(ytd_note + "Actuals from the accounts extract. Plan years are not on this chart."),
             "elements": {
                 "kpis": {"type": "kpis", "items": kpis},
-                "left": _bullets(facts),
+                "left": _bullets([headline, *facts]),
                 "right": _chart(
                     [p[0] for p in points[-6:]],
                     [p[1] for p in points[-6:]],
@@ -798,9 +1232,10 @@ def build_skill_content(
             match = re.search(r"([\d,.]+)", text)
             values.append(float(match.group(1).replace(",", "")) if match else 0.0)
         joined = ", ".join(f"{label} {value}" for label, value in metrics)
+        source = _market_source(_spec(_resolve(ctx, "market_volume_and_growth")).get("primary_sources"))
         _bind(book, "sizing")
         put("S021_h1_market_size", {
-            "title": _title(f"On the evidenced model the market for {company} is {joined}"),
+            "title": _title(f"On the {source} the market for {company} is {joined}"),
             "subtitle": _title("TAM, SAM and SOM from the market-volume module."),
             "elements": {
                 "chart": _chart(
@@ -831,21 +1266,22 @@ def build_skill_content(
             })
     if len(math.margins) >= 2:
         _bind(book, "margins")
-        last_margin = math.margins[-1]
+        margin_labels, margin_series = _margin_series(math.margins)
         put("S045_gf4_pricing_stability", {
-            "title": _title(f"Margin on record is {last_margin['value']:.1f}% in {last_margin['label']}"),
+            "title": _title(_margin_title(math.margins)),
             "subtitle": _title("Actual and year-to-date margins only. A plan margin is not on this chart."),
             "elements": {
                 "chart": _chart(
-                    [f"{item.get('metric') or 'Margin'} {item['label']}" for item in math.margins],
-                    [item["value"] for item in math.margins],
+                    margin_labels,
+                    [],
                     "Margin %",
                     unit="%",
-                    point_refs=[item["id"] for item in math.margins],
+                    chart_type="line",
+                    series=margin_series,
                 ),
                 "right": _bullets([
-                    f"{item.get('metric') or 'Margin'} {item['label']}: {item['value']:.1f}%"
-                    for item in math.margins[:5]
+                    _margin_title(math.margins),
+                    "The lines are gross margin and EBITDA margin for the years on the accounts.",
                 ]),
             },
         })
@@ -856,7 +1292,9 @@ def build_skill_content(
             "title": _title(
                 f"The plan at {bridge['plan_label']} is {bridge['multiple']:.2f}x {bridge['actual_label']} revenue, a bridge of {bridge['delta']:+.2f} million"
             ),
-            "subtitle": _title("The bridge is plan revenue minus the latest actual. It is not a result."),
+                "subtitle": _title(
+                    "The chart is a waterfall from the latest actual to the plan. The step is the difference. It is not a result."
+                ),
             "elements": {
                 "left": _table(
                     ["Step", "$M"],
@@ -867,12 +1305,16 @@ def build_skill_content(
                         ["Multiple", f"{bridge['multiple']:.2f}x"],
                     ],
                 ),
-                "right": _chart(
-                    [bridge["actual_label"], bridge["plan_label"]],
-                    [bridge["actual"], bridge["plan"]],
-                    "Revenue",
-                    point_refs=[bridge["actual_id"], bridge["plan_id"]],
-                ),
+                "right": {
+                    **_chart(
+                        [str(bridge["actual_label"]), "Bridge", str(bridge["plan_label"])],
+                        [bridge["actual"], bridge["delta"], bridge["plan"]],
+                        "Revenue",
+                        chart_type="waterfall",
+                        point_refs=[bridge["actual_id"], "CALC-BRIDGE-DELTA", bridge["plan_id"]],
+                    ),
+                    "totals": [0, 2],
+                },
                 "takeaway": _text(f"Multiple {bridge['multiple']:.2f}x is plan divided by the latest actual."),
             },
         })
@@ -1314,7 +1756,7 @@ def build_skill_content(
                 ),
                 "subtitle": _title("Each line is stated in the workbook or the CIM. None of them is a result."),
                 "elements": {
-                    "rows": _table(["Lever", "On the record", "Not established"], lever_rows),
+                    "rows": _table(["Lever", "On the record", "Note"], lever_rows),
                 },
             })
 
@@ -1325,7 +1767,7 @@ def build_skill_content(
         _bind_ids(assessment_ids)
         put("S062_criteria_vs_archetypes", {
             "title": _title(
-                f"Pictures on the CIM competitive page are described as {math.picture['name']}"
+                f"The CIM competitive page names {math.picture['name']}"
                 if math.picture else
                 f"Management's comparison of {company} with the alternatives it named"
             ),
@@ -1344,7 +1786,7 @@ def build_skill_content(
                         " The table does not name local operating companies."
                     )
                     + (
-                        f" Pictures on that page are described as {math.picture['name']}."
+                        f" The CIM page names {math.picture['name']}."
                         if math.picture else ""
                     )
                 ),
@@ -1352,8 +1794,18 @@ def build_skill_content(
         })
     if math.prices:
         prices = math.prices
-        _bind_ids([point["id"] for point in prices["points"]])
+        price_ids = [point["id"] for point in prices["points"]]
+        notes = [f"{point['name']}: {point['value']:.2f}" for point in prices["points"][:4]]
+        notes.append("The gap, when shown, is the company price divided by the first peer price, minus one.")
+        if math.model_price and math.unit_basis and math.unit_basis.get("price"):
+            price_ids.append(math.model_price["id"])
+            notes.append(
+                f"The model price of ${math.model_price['shown']} a year is set against "
+                f"the billed {math.unit_basis['price']} a month."
+            )
+        _bind_ids(price_ids)
         gap = prices["gap"]
+        plotted = [prices["points"][index] for index in _scale_indexes([point["value"] for point in prices["points"]])]
         put("S064_price_benchmarking", {
             "title": _title(
                 f"On a {prices['unit']} basis the company price is {gap['value']:+.1f}% versus {gap['peer']}"
@@ -1367,15 +1819,13 @@ def build_skill_content(
             },
             "elements": {
                 "chart": _chart(
-                    [point["name"] for point in prices["points"]],
-                    [point["value"] for point in prices["points"]],
+                    [point["name"] for point in plotted],
+                    [point["value"] for point in plotted],
                     prices["unit"],
-                    unit=prices["unit"],
-                    point_refs=[point["id"] for point in prices["points"]],
+                    unit="$" if prices["unit"] in {"$", "USD"} else prices["unit"],
+                    point_refs=[point["id"] for point in plotted],
                 ),
-                "right": _bullets([
-                    f"{point['name']}: {point['value']:.2f}" for point in prices["points"][:4]
-                ] + ["The gap, when shown, is the company price divided by the first peer price, minus one."]),
+                "right": _bullets(notes),
             },
         })
     elif math.unit_basis and math.unit_basis.get("price"):
@@ -1388,7 +1838,8 @@ def build_skill_content(
                     points.append((label, raw, float(match.group(0))))
             source = book.by_id.get((math.unit_basis.get("ids") or [""])[0]) or {}
             docs = list((source.get("citations") or {}).get("doc") or [])
-            if len(points) >= 2 and docs:
+            plotted = [points[index] for index in _scale_indexes([amount for _label, _raw, amount in points])]
+            if len(points) >= 2 and docs and plotted:
                 fid = book.add(
                     module="CST",
                     title="Customer Stickiness",
@@ -1400,29 +1851,51 @@ def build_skill_content(
                 if fid:
                     book.by_id[fid]["cells"] = {label: raw for label, raw, _amount in points}
                     book.by_id[fid]["row_label"] = "Price per month"
-                    _bind_ids([fid])
+                    price_ids = [fid]
+                    chart_points = [(label, amount, fid) for label, _raw, amount in plotted]
+                    for name, amount, web_id in _published_web_prices(math.web_competitors):
+                        if name.strip().lower() == company.strip().lower():
+                            continue
+                        chart_points.append((name, amount, web_id))
+                        price_ids.append(web_id)
+                    kept = _scale_indexes([amount for _label, amount, _ref in chart_points])
+                    chart_points = [chart_points[index] for index in kept]
+                    web_on_chart = [label for label, _amount, ref in chart_points if ref != fid]
+                    price_note = (
+                        "A published web list price is on this chart and is outside the data room."
+                        if web_on_chart else
+                        "No third-party local price was in the loaded files."
+                    )
+                    if math.model_price:
+                        price_ids.append(math.model_price["id"])
+                        price_note = (
+                            f"The model price of ${math.model_price['shown']} a year is set against "
+                            f"the billed {math.unit_basis['price']} a month. {price_note}"
+                        )
+                    _bind_ids(price_ids)
+                    notes = [f"{label}: {raw}" for label, raw, _amount in points]
+                    if web_on_chart:
+                        notes.append("Web list prices on the chart are outside the data room.")
+                    if len(plotted) < len(points):
+                        notes.append("A monthly price more than eight times another is not on this axis.")
                     put("S064_price_benchmarking", {
                         "title": _title(
                             f"Residential price on the existing book is {math.unit_basis['price']} a month"
                         ),
-                        "subtitle": _title(
-                            "Workbook prices only. A web list price is outside the data room and is not in this chart."
-                            if math.web_competitors else
-                            "No third-party local price was in the loaded files."
-                        ),
+                        "subtitle": _title(price_note),
                         "heads": {
-                            "chart_head": "Prices on the workbook row",
-                            "right_head": "Workbook prices only" if math.web_competitors else "No outside price was loaded",
+                            "chart_head": "Monthly price, workbook and web" if web_on_chart else "Prices on the workbook row",
+                            "right_head": "Web prices are outside the data room" if web_on_chart else "No outside price was loaded",
                         },
                         "elements": {
                             "chart": _chart(
-                                [label for label, _raw, _amount in points],
-                                [amount for _label, _raw, amount in points],
+                                [label for label, _amount, _ref in chart_points],
+                                [amount for _label, amount, _ref in chart_points],
                                 "Price",
                                 unit="$",
-                                point_refs=[fid for _ in points],
+                                point_refs=[ref for _label, _amount, ref in chart_points],
                             ),
-                            "right": _bullets([f"{label}: {raw}" for label, raw, _amount in points]),
+                            "right": _bullets(notes[:5]),
                         },
                     })
     if math.logos:
@@ -1811,8 +2284,8 @@ def build_skill_content(
         "S010_platform_evolution": {"flow_head": "Milestones the CIM states", "right_head": "What the page does not prove"},
         "S023_h1_growth_drivers": {"left_head": "Change in accounts revenue", "right_head": "How the change was calculated"},
         "S042_gf2_mix_shift": {"chart_head": "Share of workbook revenue", "right_head": "Each share uses that year's total"},
-        "S045_gf4_pricing_stability": {"chart_head": "Margin on the accounts", "right_head": "Not a pricing study"},
-        "S046_sam_growth_build": {"left_head": "Plan versus latest actual", "right_head": "The bridge is not a result"},
+        "S045_gf4_pricing_stability": {"chart_head": "Gross margin and EBITDA margin", "right_head": "Not a pricing study"},
+        "S046_sam_growth_build": {"left_head": "Plan versus latest actual", "right_head": "Waterfall from the latest actual to the plan"},
         "S073_l1_new_customers": {"chart_head": "New and churned logos", "right_head": "Net additions on record"},
         "S079_l3_expand_accounts": {"chart_head": "Retention by year", "right_head": "The rate stored for that year"},
         "S089_sizing_method_core": {"flow_head": "How the sizing was built", "right_head": "What the workbook states"},
@@ -1985,6 +2458,7 @@ def build_skill_content(
         slides["S007_glossary"] = pages[0] if len(pages) == 1 else pages
         filled.add("S007_glossary")
 
+    _review_pages(slides, book)
     skill = skill_dir()
     sm = yaml.safe_load((skill / "config" / "slide_map.yaml").read_text())
     divider_ids = {slide["id"] for slide in sm["slides"] if slide.get("archetype") == "divider"}
