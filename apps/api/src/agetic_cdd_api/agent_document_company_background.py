@@ -874,7 +874,7 @@ def _parse_sector(
 
     # Prefer organics / specialized inference over bare industry keyword hits
     # (e.g. "Excludes Education & Health Care" in a ZIP analysis must not win).
-    # Include company / legal name — thin corpora still carry "Compost Crew".
+    # Include company / legal name — thin corpora still carry the legal name.
     name_hint = " ".join(
         x for x in (
             company,

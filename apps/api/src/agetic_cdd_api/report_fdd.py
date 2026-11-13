@@ -17,10 +17,6 @@ from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.util import Inches as PptxInches
 from pptx.util import Pt as PptxPt
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
-
 from agetic_cdd_api.report_builder_base import BuildContext, ReportBuilder, _evt
 from agetic_cdd_api.report_store import report_artifact_dir
 from agetic_cdd_api.routers_reports import register_builder
@@ -32,6 +28,7 @@ from agetic_cdd_api.fdd_schemas import (
     StubRenderResult,
 )
 from agetic_cdd_api.services_fdd_render import ensure_phase0_run, render_stub
+from agetic_cdd_api.services_fdd_report_pdf import write_fdd_findings_pdf
 from agetic_cdd_api.services_fdd_tokens import display_unit_for_cell
 
 _SAFE_NAME_MAX = 100
@@ -118,86 +115,26 @@ def _artifact_relpath(path: Path, deal_slug: str) -> str:
         return str(path)
 
 
-def _escape(text: str) -> str:
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\n", "<br/>")
-    )
-
-
 def _write_fdd_pdf(
     *,
     path,
     title: str,
+    company: str,
     pages: list[StubRenderPage],
     figures: dict[str, Any],
+    findings_counts: dict[str, int] | None = None,
+    top_findings: list[dict[str, Any]] | None = None,
 ) -> None:
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "FddTitle",
-        parent=styles["Heading1"],
-        fontSize=18,
-        spaceAfter=14,
+    """Landscape findings-report PDF matching Compost Crew Latest formatting."""
+    write_fdd_findings_pdf(
+        path=path,
+        title=title,
+        company=company,
+        pages=pages,
+        figures=figures,
+        findings_counts=findings_counts,
+        top_findings=top_findings,
     )
-    page_title = ParagraphStyle(
-        "FddPageTitle",
-        parent=styles["Heading2"],
-        fontSize=13,
-        spaceAfter=10,
-        spaceBefore=4,
-    )
-    body_style = ParagraphStyle(
-        "FddBody",
-        parent=styles["BodyText"],
-        fontSize=10,
-        leading=13,
-        spaceAfter=6,
-    )
-    foot_style = ParagraphStyle(
-        "FddFoot",
-        parent=styles["Normal"],
-        fontSize=8,
-        textColor="#555555",
-    )
-    doc = SimpleDocTemplate(str(path), pagesize=A4)
-    story: list[Any] = []
-    if not pages:
-        story.append(Paragraph(_escape(title), title_style))
-        story.append(Paragraph("No pages in report_spec.", body_style))
-    else:
-        for i, page in enumerate(pages):
-            if i:
-                story.append(PageBreak())
-            if page.kind == "cover":
-                story.append(Paragraph(_escape(title), title_style))
-                story.append(Spacer(1, 10))
-            else:
-                story.append(Paragraph(_escape(page.title), page_title))
-            body = page.body or ""
-            chunks = body.split("\n\n") if "\n\n" in body else [body]
-            for chunk in chunks:
-                if not chunk.strip():
-                    continue
-                for line in chunk.split("\n"):
-                    if not line.strip():
-                        story.append(Spacer(1, 4))
-                        continue
-                    story.append(Paragraph(_escape(line), body_style))
-    fig_bits = ", ".join(f"{k}={v}" for k, v in sorted(figures.items())[:12])
-    extra = len(figures) - 12
-    if extra > 0:
-        fig_bits = f"{fig_bits}, …(+{extra})"
-    story.append(Spacer(1, 16))
-    story.append(
-        Paragraph(
-            f"FDD report · {len(pages)} page(s) · shared figures: {fig_bits or '—'} "
-            f"· sources on exhibit cells",
-            foot_style,
-        )
-    )
-    doc.build(story)
 
 
 def _write_fdd_docx(
@@ -262,7 +199,7 @@ def _write_fdd_docx(
 
     note = doc.add_paragraph()
     nr = note.add_run(
-        "Figures resolve from the exhibit store via number tokens; "
+        "Figures are taken from the approved databook exhibits; "
         "negatives in brackets; one currency/scale per exhibit."
     )
     nr.font.size = Pt(8)
@@ -399,8 +336,8 @@ def _add_labelled_chart(slide, ex: Exhibit) -> bool:
         XL_CHART_TYPE.COLUMN_CLUSTERED,
         PptxInches(0.6),
         PptxInches(3.4),
-        PptxInches(8.5),
-        PptxInches(3.0),
+        PptxInches(12.1),
+        PptxInches(3.2),
         chart_data,
     )
     chart = graphic.chart
@@ -428,6 +365,11 @@ def _exhibits_by_id(store: ExhibitStoreDoc | None) -> dict[str, Exhibit]:
     return {ex.exhibit_id: ex for ex in store.exhibits}
 
 
+_DECK_WIDTH = PptxInches(13.333)
+_DECK_HEIGHT = PptxInches(7.5)
+_DECK_CONTENT_WIDTH = PptxInches(12.1)
+
+
 def _add_slide(
     prs: Presentation,
     page: StubRenderPage,
@@ -438,12 +380,12 @@ def _add_slide(
     layout = prs.slide_layouts[5]  # blank
     slide = prs.slides.add_slide(layout)
     box = slide.shapes.add_textbox(
-        PptxInches(0.6), PptxInches(0.35), PptxInches(8.5), PptxInches(0.7)
+        PptxInches(0.6), PptxInches(0.35), _DECK_CONTENT_WIDTH, PptxInches(0.7)
     )
     tf = box.text_frame
     p = tf.paragraphs[0]
     p.text = page.title
-    p.font.size = PptxPt(26 if is_title else 18)
+    p.font.size = PptxPt(28 if is_title else 20)
     p.font.bold = True
 
     has_chart = False
@@ -452,19 +394,25 @@ def _add_slide(
         if ex is not None:
             has_chart = _add_labelled_chart(slide, ex)
 
-    body_h = 2.0 if has_chart else 5.2
+    body_h = 2.0 if has_chart else 5.4
     body_box = slide.shapes.add_textbox(
-        PptxInches(0.6), PptxInches(1.15), PptxInches(8.5), PptxInches(body_h)
+        PptxInches(0.6), PptxInches(1.15), _DECK_CONTENT_WIDTH, PptxInches(body_h)
     )
     btf = body_box.text_frame
     btf.word_wrap = True
     first = True
-    max_lines = 4 if has_chart else 8
-    for line in _slide_body_lines(page.body or "", max_content=max_lines):
+    max_lines = 4 if has_chart else 10
+    body_lines = _slide_body_lines(page.body or "", max_content=max_lines)
+    for idx, line in enumerate(body_lines):
         para = btf.paragraphs[0] if first else btf.add_paragraph()
         first = False
         para.text = line
-        para.font.size = PptxPt(14 if is_title else 12)
+        # Hierarchy: first line = takeaway, rest = supporting.
+        if idx == 0:
+            para.font.size = PptxPt(16)
+            para.font.bold = True
+        else:
+            para.font.size = PptxPt(13)
         para.space_after = PptxPt(4)
     return slide
 
@@ -476,8 +424,38 @@ def _write_fdd_pptx(
     pages: list[StubRenderPage],
     figures: dict[str, Any],
     store: ExhibitStoreDoc | None = None,
+    product_label: str = "FDD Report",
+    company: str = "",
+    use_chrome: bool = True,
 ) -> None:
+    """Write widescreen PPTX. FDD Report uses Phase B chrome layouts by default."""
+    if use_chrome:
+        from agetic_cdd_api.fdd_schemas import PptxChrome
+        from agetic_cdd_api.services_fdd_pptx import (
+            stub_pages_to_slides,
+            write_fdd_presentation,
+        )
+
+        from agetic_cdd_api.services_fdd_chapters import resolve_project_label
+
+        chrome = PptxChrome(
+            project_label=resolve_project_label(company=company or title),
+            basis_short="Draft for discussion - unaudited basis",
+        )
+        slides = stub_pages_to_slides(pages, chrome=chrome, company=company or title)
+        if not slides:
+            slides = stub_pages_to_slides(
+                [StubRenderPage(title=title, body="No slides in report_spec.", kind="cover")],
+                chrome=chrome,
+                company=company or title,
+            )
+        write_fdd_presentation(path, slides, chrome=chrome)
+        return
+
+    # Legacy IC-deck path (deprecated builder).
     prs = Presentation()
+    prs.slide_width = _DECK_WIDTH
+    prs.slide_height = _DECK_HEIGHT
     last_slide = None
     if not pages:
         last_slide = _add_slide(
@@ -497,13 +475,12 @@ def _write_fdd_pptx(
 
     if last_slide is not None:
         foot = last_slide.shapes.add_textbox(
-            PptxInches(0.6), PptxInches(6.6), PptxInches(8.5), PptxInches(0.4)
+            PptxInches(0.6), PptxInches(7.0), _DECK_CONTENT_WIDTH, PptxInches(0.35)
         )
         fp = foot.text_frame.paragraphs[0]
         fp.text = (
-            f"FDD IC deck · {len(pages)} slide(s) · "
-            f"{len(figures)} shared figure(s) · identical to report · "
-            "chart axes labelled Period / scale"
+            f"{product_label} · {len(pages)} slide(s) · "
+            f"{len(figures)} shared figure(s) · widescreen"
         )
         fp.font.size = PptxPt(9)
 
@@ -529,24 +506,138 @@ def _side_json(path, *, manifest, rendered: StubRenderResult) -> None:
     )
 
 
+def _published_pages(ctx: BuildContext) -> list[dict[str, Any]]:
+    from agetic_cdd_api.services_published_pages import pages_for_deal
+
+    return pages_for_deal(ctx.deal_slug)
+
+
+def _published_sections(pages: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    for page in pages:
+        figures = {row["fact_id"]: row["value"] for row in page["figures"]}
+        yield _evt(
+            "section",
+            _published_caption(page),
+            schedule_id=page["schedule_id"],
+            renders=page["renders"],
+            figures=figures,
+            fact_ids=list(figures),
+        )
+
+
+def _published_caption(page: dict[str, Any]) -> str:
+    label = {"rent": "Rent", "revenue_and_costs": "Revenue and costs", "debt": "Debt"}.get(page["renders"], page["schedule_id"])
+    return f"{page['schedule_id']} · {label}"
+
+
+def _export_published(ctx: BuildContext, pages: list[dict[str, Any]], report_type: str, filename: str) -> str:
+    """Export published databook pages. FDD types are forced to PPTX (Phase F)."""
+    out_dir = report_artifact_dir(ctx.deal_slug, report_type)
+    # FDD Report / deprecated deck alias: never emit Word/PDF from published pages.
+    if report_type in {"fdd_report", "fdd_deck"} and not filename.endswith(".pptx"):
+        filename = Path(filename).with_suffix(".pptx").name
+    path = out_dir / filename
+    if filename.endswith(".pptx"):
+        _write_published_pptx(path, pages)
+    else:
+        _write_published_docx(path, pages)
+    return _artifact_relpath(path, ctx.deal_slug)
+
+
+def _export_chapter_pptx(
+    ctx: BuildContext,
+    *,
+    report_type: str,
+    filename: str,
+    product_label: str,
+) -> str:
+    """Shared chaptered FDD PPTX export used by fdd_report and deprecated fdd_deck.
+
+    Prefer assembled chapter slides. Published-page title stubs are a last resort
+    only when no FDD chapter pack exists yet.
+    """
+    ctx.pdf_artifact_path = None
+    out_dir = report_artifact_dir(ctx.deal_slug, report_type)
+    path = out_dir / filename
+    manifest, store, spec, rendered = _cached_bundle_and_render(ctx, kind="deck")
+    chapter_slides = list(getattr(spec, "slides", None) or [])
+    if chapter_slides:
+        from agetic_cdd_api.services_fdd_chapters import default_chrome
+        from agetic_cdd_api.services_fdd_pptx import write_fdd_presentation
+
+        write_fdd_presentation(
+            path,
+            chapter_slides,
+            chrome=default_chrome(company=_company(ctx)),
+        )
+        _side_json(path, manifest=manifest, rendered=rendered)
+        return _artifact_relpath(path, ctx.deal_slug)
+
+    pages = _published_pages(ctx)
+    if pages:
+        return _export_published(ctx, pages, report_type, filename)
+
+    _write_fdd_pptx(
+        path=path,
+        title=spec.title,
+        pages=rendered.pages,
+        figures=rendered.figures,
+        store=store,
+        product_label=product_label,
+        company=_company(ctx),
+        use_chrome=True,
+    )
+    _side_json(path, manifest=manifest, rendered=rendered)
+    return _artifact_relpath(path, ctx.deal_slug)
+
+
+def _write_published_docx(path: Path, pages: list[dict[str, Any]]) -> None:
+    document = Document()
+    for page in pages:
+        document.add_heading(_published_caption(page), level=1)
+        for row in page["figures"]:
+            document.add_paragraph(f"{row['fact_id']} {row['concept_id']} {row['value']}")
+    document.save(str(path))
+
+
+def _write_published_pptx(path: Path, pages: list[dict[str, Any]]) -> None:
+    presentation = Presentation()
+    for page in pages:
+        slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+        slide.shapes.title.text = _published_caption(page)
+    presentation.save(str(path))
+
+
 class FddReportBuilder(ReportBuilder):
-    """DOCX (+ PDF twin) driven by the shared Phase 7 FDD report_spec."""
+    """PPTX-only FDD Report from the shared Phase 7 report_spec (slide render).
+
+    Phase A cutover: no DOCX/PDF twin. Uses the deck slide nodes until chaptered
+    PPTX parity (Phases B–D) replaces the shell layouts.
+    """
 
     report_type = "fdd_report"
 
     def build_sections(self, ctx: BuildContext) -> Iterator[dict[str, Any]]:
-        manifest, _store, spec, rendered = _cached_bundle_and_render(ctx, kind="report")
+        pages = _published_pages(ctx)
+        if pages:
+            yield from _published_sections(pages)
+            return
+        # PPTX uses chaptered SlideSpecs (Phase C); deck render keeps shared figures.
+        manifest, _store, spec, rendered = _cached_bundle_and_render(ctx, kind="deck")
         n_figs = len(rendered.figures)
+        n_chapter = len(getattr(spec, "slides", None) or [])
         n_comment = sum(
-            1 for n in spec.nodes if n.node_id.startswith("sec_comment_")
+            1 for n in spec.nodes if n.node_id.startswith("slide_ch_")
         )
         yield _evt(
             "section",
-            f"FDD report · {len(rendered.pages)} page(s) · {n_comment} commentary "
-            f"section(s) · run {manifest.run_id} · {n_figs} shared figure(s)",
+            f"FDD report · {n_chapter or len(rendered.pages)} chapter slide(s) · "
+            f"{n_comment} commentary slide(s) · run {manifest.run_id} · "
+            f"{n_figs} shared figure(s)",
             run_id=manifest.run_id,
             figures=rendered.figures,
-            page_count=len(rendered.pages),
+            page_count=n_chapter or len(rendered.pages),
+            slide_count=n_chapter or len(rendered.pages),
             commentary_sections=n_comment,
         )
         if manifest.draft_mode:
@@ -563,62 +654,27 @@ class FddReportBuilder(ReportBuilder):
             )
 
     def export_artifact(self, ctx: BuildContext) -> str:
-        manifest, _store, spec, rendered = _cached_bundle_and_render(ctx, kind="report")
-        out_dir = report_artifact_dir(ctx.deal_slug, "fdd_report")
-        base = _safe_name(_company(ctx), ctx.deal_slug)
-        docx_path = out_dir / f"{base}_FDD_Report.docx"
-        pdf_path = out_dir / f"{base}_FDD_Report.pdf"
-        _write_fdd_docx(
-            path=docx_path,
-            title=spec.title,
-            company=_company(ctx),
-            pages=rendered.pages,
-            figures=rendered.figures,
+        # Never emit a PDF twin for the FDD Report.
+        return _export_chapter_pptx(
+            ctx,
+            report_type="fdd_report",
+            filename=f"{_safe_name(_company(ctx), ctx.deal_slug)}_FDD_Report.pptx",
+            product_label="FDD Report",
         )
-        _write_fdd_pdf(
-            path=pdf_path,
-            title=spec.title,
-            pages=rendered.pages,
-            figures=rendered.figures,
-        )
-        _side_json(docx_path, manifest=manifest, rendered=rendered)
-        return _artifact_relpath(docx_path, ctx.deal_slug)
 
 
-class FddDeckBuilder(ReportBuilder):
-    """PPTX driven by the same Phase 7 FDD report_spec + exhibit store."""
+class FddDeckBuilder(FddReportBuilder):
+    """Deprecated API alias — same chaptered PPTX as ``fdd_report`` (Phase F)."""
 
     report_type = "fdd_deck"
 
-    def build_sections(self, ctx: BuildContext) -> Iterator[dict[str, Any]]:
-        manifest, _store, spec, rendered = _cached_bundle_and_render(ctx, kind="deck")
-        n_comment = sum(
-            1 for n in spec.nodes if n.node_id.startswith("slide_comment_")
-        )
-        yield _evt(
-            "section",
-            f"FDD deck · {len(rendered.pages)} slide(s) · {n_comment} commentary "
-            f"slide(s) · run {manifest.run_id} · {len(rendered.figures)} shared figure(s)",
-            run_id=manifest.run_id,
-            figures=rendered.figures,
-            slide_count=len(rendered.pages),
-            commentary_sections=n_comment,
-        )
-
     def export_artifact(self, ctx: BuildContext) -> str:
-        manifest, store, spec, rendered = _cached_bundle_and_render(ctx, kind="deck")
-        out_dir = report_artifact_dir(ctx.deal_slug, "fdd_deck")
-        filename = f"{_safe_name(_company(ctx), ctx.deal_slug)}_FDD_Deck.pptx"
-        path = out_dir / filename
-        _write_fdd_pptx(
-            path=path,
-            title=spec.title,
-            pages=rendered.pages,
-            figures=rendered.figures,
-            store=store,
+        return _export_chapter_pptx(
+            ctx,
+            report_type="fdd_deck",
+            filename=f"{_safe_name(_company(ctx), ctx.deal_slug)}_FDD_Deck.pptx",
+            product_label="FDD Report",
         )
-        _side_json(path, manifest=manifest, rendered=rendered)
-        return _artifact_relpath(path, ctx.deal_slug)
 
 
 register_builder("fdd_report", FddReportBuilder)

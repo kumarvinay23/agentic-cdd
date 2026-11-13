@@ -376,7 +376,7 @@ def _harvest_internal_risk(payload: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         person = str(row.get("person") or "").strip()
         # Never emit HR placeholders or sentence fragments into retention CPs.
-        # (e.g. "Compost Crew is led by a proven (CEO)" from a greedy CEO regex)
+        # (e.g. a sentence fragment ending in "(CEO)" from a greedy CEO regex)
         from agetic_cdd_api.agent_document_management_quality import (
             _plausible_person_name,
         )
@@ -1258,9 +1258,18 @@ def _collect_agents(
             store_agents = findings_store.get("agents")
             if isinstance(store_agents, dict) and isinstance(store_agents.get(slug), dict):
                 payload = store_agents[slug]
-        if isinstance(payload, dict) and (payload.get("spec") or payload.get("findings")):
-            agents[slug] = payload
+        kept = _validated_upstream(payload)
+        if kept:
+            agents[slug] = kept
     return agents
+
+
+def _validated_upstream(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    from agetic_cdd_api.agent_contracts import as_validated_findings
+
+    if not isinstance(payload, dict) or not (payload.get("spec") or payload.get("findings")):
+        return None
+    return as_validated_findings(payload)
 
 
 def _scrub_post_close_disguise(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

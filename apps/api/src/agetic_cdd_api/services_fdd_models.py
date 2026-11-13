@@ -729,11 +729,11 @@ def _bucket_sum(
                 or "investor" not in source_blob(ln.sources)
             )
         ]
-        overlap = [ln for ln in kept if _source_overlap(ln.sources, align_sources)]
         if kind_match:
             kept = kind_match
-        elif overlap:
-            kept = overlap
+        else:
+            # No same-kind peer — refuse cross-basis fallback (pack÷workbook).
+            return None, []
     if not additive:
         # Prefer same-basis source when aligning; otherwise workbook over ledger.
         kept.sort(
@@ -806,6 +806,17 @@ def build_trading_exhibit(
     if not ys:
         return [], ["no_trading_facts"]
 
+    # Lock closed-year trading onto workbook when available for every year.
+    from agetic_cdd_api.services_fdd_sources import display_source_name
+
+    wb_lines = _lines_for_kind(lines, "workbook")
+    locked_kind = "mixed"
+    if wb_lines and all(
+        _bucket_sum(wb_lines, _REVENUE, y, additive=False)[0] is not None for y in ys
+    ):
+        lines = wb_lines
+        locked_kind = "workbook"
+
     cells: list[ExhibitCell] = []
     # canonical_metric → year → (value, hit lines)
     series: dict[str, dict[int, tuple[float, list[_Line]]]] = {
@@ -816,15 +827,16 @@ def build_trading_exhibit(
 
     for y in ys:
         for bucket, canon, label in _TRADING_REPORTED:
+            # Prefer calculated margins from levels (below) so M1/M2 never
+            # disagree on GM%/EM% from mixed reported vs GP÷revenue bases.
+            if "margin" in canon:
+                continue
             total, hit = _bucket_sum(lines, bucket, y, additive=False)
             if total is None:
                 continue
             for ln in hit:
                 cur = cur or ln.currency
                 scl = scl or ln.scale
-            # Reported margins may arrive as ratios (0.30) — normalise to %.
-            if "margin" in canon:
-                total = _as_percent_points(total)
             series[canon][y] = (total, hit)
             cells.append(
                 _cell(
@@ -835,8 +847,8 @@ def build_trading_exhibit(
                     fact_id=_model_component_fact_id("m1", canon, y)
                     if len(hit) != 1
                     else hit[0].fact_id,
-                    currency=None if "margin" in canon else cur,
-                    scale="%" if "margin" in canon else scl,
+                    currency=cur,
+                    scale=scl,
                     fiscal_year=y,
                     metric_key=canon,
                     status=_worst_status(ln.status for ln in hit),
@@ -846,62 +858,108 @@ def build_trading_exhibit(
                 )
             )
 
-    # Derived margins when components exist and margin not already reported
+    # Margins: prefer GP÷revenue / EBITDA÷revenue; fall back to reported %.
     for y in ys:
         rev = series["revenue"].get(y)
         if rev is None:
             continue
         rev_v, rev_hit = rev
-        if y not in series["gross_margin"]:
-            gp = series["gross_profit"].get(y)
-            if gp is not None:
-                m = _margin_pct(gp[0], rev_v)
-                if m is not None:
-                    cells.append(
-                        _cell(
-                            exhibit_id=TRADING_EXHIBIT_ID,
-                            cell_id=metric_cell_id("gross_margin", y),
-                            label=f"Gross margin % FY{y}",
-                            value=round(m, 4),
-                            fact_id=_model_component_fact_id("m1", "gross_margin", y),
-                            currency=cur,
-                            scale="%",
-                            fiscal_year=y,
-                            metric_key="gross_margin",
-                            status=_worst_status(
-                                [*(ln.status for ln in rev_hit), *(ln.status for ln in gp[1])]
-                            ),
-                            model_id="M1",
-                            figure_type=FigureType.CALCULATED,
-                            basis_label=f"M1 gross profit ÷ revenue · FY{y}",
-                        )
+        gp = series["gross_profit"].get(y)
+        if gp is not None:
+            m = _margin_pct(gp[0], rev_v)
+            if m is not None:
+                cells.append(
+                    _cell(
+                        exhibit_id=TRADING_EXHIBIT_ID,
+                        cell_id=metric_cell_id("gross_margin", y),
+                        label=f"Gross margin % FY{y}",
+                        value=round(m, 4),
+                        fact_id=_model_component_fact_id("m1", "gross_margin", y),
+                        currency=None,
+                        scale="%",
+                        fiscal_year=y,
+                        metric_key="gross_margin",
+                        status=_worst_status(
+                            [*(ln.status for ln in rev_hit), *(ln.status for ln in gp[1])]
+                        ),
+                        model_id="M1",
+                        figure_type=FigureType.CALCULATED,
+                        basis_label=f"M1 gross profit ÷ revenue · FY{y}",
                     )
-                    series["gross_margin"][y] = (m, rev_hit + gp[1])
-        if y not in series["ebitda_margin"]:
-            eb = series["ebitda"].get(y)
-            if eb is not None:
-                m = _margin_pct(eb[0], rev_v)
-                if m is not None:
-                    cells.append(
-                        _cell(
-                            exhibit_id=TRADING_EXHIBIT_ID,
-                            cell_id=metric_cell_id("ebitda_margin", y),
-                            label=f"EBITDA margin % FY{y}",
-                            value=round(m, 4),
-                            fact_id=_model_component_fact_id("m1", "ebitda_margin", y),
-                            currency=cur,
-                            scale="%",
-                            fiscal_year=y,
-                            metric_key="ebitda_margin",
-                            status=_worst_status(
-                                [*(ln.status for ln in rev_hit), *(ln.status for ln in eb[1])]
-                            ),
-                            model_id="M1",
-                            figure_type=FigureType.CALCULATED,
-                            basis_label=f"M1 EBITDA ÷ revenue · FY{y}",
-                        )
+                )
+                series["gross_margin"][y] = (m, rev_hit + gp[1])
+        elif y not in series["gross_margin"]:
+            gm_tot, gm_hit = _bucket_sum(lines, _GROSS_MARGIN, y, additive=False)
+            if gm_tot is not None:
+                m = _as_percent_points(gm_tot)
+                cells.append(
+                    _cell(
+                        exhibit_id=TRADING_EXHIBIT_ID,
+                        cell_id=metric_cell_id("gross_margin", y),
+                        label=f"Gross margin % FY{y}",
+                        value=round(m, 4),
+                        fact_id=_model_component_fact_id("m1", "gross_margin", y)
+                        if len(gm_hit) != 1
+                        else gm_hit[0].fact_id,
+                        currency=None,
+                        scale="%",
+                        fiscal_year=y,
+                        metric_key="gross_margin",
+                        status=_worst_status(ln.status for ln in gm_hit),
+                        model_id="M1",
+                        figure_type=FigureType.REPORTED,
+                        basis_label=f"M1 historical trading · FY{y}",
                     )
-                    series["ebitda_margin"][y] = (m, rev_hit + eb[1])
+                )
+                series["gross_margin"][y] = (m, gm_hit)
+        eb = series["ebitda"].get(y)
+        if eb is not None:
+            m = _margin_pct(eb[0], rev_v)
+            if m is not None:
+                cells.append(
+                    _cell(
+                        exhibit_id=TRADING_EXHIBIT_ID,
+                        cell_id=metric_cell_id("ebitda_margin", y),
+                        label=f"EBITDA margin % FY{y}",
+                        value=round(m, 4),
+                        fact_id=_model_component_fact_id("m1", "ebitda_margin", y),
+                        currency=None,
+                        scale="%",
+                        fiscal_year=y,
+                        metric_key="ebitda_margin",
+                        status=_worst_status(
+                            [*(ln.status for ln in rev_hit), *(ln.status for ln in eb[1])]
+                        ),
+                        model_id="M1",
+                        figure_type=FigureType.CALCULATED,
+                        basis_label=f"M1 EBITDA ÷ revenue · FY{y}",
+                    )
+                )
+                series["ebitda_margin"][y] = (m, rev_hit + eb[1])
+        elif y not in series["ebitda_margin"]:
+            em_tot, em_hit = _bucket_sum(lines, _EBITDA_MARGIN, y, additive=False)
+            if em_tot is not None:
+                m = _as_percent_points(em_tot)
+                cells.append(
+                    _cell(
+                        exhibit_id=TRADING_EXHIBIT_ID,
+                        cell_id=metric_cell_id("ebitda_margin", y),
+                        label=f"EBITDA margin % FY{y}",
+                        value=round(m, 4),
+                        fact_id=_model_component_fact_id("m1", "ebitda_margin", y)
+                        if len(em_hit) != 1
+                        else em_hit[0].fact_id,
+                        currency=None,
+                        scale="%",
+                        fiscal_year=y,
+                        metric_key="ebitda_margin",
+                        status=_worst_status(ln.status for ln in em_hit),
+                        model_id="M1",
+                        figure_type=FigureType.REPORTED,
+                        basis_label=f"M1 historical trading · FY{y}",
+                    )
+                )
+                series["ebitda_margin"][y] = (m, em_hit)
 
     # YoY on consecutive years present in the workbook (newest year gets the calc)
     sorted_asc = sorted(ys)
@@ -943,7 +1001,12 @@ def build_trading_exhibit(
         notes.append(f"no_trading_lines_for_years_{ys}")
     else:
         notes.append(f"m1_years:{','.join(str(y) for y in ys)}")
-        notes.append("Basis: investor workbook revenue (closed years)")
+        if locked_kind == "workbook":
+            notes.append(
+                f"Basis: {display_source_name(locked_kind)} revenue (closed years)"
+            )
+        else:
+            notes.append("Basis: investor workbook revenue (closed years)")
     return cells, notes
 
 
@@ -1270,6 +1333,65 @@ def build_net_debt_exhibit(
     return cells, notes
 
 
+def _lines_for_kind(lines: list[_Line], kind: str) -> list[_Line]:
+    from agetic_cdd_api.services_fdd_sources import classify_source
+
+    return [
+        ln
+        for ln in lines
+        if classify_source(ln.sources, ln.label) == kind
+    ]
+
+
+def _derive_pack_revenue_lines(
+    pack_lines: list[_Line], years: list[int]
+) -> list[_Line]:
+    """Synthesise pack revenue from GP+COGS or GP/GM when the pack omits revenue.
+
+    Lets M3 lock pack costs to pack revenue (e.g. 69.56% COGS) instead of
+    dividing pack costs by workbook revenue.
+    """
+    extra: list[_Line] = []
+    for y in years:
+        if _bucket_sum(pack_lines, _REVENUE, y, additive=False)[0] is not None:
+            continue
+        gp, gp_hit = _bucket_sum(pack_lines, _GROSS_PROFIT, y, additive=False)
+        cogs, cogs_hit = _bucket_sum(pack_lines, _COGS, y, additive=False)
+        gm, gm_hit = _bucket_sum(pack_lines, _GROSS_MARGIN, y, additive=False)
+        rev: float | None = None
+        hits: list[_Line] = []
+        if gp is not None and cogs is not None:
+            rev = abs(float(gp)) + abs(float(cogs))
+            hits = [*gp_hit, *cogs_hit]
+        elif gp is not None and gm is not None:
+            gm_pct = _as_percent_points(float(gm)) / 100.0
+            if gm_pct > 1e-9:
+                rev = abs(float(gp)) / gm_pct
+                hits = [*gp_hit, *gm_hit]
+        elif cogs is not None and gm is not None:
+            gm_pct = _as_percent_points(float(gm)) / 100.0
+            if 0.0 < gm_pct < 1.0:
+                rev = abs(float(cogs)) / (1.0 - gm_pct)
+                hits = [*cogs_hit, *gm_hit]
+        if rev is None or not hits:
+            continue
+        seed = hits[0]
+        extra.append(
+            _Line(
+                metric_key="revenue",
+                fiscal_year=y,
+                value=float(rev),
+                fact_id=f"m3:derived_pack_rev:{y}",
+                currency=seed.currency,
+                scale=seed.scale,
+                status=_worst_status(ln.status for ln in hits),
+                label=f"Revenue FY{y} (pack-derived)",
+                sources=list(seed.sources),
+            )
+        )
+    return extra
+
+
 def build_margin_exhibit(
     lines: list[_Line],
     *,
@@ -1287,6 +1409,28 @@ def build_margin_exhibit(
     ys = years or _pick_years(lines, max_years=2, prefer_closed=True)
     if not ys:
         return [], ["no_margin_facts"]
+
+    # Lock the whole walk onto one source kind when every year has workbook
+    # revenue — avoids pack GP ÷ workbook revenue Δpp artefacts.
+    from agetic_cdd_api.services_fdd_sources import display_source_name
+
+    wb_lines = _lines_for_kind(lines, "workbook")
+    pack_lines = _lines_for_kind(lines, "management")
+    # Pack often omits explicit revenue — derive so missing-year GM can fill.
+    pack_lines = list(pack_lines) + _derive_pack_revenue_lines(pack_lines, ys)
+
+    def _has_rev(pool: list[_Line]) -> bool:
+        return all(
+            _bucket_sum(pool, _REVENUE, y, additive=False)[0] is not None for y in ys
+        )
+
+    locked_kind = "mixed"
+    if wb_lines and _has_rev(wb_lines):
+        lines = wb_lines
+        locked_kind = "workbook"
+    elif pack_lines and _has_rev(pack_lines):
+        lines = pack_lines
+        locked_kind = "management"
 
     cells: list[ExhibitCell] = []
     cur = currency
@@ -1332,12 +1476,25 @@ def build_margin_exhibit(
         )
 
     for y in ys:
+        # Lock levels to one source per year (prefer workbook via _source_pref),
+        # then align GP/EBITDA/COGS to that revenue basis so Δpp walks are clean.
         r_tot, r_hit = _bucket_sum(lines, _REVENUE, y, additive=False)
-        g_tot, g_hit = _bucket_sum(lines, _GROSS_PROFIT, y, additive=False)
-        gm_tot, gm_hit = _bucket_sum(lines, _GROSS_MARGIN, y, additive=False)
-        e_tot, e_hit = _bucket_sum(lines, _EBITDA, y, additive=False)
-        em_tot, em_hit = _bucket_sum(lines, _EBITDA_MARGIN, y, additive=False)
-        cogs_tot, cogs_hit = _bucket_sum(lines, _COGS, y, additive=False)
+        align = list(r_hit[0].sources) if r_hit else None
+        g_tot, g_hit = _bucket_sum(
+            lines, _GROSS_PROFIT, y, additive=False, align_sources=align
+        )
+        gm_tot, gm_hit = _bucket_sum(
+            lines, _GROSS_MARGIN, y, additive=False, align_sources=align
+        )
+        e_tot, e_hit = _bucket_sum(
+            lines, _EBITDA, y, additive=False, align_sources=align
+        )
+        em_tot, em_hit = _bucket_sum(
+            lines, _EBITDA_MARGIN, y, additive=False, align_sources=align
+        )
+        cogs_tot, cogs_hit = _bucket_sum(
+            lines, _COGS, y, additive=False, align_sources=align
+        )
 
         if r_tot is not None:
             rev[y] = (r_tot, r_hit)
@@ -1398,16 +1555,19 @@ def build_margin_exhibit(
                 basis=f"M2 revenue − gross profit · FY{y}",
             )
 
-        # Gross margin %
-        gm_val: float | None = gm_tot
-        gm_hits = gm_hit
-        gm_fig = FigureType.REPORTED
-        if gm_val is not None:
-            gm_val = _as_percent_points(gm_val)
-        if gm_val is None and r_tot is not None and y in gp:
+        # Gross margin % — prefer GP÷revenue from levels on this exhibit so G3
+        # ties when revenue/GP come from different source bases than a reported %.
+        gm_val: float | None = None
+        gm_hits: list[_Line] = []
+        gm_fig = FigureType.CALCULATED
+        if r_tot is not None and y in gp:
             gm_val = _margin_pct(gp[y][0], r_tot)
             gm_hits = [*r_hit, *gp[y][1]]
             gm_fig = FigureType.CALCULATED
+        elif gm_tot is not None:
+            gm_val = _as_percent_points(gm_tot)
+            gm_hits = gm_hit
+            gm_fig = FigureType.REPORTED
         if gm_val is not None:
             gm[y] = (gm_val, gm_hits)
             _add(
@@ -1436,15 +1596,17 @@ def build_margin_exhibit(
                 figure_type=FigureType.REPORTED,
                 basis=f"M2 EBITDA · FY{y}",
             )
-        em_val: float | None = em_tot
-        em_hits = em_hit
-        em_fig = FigureType.REPORTED
-        if em_val is not None:
-            em_val = _as_percent_points(em_val)
-        if em_val is None and r_tot is not None and e_tot is not None:
+        em_val: float | None = None
+        em_hits: list[_Line] = []
+        em_fig = FigureType.CALCULATED
+        if r_tot is not None and e_tot is not None:
             em_val = _margin_pct(e_tot, r_tot)
             em_hits = [*r_hit, *e_hit]
             em_fig = FigureType.CALCULATED
+        elif em_tot is not None:
+            em_val = _as_percent_points(em_tot)
+            em_hits = em_hit
+            em_fig = FigureType.REPORTED
         if em_val is not None:
             em[y] = (em_val, em_hits)
             _add(
@@ -1476,6 +1638,67 @@ def build_margin_exhibit(
                 unit_scale="%",
             )
 
+    def _pack_gm_year(y: int) -> tuple[float, list[_Line], FigureType] | None:
+        p_rev, p_r_hit = _bucket_sum(pack_lines, _REVENUE, y, additive=False)
+        p_gp, p_g_hit = _bucket_sum(pack_lines, _GROSS_PROFIT, y, additive=False)
+        p_gm, p_gm_hit = _bucket_sum(pack_lines, _GROSS_MARGIN, y, additive=False)
+        if p_rev is not None and p_gp is not None:
+            val = _margin_pct(p_gp, p_rev)
+            if val is None:
+                return None
+            return float(val), [*p_r_hit, *p_g_hit], FigureType.CALCULATED
+        if p_gm is not None:
+            return (
+                _as_percent_points(float(p_gm)),
+                p_gm_hit,
+                FigureType.REPORTED,
+            )
+        if p_rev is not None:
+            p_cogs, p_c_hit = _bucket_sum(pack_lines, _COGS, y, additive=False)
+            if p_cogs is not None:
+                val = _margin_pct(float(p_rev) - float(p_cogs), p_rev)
+                if val is None:
+                    return None
+                return float(val), [*p_r_hit, *p_c_hit], FigureType.CALCULATED
+        return None
+
+    # Never mix workbook GM with pack fill-ins — if the locked workbook cannot
+    # cover every closed year, rebuild the whole GM series from the pack.
+    if locked_kind == "workbook" and pack_lines:
+        missing = [y for y in ys if y not in gm]
+        pack_series = {y: _pack_gm_year(y) for y in ys}
+        if missing and all(pack_series.get(y) is not None for y in ys):
+            # Drop partial workbook GM/GP/COGS so G3 does not compare pack GM%
+            # to workbook GP÷revenue. Leave revenue/EBITDA for the EM walk.
+            cells[:] = [
+                c
+                for c in cells
+                if (c.metric_key or "").lower()
+                not in {"gross_margin", "gross_profit", "cogs"}
+            ]
+            gm.clear()
+            gp.clear()
+            for y in ys:
+                hit_pack = pack_series[y]
+                assert hit_pack is not None
+                gm_val, gm_hits, gm_fig = hit_pack
+                gm[y] = (gm_val, gm_hits)
+                _add(
+                    y=y,
+                    metric_key="gross_margin",
+                    label=f"Gross margin % FY{y}",
+                    value=round(gm_val, 4),
+                    hit=gm_hits,
+                    figure_type=gm_fig,
+                    basis=f"M2 gross margin · FY{y} (monthly pack)",
+                    unit_scale="%",
+                )
+            notes.append("gm_series_locked_to_pack")
+            notes.append(
+                f"Basis: {display_source_name('management')} gross margin "
+                f"(workbook GP incomplete for closed years)"
+            )
+
     # Walk calcs on newest year vs prior
     sorted_asc = sorted(ys)
     if len(sorted_asc) >= 2:
@@ -1493,32 +1716,49 @@ def build_margin_exhibit(
                     basis=f"M2 (rev FY{curr} − FY{prior}) ÷ |FY{prior}|",
                     unit_scale="%",
                 )
+        from agetic_cdd_api.services_fdd_sources import classify_source
+
+        def _hit_kind(hits: list[_Line]) -> str:
+            if not hits:
+                return "unknown"
+            return classify_source(hits[0].sources, hits[0].label)
+
         if prior in gm and curr in gm:
-            delta = float(gm[curr][0]) - float(gm[prior][0])
-            _add(
-                y=curr,
-                metric_key="gross_margin_delta_pp",
-                label=f"Gross margin Δpp FY{curr}",
-                value=round(delta, 4),
-                hit=[*gm[curr][1], *gm[prior][1]],
-                figure_type=FigureType.CALCULATED,
-                basis=f"M2 GM% FY{curr} − FY{prior}",
-                unit_scale="pp",
-            )
-            notes.append(f"gm_walk:FY{prior}->{curr}:{delta:+.2f}pp")
+            if _hit_kind(gm[prior][1]) != _hit_kind(gm[curr][1]):
+                notes.append(
+                    f"gm_walk_skipped_mixed_source:FY{prior}->{curr}"
+                )
+            else:
+                delta = float(gm[curr][0]) - float(gm[prior][0])
+                _add(
+                    y=curr,
+                    metric_key="gross_margin_delta_pp",
+                    label=f"Gross margin Δpp FY{curr}",
+                    value=round(delta, 4),
+                    hit=[*gm[curr][1], *gm[prior][1]],
+                    figure_type=FigureType.CALCULATED,
+                    basis=f"M2 GM% FY{curr} − FY{prior} (same source)",
+                    unit_scale="pp",
+                )
+                notes.append(f"gm_walk:FY{prior}->{curr}:{delta:+.2f}pp")
         if prior in em and curr in em:
-            delta = float(em[curr][0]) - float(em[prior][0])
-            _add(
-                y=curr,
-                metric_key="ebitda_margin_delta_pp",
-                label=f"EBITDA margin Δpp FY{curr}",
-                value=round(delta, 4),
-                hit=[*em[curr][1], *em[prior][1]],
-                figure_type=FigureType.CALCULATED,
-                basis=f"M2 EM% FY{curr} − FY{prior}",
-                unit_scale="pp",
-            )
-            notes.append(f"em_walk:FY{prior}->{curr}:{delta:+.2f}pp")
+            if _hit_kind(em[prior][1]) != _hit_kind(em[curr][1]):
+                notes.append(
+                    f"em_walk_skipped_mixed_source:FY{prior}->{curr}"
+                )
+            else:
+                delta = float(em[curr][0]) - float(em[prior][0])
+                _add(
+                    y=curr,
+                    metric_key="ebitda_margin_delta_pp",
+                    label=f"EBITDA margin Δpp FY{curr}",
+                    value=round(delta, 4),
+                    hit=[*em[curr][1], *em[prior][1]],
+                    figure_type=FigureType.CALCULATED,
+                    basis=f"M2 EM% FY{curr} − FY{prior} (same source)",
+                    unit_scale="pp",
+                )
+                notes.append(f"em_walk:FY{prior}->{curr}:{delta:+.2f}pp")
     else:
         notes.append("margin_walk_needs_two_years")
 
@@ -1526,7 +1766,12 @@ def build_margin_exhibit(
         notes.append(f"no_margin_lines_for_years_{ys}")
     else:
         notes.append(f"m2_years:{','.join(str(y) for y in ys)}")
-        notes.append("Basis: investor workbook revenue (closed years)")
+        if locked_kind in {"workbook", "management"}:
+            notes.append(
+                f"Basis: {display_source_name(locked_kind)} revenue (closed years)"
+            )
+        else:
+            notes.append("Basis: same-source revenue per year (closed years)")
     return cells, notes
 
 
@@ -1547,6 +1792,52 @@ def build_costs_exhibit(
     ys = years or _pick_years(lines, max_years=2, prefer_closed=True)
     if not ys:
         return [], ["no_costs_facts"]
+
+    # Lock costs + revenue onto one source kind so ratios never mix pack÷workbook.
+    from agetic_cdd_api.services_fdd_sources import display_source_name
+
+    pack_lines = _lines_for_kind(lines, "management")
+    wb_lines = _lines_for_kind(lines, "workbook")
+    # Derive pack revenue from GP+COGS / GM when the pack omits an explicit
+    # revenue line — otherwise pack COGS would fall back onto workbook revenue.
+    pack_extra = _derive_pack_revenue_lines(pack_lines, ys)
+    if pack_extra:
+        pack_lines = list(pack_lines) + pack_extra
+    locked_kind = "mixed"
+
+    def _has_cost(pool: list[_Line]) -> bool:
+        return any(
+            _bucket_sum(pool, b, y, additive=False)[0] is not None
+            for y in ys
+            for b in (_COGS, _SGA, _LABOR)
+        )
+
+    def _has_rev(pool: list[_Line]) -> bool:
+        # Require revenue for every year that carries a cost line.
+        cost_years = [
+            y
+            for y in ys
+            if any(
+                _bucket_sum(pool, b, y, additive=False)[0] is not None
+                for b in (_COGS, _SGA, _LABOR)
+            )
+        ]
+        if not cost_years:
+            return any(
+                _bucket_sum(pool, _REVENUE, y, additive=False)[0] is not None
+                for y in ys
+            )
+        return all(
+            _bucket_sum(pool, _REVENUE, y, additive=False)[0] is not None
+            for y in cost_years
+        )
+
+    if pack_lines and _has_cost(pack_lines) and _has_rev(pack_lines):
+        lines = pack_lines
+        locked_kind = "management"
+    elif wb_lines and _has_cost(wb_lines) and _has_rev(wb_lines):
+        lines = wb_lines
+        locked_kind = "workbook"
 
     cells: list[ExhibitCell] = []
     cur = currency
@@ -1695,9 +1986,12 @@ def build_costs_exhibit(
                 unit_scale="FTE",
             )
 
-        # Cost ratios vs same-basis revenue
+        # Cost ratios vs same-basis revenue (skip when kinds still disagree).
         if y in rev:
+            from agetic_cdd_api.services_fdd_sources import classify_source as _cls
+
             r_v, r_h = rev[y]
+            rev_kind = _cls(r_h[0].sources, r_h[0].label) if r_h else "unknown"
             for series, key, label, basis in (
                 (cogs, "cogs_pct_revenue", "COGS % of revenue", "M3 COGS ÷ same-basis revenue"),
                 (sga, "sga_pct_revenue", "SG&A % of revenue", "M3 SG&A ÷ same-basis revenue"),
@@ -1710,10 +2004,21 @@ def build_costs_exhibit(
             ):
                 if y not in series:
                     continue
+                cost_hits = series[y][1]
+                cost_kind = (
+                    _cls(cost_hits[0].sources, cost_hits[0].label)
+                    if cost_hits
+                    else "unknown"
+                )
+                if rev_kind != cost_kind:
+                    notes.append(
+                        f"{key}_skipped_mixed_source:FY{y}:{cost_kind}/{rev_kind}"
+                    )
+                    continue
                 pct = _margin_pct(series[y][0], r_v)
                 if pct is None:
                     continue
-                hit = [*r_h, *series[y][1]]
+                hit = [*r_h, *cost_hits]
                 _add(
                     y=y,
                     metric_key=key,
@@ -1783,7 +2088,30 @@ def build_costs_exhibit(
         return [], notes
 
     notes.append(f"m3_years:{','.join(str(y) for y in ys)}")
-    notes.append("Basis: monthly pack revenue (same-basis cost ratios)")
+    from agetic_cdd_api.services_fdd_sources import classify_source, display_source_name
+
+    if locked_kind in {"workbook", "management"}:
+        notes.append(
+            f"Basis: {display_source_name(locked_kind)} revenue "
+            f"(same basis as the cost lines)"
+        )
+    else:
+        rev_kinds = {
+            classify_source(hits[0].sources, hits[0].label)
+            for _y, (_v, hits) in rev.items()
+            if hits
+        }
+        if len(rev_kinds) == 1:
+            kind = next(iter(rev_kinds))
+            notes.append(
+                f"Basis: {display_source_name(kind)} revenue (same-basis cost ratios)"
+            )
+        elif rev_kinds:
+            notes.append(
+                "Basis: same-source revenue as costs (ratios may differ by year)"
+            )
+        else:
+            notes.append("Basis: same-basis cost ratios")
     return cells, notes
 
 
@@ -1978,9 +2306,38 @@ def apply_model_exhibits(
     ]
     model_ids = {eid for eid, _, _, _ in batches}
     # Drop prior model exhibits entirely, then rewrite from this build.
+    def _client_footnotes(raw: list[str]) -> list[str]:
+        """Keep basis / human walk notes; drop internal debug tokens."""
+        out: list[str] = []
+        for note in raw:
+            text = str(note)
+            low = text.lower()
+            if text.startswith("Basis:"):
+                out.append(text)
+            elif low.startswith("em_walk:") or low.startswith("gm_walk:"):
+                # em_walk:FY2024->2025:-5.24pp → client-readable
+                out.append(text.replace("em_walk:", "EBITDA margin walk: ").replace(
+                    "gm_walk:", "Gross margin walk: "
+                ))
+            elif any(
+                tok in low
+                for tok in (
+                    "filled_from_pack",
+                    "skipped_mixed",
+                    "m2_years:",
+                    "m3_years:",
+                    "no_",
+                    "_undefined",
+                )
+            ):
+                continue
+            else:
+                continue
+        return list(dict.fromkeys(out))[:6]
+
     exhibits = [ex for ex in store.exhibits if ex.exhibit_id not in model_ids]
     for eid, title, sec, cells in batches:
-        foot = list(dict.fromkeys(notes_by_exhibit.get(eid) or []))[:8]
+        foot = _client_footnotes(notes_by_exhibit.get(eid) or [])
         if not cells:
             # Omit empty model exhibits entirely — avoids "figures pending" on a
             # section that has a shell but no cells (and keeps exhibit counts honest).
@@ -1996,6 +2353,35 @@ def apply_model_exhibits(
             )
         )
     exhibits.sort(key=lambda e: e.exhibit_id)
+    return store.model_copy(update={"exhibits": exhibits})
+
+
+def _suppress_duplicate_gm_outside_m2(
+    store: ExhibitStoreDoc, margin_cells: list[ExhibitCell]
+) -> ExhibitStoreDoc:
+    """Keep a single gross-margin series — M2 only — once M2 publishes GM%.
+
+    Drops GM% from M1 / databook IS so workbook 29.75% does not sit beside
+    pack 30.44% across exhibits.
+    """
+    m2_has_gm = any(
+        (c.metric_key or "").lower() == "gross_margin" and c.value is not None
+        for c in margin_cells or []
+    )
+    if not m2_has_gm:
+        return store
+    strip_ids = {TRADING_EXHIBIT_ID, "ex_db_is", "ex_db_metrics"}
+    exhibits: list[Exhibit] = []
+    for ex in store.exhibits or []:
+        if ex.exhibit_id not in strip_ids:
+            exhibits.append(ex)
+            continue
+        cells = [
+            c
+            for c in (ex.cells or [])
+            if (c.metric_key or "").lower() != "gross_margin"
+        ]
+        exhibits.append(ex.model_copy(update={"cells": cells}))
     return store.model_copy(update={"exhibits": exhibits})
 
 
@@ -2071,6 +2457,7 @@ def build_phase5b_exhibits(
         net_debt_cells=nd_cells,
         notes_by_exhibit=notes_by_exhibit,
     )
+    store = _suppress_duplicate_gm_outside_m2(store, margin_cells)
 
     # G3 — automatic model check packs gate exhibit status before commentary.
     from agetic_cdd_api.services_fdd_checks import run_and_apply_g3

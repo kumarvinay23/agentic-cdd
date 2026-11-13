@@ -1405,6 +1405,56 @@ def post_fdd_g4_approve(
     }
 
 
+@router.get("/portfolios/{deal_id}/fdd/runs/{run_id}/findings")
+def get_fdd_findings(
+    deal_id: str,
+    run_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Findings ledger (cached). POST …/findings/build to generate."""
+    from agetic_cdd_api.services_fdd_store import load_findings
+
+    deal, _manifest = _get_deal_and_manifest(db, deal_id, run_id, auth)
+    doc = load_findings(_deal_storage_key(deal), run_id)
+    if doc is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Findings not built yet — POST …/findings/build",
+        )
+    return {"success": True, "data": doc.model_dump(mode="json")}
+
+
+@router.post("/portfolios/{deal_id}/fdd/runs/{run_id}/findings/build")
+def post_fdd_findings_build(
+    deal_id: str,
+    run_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Build structured finding cards from claims, G3, QoE, and held sections."""
+    from agetic_cdd_api.services_fdd_findings import build_findings
+    from agetic_cdd_api.services_fdd_store import load_exhibit_store
+
+    deal, _manifest = _get_deal_and_manifest(db, deal_id, run_id, auth)
+    storage_key = _deal_storage_key(deal)
+    store = load_exhibit_store(storage_key, run_id)
+    doc = build_findings(
+        storage_key,
+        run_id,
+        store=store,
+        update_manifest=True,
+    )
+    manifest = load_manifest(storage_key, run_id)
+    return {
+        "success": True,
+        "data": {
+            "findings": doc.model_dump(mode="json"),
+            "manifest": manifest.model_dump(mode="json") if manifest else None,
+        },
+    }
+
+
 @router.get("/portfolios/{deal_id}/fdd/runs/{run_id}/commentary")
 def get_fdd_commentary(
     deal_id: str,

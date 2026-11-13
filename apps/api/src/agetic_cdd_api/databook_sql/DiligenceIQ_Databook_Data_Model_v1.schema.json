@@ -1,0 +1,1290 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://diligenceiq/schemas/databook/1.0.0",
+ "title": "DiligenceIQ databook data model",
+ "description": "Entities of the databook fact store, for APIs and messages. Same rules as databook_postgres.sql. Concept ids, dimensions, units and document types are governed by the ontology.",
+ "$defs": {
+  "deal_profile": {
+   "type": "object",
+   "required": [
+    "deal_id",
+    "ontology_version",
+    "reporting_currency",
+    "fiscal_year_end",
+    "latest_actual_month",
+    "sector_packs",
+    "ebitda_policy"
+   ],
+   "properties": {
+    "deal_id": {
+     "type": "string"
+    },
+    "deal_name": {
+     "type": "string"
+    },
+    "target_entity": {
+     "type": "string"
+    },
+    "ontology_version": {
+     "type": "string",
+     "description": "ontology version the row was built with"
+    },
+    "reporting_currency": {
+     "type": "string",
+     "pattern": "^[A-Z]{3}$"
+    },
+    "fiscal_year_end": {
+     "type": "string",
+     "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
+     "description": "MM-DD"
+    },
+    "latest_actual_month": {
+     "type": "string",
+     "format": "date",
+     "description": "Last month-end with actuals; drives YTD, LTM and the basis window."
+    },
+    "history_years": {
+     "type": "integer",
+     "minimum": 1,
+     "default": 3
+    },
+    "sector_packs": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "ebitda_policy": {
+     "type": "object",
+     "properties": {
+      "include_other_operating_income": {
+       "type": "boolean"
+      },
+      "rent_basis": {
+       "enum": [
+        "GAAP",
+        "CASH"
+       ]
+      },
+      "bad_debt_in_ebitda": {
+       "type": "boolean"
+      }
+     }
+    },
+    "materiality": {
+     "type": "number"
+    },
+    "confirmed_by": {
+     "type": "string"
+    },
+    "confirmed_at": {
+     "type": "string",
+     "format": "date-time"
+    }
+   }
+  },
+  "document": {
+   "type": "object",
+   "required": [
+    "doc_id",
+    "deal_id",
+    "ontology_version",
+    "file_name",
+    "format",
+    "doc_type",
+    "status"
+   ],
+   "properties": {
+    "doc_id": {
+     "type": "string"
+    },
+    "deal_id": {
+     "type": "string"
+    },
+    "ontology_version": {
+     "type": "string",
+     "description": "ontology version the row was built with"
+    },
+    "file_name": {
+     "type": "string"
+    },
+    "path": {
+     "type": "string"
+    },
+    "format": {
+     "enum": [
+      "xlsx",
+      "xls",
+      "csv",
+      "pdf",
+      "pptx",
+      "docx",
+      "txt",
+      "image",
+      "other"
+     ]
+    },
+    "doc_type": {
+     "enum": [
+      "FIN_AUDITED_FS",
+      "FIN_REVIEWED_FS",
+      "FIN_MGMT_ACCOUNTS",
+      "FIN_TRIAL_BALANCE",
+      "FIN_GENERAL_LEDGER",
+      "FIN_TAX_RETURN",
+      "FIN_BUDGET",
+      "FIN_MGMT_MODEL",
+      "FIN_INVESTOR_WORKBOOK",
+      "FIN_QOE_REPORT",
+      "FIN_FDD_REPORT",
+      "FIN_FIXED_ASSET_REGISTER",
+      "DEBT_LOAN_AGREEMENT",
+      "DEBT_LENDER_STATEMENT",
+      "DEBT_SCHEDULE",
+      "LEASE_AGREEMENT",
+      "LEASE_SCHEDULE",
+      "CAP_TABLE",
+      "SECURITIES_LEDGER",
+      "CONTRACT_CUSTOMER",
+      "CONTRACT_SUPPLIER",
+      "CONTRACT_GRANT",
+      "KPI_SYSTEM_EXTRACT",
+      "KPI_CUSTOMER_LIST",
+      "KPI_MGMT_REPORT",
+      "HR_PAYROLL_EXTRACT",
+      "MKT_SIZING_MODEL",
+      "MKT_THIRD_PARTY_REPORT",
+      "MKT_PUBLIC_DATA",
+      "MKT_SURVEY_DATA",
+      "MKT_INTERVIEW_NOTES",
+      "MKT_COMPETITOR_INFO",
+      "MKT_WEB_RESEARCH",
+      "CIM",
+      "TEASER",
+      "PROCESS_LETTER",
+      "DEAL_TERM_SHEET",
+      "DEAL_SPA",
+      "DEAL_MODEL",
+      "APPRAISAL",
+      "LEGAL_DD_REPORT",
+      "ESG_REPORT",
+      "MARKETING_MATERIAL",
+      "CORPORATE_DOCS",
+      "POINTER_NOTE",
+      "AGENT_OUTPUT",
+      "CALCULATED"
+     ]
+    },
+    "doc_type_confidence": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1
+    },
+    "version_group": {
+     "type": "string"
+    },
+    "version_rank": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "is_primary": {
+     "type": "boolean"
+    },
+    "in_data_room": {
+     "type": "boolean"
+    },
+    "pointer_target_doc_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "basis_default": {
+     "enum": [
+      "ACTUAL",
+      "BUDGET",
+      "FORECAST",
+      "MGMT_CASE",
+      "PRO_FORMA",
+      "ADJUSTED",
+      "MARKET_ESTIMATE",
+      "SURVEY"
+     ]
+    },
+    "evidence_tier": {
+     "enum": [
+      "A",
+      "B",
+      "C"
+     ]
+    },
+    "period_end": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "format": "date"
+    },
+    "status": {
+     "enum": [
+      "READ",
+      "PARTIAL",
+      "SKIPPED",
+      "FAILED"
+     ]
+    },
+    "status_reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "facts_count": {
+     "type": "integer"
+    },
+    "sha256": {
+     "type": "string"
+    }
+   }
+  },
+  "source_location": {
+   "type": "object",
+   "required": [
+    "location_id",
+    "doc_id",
+    "extraction_method"
+   ],
+   "properties": {
+    "location_id": {
+     "type": "string"
+    },
+    "doc_id": {
+     "type": "string"
+    },
+    "sheet_or_page": {
+     "type": "string"
+    },
+    "table_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "cell_range": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "A1 range for spreadsheets"
+    },
+    "bbox": {
+     "type": [
+      "array",
+      "null"
+     ],
+     "items": {
+      "type": "number"
+     },
+     "description": "x0,y0,x1,y1 for PDF and slides"
+    },
+    "row_label_as_read": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "column_label_as_read": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "value_as_read": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "extraction_method": {
+     "enum": [
+      "STATEMENT_READER",
+      "REGISTER_READER",
+      "COHORT_READER",
+      "KPI_TABLE_READER",
+      "PDF_TABLE",
+      "PDF_TEXT",
+      "SLIDE_TABLE",
+      "SLIDE_CHART",
+      "OCR",
+      "LLM_EXTRACT",
+      "USER"
+     ]
+    },
+    "transform_steps": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "e.g. scale x1000, sign flip"
+    }
+   }
+  },
+  "fact": {
+   "type": "object",
+   "required": [
+    "fact_id",
+    "deal_id",
+    "entity_id",
+    "concept_id",
+    "value",
+    "unit_type",
+    "period_type",
+    "basis",
+    "dimensions",
+    "status",
+    "evidence_tier",
+    "ontology_version"
+   ],
+   "properties": {
+    "fact_id": {
+     "type": "string"
+    },
+    "deal_id": {
+     "type": "string"
+    },
+    "entity_id": {
+     "type": "string",
+     "description": "legal entity id or CONSOLIDATED"
+    },
+    "concept_id": {
+     "enum": [
+      "fin.pl.revenue_gross",
+      "fin.pl.sales_discounts",
+      "fin.pl.revenue",
+      "fin.pl.other_operating_income",
+      "fin.pl.cost_of_sales",
+      "fin.pl.cos.labour",
+      "fin.pl.cos.goods",
+      "fin.pl.cos.subcontractors",
+      "fin.pl.cos.vehicle_fleet",
+      "fin.pl.cos.disposal_processing",
+      "fin.pl.cos.royalties_fees",
+      "fin.pl.cos.occupancy",
+      "fin.pl.cos.other",
+      "fin.pl.cos.unclassified",
+      "fin.pl.gross_profit",
+      "fin.pl.opex",
+      "fin.pl.opex_incl_da",
+      "fin.pl.opex.labour",
+      "fin.pl.opex.owner_remuneration",
+      "fin.pl.opex.rent",
+      "fin.pl.opex.professional_fees",
+      "fin.pl.opex.insurance",
+      "fin.pl.opex.marketing",
+      "fin.pl.opex.it_communication",
+      "fin.pl.opex.office_admin",
+      "fin.pl.opex.travel",
+      "fin.pl.opex.taxes_licences",
+      "fin.pl.opex.bank_charges",
+      "fin.pl.opex.bad_debt",
+      "fin.pl.opex.repairs_maintenance",
+      "fin.pl.opex.utilities",
+      "fin.pl.opex.pre_opening",
+      "fin.pl.opex.donations",
+      "fin.pl.opex.other",
+      "fin.pl.opex.unclassified",
+      "fin.pl.ebitda",
+      "fin.pl.ebitdar",
+      "fin.pl.da",
+      "fin.pl.da.depreciation",
+      "fin.pl.da.amortisation",
+      "fin.pl.da.rou_depreciation",
+      "fin.pl.operating_income",
+      "fin.pl.non_operating",
+      "fin.pl.non_operating.interest_income",
+      "fin.pl.non_operating.interest_expense",
+      "fin.pl.non_operating.gain_on_disposal",
+      "fin.pl.non_operating.grant_income",
+      "fin.pl.non_operating.fx",
+      "fin.pl.non_operating.preferred_dividend_accrual",
+      "fin.pl.non_operating.other",
+      "fin.pl.profit_before_tax",
+      "fin.pl.income_tax",
+      "fin.pl.net_income",
+      "fin.bs.current_assets",
+      "fin.bs.cash",
+      "fin.bs.restricted_cash",
+      "fin.bs.accounts_receivable",
+      "fin.bs.inventory",
+      "fin.bs.prepaid_expenses",
+      "fin.bs.due_from_related_parties",
+      "fin.bs.other_current_assets",
+      "fin.bs.non_current_assets",
+      "fin.bs.ppe_net",
+      "fin.bs.ppe_gross",
+      "fin.bs.accumulated_depreciation",
+      "fin.bs.rou_assets",
+      "fin.bs.goodwill",
+      "fin.bs.intangibles",
+      "fin.bs.deposits",
+      "fin.bs.other_non_current_assets",
+      "fin.bs.net_current_assets",
+      "fin.bs.total_assets_less_current_liabilities",
+      "fin.bs.total_assets",
+      "fin.bs.current_liabilities",
+      "fin.bs.accounts_payable",
+      "fin.bs.card_payables",
+      "fin.bs.accrued_expenses",
+      "fin.bs.payroll_liabilities",
+      "fin.bs.deferred_revenue",
+      "fin.bs.customer_deposits",
+      "fin.bs.taxes_payable",
+      "fin.bs.dividends_payable",
+      "fin.bs.due_to_related_parties",
+      "fin.bs.borrowings_current",
+      "fin.bs.lease_liabilities_current",
+      "fin.bs.other_current_liabilities",
+      "fin.bs.non_current_liabilities",
+      "fin.bs.borrowings_non_current",
+      "fin.bs.lease_liabilities_non_current",
+      "fin.bs.deferred_grant",
+      "fin.bs.employee_benefit_provisions",
+      "fin.bs.convertible_notes",
+      "fin.bs.other_non_current_liabilities",
+      "fin.bs.total_liabilities",
+      "fin.bs.equity",
+      "fin.bs.equity.share_capital",
+      "fin.bs.equity.preferred_equity",
+      "fin.bs.equity.contributed_capital",
+      "fin.bs.equity.owner_current_account",
+      "fin.bs.equity.reserves",
+      "fin.bs.equity.retained_earnings",
+      "fin.bs.equity.current_year_result",
+      "fin.bs.total_liabilities_and_equity",
+      "fin.cf.operating",
+      "fin.cf.operating.net_income",
+      "fin.cf.operating.da",
+      "fin.cf.operating.non_cash",
+      "fin.cf.operating.working_capital",
+      "fin.cf.operating.other",
+      "fin.cf.investing",
+      "fin.cf.capex",
+      "fin.cf.intangibles_capex",
+      "fin.cf.disposal_proceeds",
+      "fin.cf.acquisitions",
+      "fin.cf.financing",
+      "fin.cf.net_borrowing",
+      "fin.cf.lease_principal",
+      "fin.cf.distributions",
+      "fin.cf.equity_issued",
+      "fin.cf.dividends_payable_movement",
+      "fin.cf.related_party_flows",
+      "fin.cf.investing.other",
+      "fin.cf.financing.other",
+      "fin.cf.net_change_in_cash",
+      "fin.cf.operating.operating_profit",
+      "fin.cf.opening_cash",
+      "fin.cf.closing_cash",
+      "fin.cf.interest_paid",
+      "fin.cf.taxes_paid",
+      "fin.eq.opening",
+      "fin.eq.net_income",
+      "fin.eq.contributions",
+      "fin.eq.distributions",
+      "fin.eq.other_movements",
+      "fin.eq.closing",
+      "fin.divpay.opening",
+      "fin.divpay.accrued",
+      "fin.divpay.paid",
+      "fin.divpay.closing",
+      "fin.fa.opening_nbv",
+      "fin.fa.additions",
+      "fin.fa.disposals",
+      "fin.fa.depreciation",
+      "fin.fa.other",
+      "fin.fa.closing_nbv",
+      "drv.revenue_growth_pct",
+      "drv.revenue_cagr",
+      "drv.gross_margin_pct",
+      "drv.ebitda_margin_pct",
+      "drv.opex_pct_revenue",
+      "drv.cos_pct_revenue",
+      "drv.labour_pct_revenue",
+      "drv.trade_working_capital",
+      "drv.operating_working_capital",
+      "drv.nwc_average_ltm",
+      "drv.receivable_days",
+      "drv.inventory_days",
+      "drv.payable_days",
+      "drv.financial_debt",
+      "drv.net_financial_debt",
+      "drv.debt_like_items",
+      "drv.net_debt_incl_debt_like",
+      "drv.leverage",
+      "drv.free_cash_flow",
+      "drv.cash_conversion",
+      "drv.capex_to_da",
+      "drv.capex_pct_revenue",
+      "drv.current_ratio",
+      "drv.rent_cover",
+      "drv.fixed_charge_cover",
+      "drv.interest_cover",
+      "drv.return_on_assets",
+      "drv.revenue_per_fte",
+      "drv.equity_value",
+      "qoe.adjustment_amount",
+      "qoe.sensitivity_amount",
+      "qoe.materiality_threshold",
+      "debt.balance",
+      "debt.original_amount",
+      "debt.interest_rate",
+      "debt.monthly_payment",
+      "debt.interest_expense",
+      "debt.maturity_amount",
+      "debt.undrawn_commitment",
+      "debt.debt_like_item",
+      "lease.rent_expense_gaap",
+      "lease.rent_cash",
+      "lease.rent_contractual",
+      "lease.escalator",
+      "lease.term_years",
+      "lease.security_deposit",
+      "lease.lease_liability",
+      "deal.purchase_price",
+      "deal.enterprise_value",
+      "deal.pre_money_value",
+      "deal.primary_capital",
+      "deal.stake_pct",
+      "deal.ev_ebitda_multiple",
+      "deal.ev_revenue_multiple",
+      "deal.appraised_value",
+      "deal.cap_rate",
+      "deal.exit_cap_rate",
+      "deal.irr",
+      "deal.moic",
+      "deal.seller_cost_basis",
+      "deal.rent_first_year",
+      "kpi.customers_active",
+      "kpi.customers_new",
+      "kpi.customers_churned",
+      "kpi.logo_retention_pct",
+      "kpi.logo_churn_pct",
+      "kpi.grr_pct",
+      "kpi.nrr_pct",
+      "kpi.arr",
+      "kpi.mrr",
+      "kpi.arpu",
+      "kpi.ltv",
+      "kpi.cac",
+      "kpi.cohort_retention_pct",
+      "kpi.cohort_revenue",
+      "kpi.concentration_top_n_pct",
+      "kpi.customer_revenue",
+      "kpi.contracted_revenue_pct",
+      "kpi.backlog",
+      "kpi.pipeline",
+      "kpi.price_per_unit",
+      "kpi.price_uplift_pct",
+      "kpi.payment_success_pct",
+      "kpi.nps_company",
+      "kpi.service_level_pct",
+      "ops.fte",
+      "ops.sites",
+      "ops.sales_reps",
+      "ops.sales_quota",
+      "mkt.tam",
+      "mkt.sam",
+      "mkt.som",
+      "mkt.market_size",
+      "mkt.growth_rate_pct",
+      "mkt.volume_driver",
+      "mkt.price_driver",
+      "mkt.participation_pct",
+      "mkt.market_share_pct",
+      "mkt.competitor_metric",
+      "mkt.historical_growth_vs_gdp",
+      "svy.respondents",
+      "svy.kpc_importance",
+      "svy.performance_rating",
+      "svy.nps",
+      "svy.satisfaction",
+      "svy.switching_intent_pct",
+      "svy.willingness_to_pay_pct",
+      "svy.pain_point_frequency_pct",
+      "svy.channel_preference_pct",
+      "sec.rc.routes_per_week",
+      "sec.rc.tons_collected",
+      "sec.rc.cost_per_ton",
+      "sec.rc.households_served",
+      "sec.rc.vehicles",
+      "sec.rc.fleet_age_years",
+      "sec.rc.processing_capacity",
+      "sec.fr.fuel_volume",
+      "sec.fr.fuel_margin_cpg",
+      "sec.fr.inside_sales",
+      "sec.fr.inside_margin_pct",
+      "sec.fr.sites_operated",
+      "sec.fr.four_wall_ebitdar",
+      "sec.fr.slb_proceeds",
+      "sec.fr.traffic_count",
+      "sec.hc.patient_visits",
+      "sec.hc.new_patients",
+      "sec.hc.procedures",
+      "sec.hc.revenue_per_practitioner",
+      "sec.hc.practitioner_concentration_pct",
+      "sec.hc.payer_mix_pct",
+      "sec.hc.visiting_doctors",
+      "sec.pay.tpv",
+      "sec.pay.transactions",
+      "sec.pay.take_rate_bps",
+      "sec.pay.merchants_active",
+      "sec.pay.partners_active",
+      "sec.pay.merchant_attrition_pct",
+      "sec.pay.residuals"
+     ],
+     "description": "must be an ontology concept"
+    },
+    "value": {
+     "type": [
+      "number",
+      "null"
+     ]
+    },
+    "unit_type": {
+     "enum": [
+      "CURRENCY",
+      "CURRENCY_PER_UNIT",
+      "COUNT",
+      "PERCENT",
+      "RATIO",
+      "MULTIPLE",
+      "DAYS",
+      "YEARS",
+      "VOLUME",
+      "MASS",
+      "SCORE",
+      "OTHER"
+     ]
+    },
+    "currency": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "pattern": "^[A-Z]{3}$"
+    },
+    "scale_applied": {
+     "enum": [
+      1,
+      1000,
+      1000000,
+      1000000000
+     ]
+    },
+    "unit_label": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "period_type": {
+     "enum": [
+      "FY",
+      "FH",
+      "FQ",
+      "FM",
+      "YTD",
+      "LTM",
+      "AS_AT",
+      "POINT"
+     ]
+    },
+    "period_start": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "format": "date"
+    },
+    "period_end": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "format": "date"
+    },
+    "months_covered": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0,
+     "maximum": 12
+    },
+    "fiscal_year": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "basis": {
+     "enum": [
+      "ACTUAL",
+      "BUDGET",
+      "FORECAST",
+      "MGMT_CASE",
+      "PRO_FORMA",
+      "ADJUSTED",
+      "MARKET_ESTIMATE",
+      "SURVEY"
+     ]
+    },
+    "dimensions": {
+     "type": "object",
+     "additionalProperties": {
+      "type": [
+       "string",
+       "integer"
+      ]
+     },
+     "description": "dimension id -> member id; empty object = total"
+    },
+    "status": {
+     "enum": [
+      "CANDIDATE",
+      "SELECTED",
+      "COMPARATIVE",
+      "HELD",
+      "REJECTED",
+      "DERIVED"
+     ]
+    },
+    "reason_code": {
+     "enum": [
+      "EQUAL_AUTHORITY_CONFLICT",
+      "VALIDATION_FAILED",
+      "NO_PERIOD",
+      "PERIOD_CONFLICT",
+      "NO_UNIT",
+      "IMPLAUSIBLE_VALUE",
+      "PARENT_UNKNOWN",
+      "OUT_OF_SCOPE",
+      "SUPERSEDED_VERSION",
+      "NOT_IN_DATA_ROOM",
+      "FORMULA_ERROR",
+      "MISSING_VALUE",
+      "LABEL_VALUE",
+      "DUPLICATE",
+      "LOWER_AUTHORITY",
+      "USER_EXCLUDED",
+      "BASIS_MISMATCH",
+      "SOURCE_SUBTOTAL",
+      "COMPUTED_IN_CODE",
+      null
+     ]
+    },
+    "reason_detail": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "evidence_tier": {
+     "enum": [
+      "A",
+      "B",
+      "C"
+     ]
+    },
+    "doc_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "authority_rank": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "source_location_ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "derived_from": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "formula": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "comparative_fact_ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "mapping": {
+     "type": [
+      "object",
+      "null"
+     ]
+    },
+    "ontology_version": {
+     "type": "string",
+     "description": "ontology version the row was built with"
+    },
+    "extraction_run_id": {
+     "type": "string"
+    },
+    "reviewed_by": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {
+       "unit_type": {
+        "const": "CURRENCY"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "currency"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "period_type": {
+        "const": "FY"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "months_covered": {
+        "const": 12
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "period_type": {
+        "const": "YTD"
+       }
+      }
+     },
+     "then": {
+      "properties": {
+       "months_covered": {
+        "maximum": 11,
+        "minimum": 1
+       }
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "status": {
+        "enum": [
+         "HELD",
+         "REJECTED",
+         "COMPARATIVE"
+        ]
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "reason_code"
+      ]
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "status": {
+        "const": "DERIVED"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "derived_from",
+       "formula"
+      ],
+      "properties": {
+       "derived_from": {
+        "minItems": 1
+       }
+      }
+     },
+     "else": {
+      "required": [
+       "source_location_ids"
+      ],
+      "properties": {
+       "source_location_ids": {
+        "minItems": 1
+       }
+      }
+     }
+    }
+   ]
+  },
+  "record": {
+   "type": "object",
+   "required": [
+    "record_id",
+    "deal_id",
+    "ontology_version",
+    "record_class",
+    "fields"
+   ],
+   "properties": {
+    "record_id": {
+     "type": "string"
+    },
+    "deal_id": {
+     "type": "string"
+    },
+    "ontology_version": {
+     "type": "string",
+     "description": "ontology version the row was built with"
+    },
+    "record_class": {
+     "enum": [
+      "acquisition",
+      "adjustment",
+      "claim_test",
+      "competitor",
+      "contract",
+      "customer",
+      "data_gap",
+      "debt_like_item",
+      "document",
+      "facility",
+      "finding",
+      "glossary_term",
+      "growth_driver",
+      "growth_lever",
+      "inconsistency",
+      "info_request",
+      "initiative",
+      "interview",
+      "lease",
+      "management_profile",
+      "market_build_step",
+      "market_definition",
+      "milestone",
+      "plan_bridge_component",
+      "protection",
+      "related_party_transaction",
+      "risk",
+      "scope_basis",
+      "sensitivity",
+      "source_location",
+      "stakeholder",
+      "survey",
+      "trend",
+      "value_chain_step"
+     ]
+    },
+    "fields": {
+     "type": "object"
+    },
+    "source_location_ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "evidence_tier": {
+     "enum": [
+      "A",
+      "B",
+      "C"
+     ]
+    },
+    "status": {
+     "enum": [
+      "CANDIDATE",
+      "SELECTED",
+      "REJECTED"
+     ]
+    }
+   }
+  },
+  "dimension_member": {
+   "type": "object",
+   "required": [
+    "deal_id",
+    "dimension",
+    "member_id",
+    "label"
+   ],
+   "properties": {
+    "deal_id": {
+     "type": "string"
+    },
+    "dimension": {
+     "enum": [
+      "view",
+      "scenario",
+      "segment",
+      "service_line",
+      "customer_type",
+      "product",
+      "channel",
+      "geography",
+      "site",
+      "legal_entity",
+      "customer",
+      "practitioner",
+      "cohort",
+      "tenure",
+      "top_n",
+      "balance_source",
+      "facility",
+      "lender",
+      "debt_class",
+      "debt_like_type",
+      "lease",
+      "asset_class",
+      "asset_register",
+      "adjustment",
+      "sensitivity",
+      "wc_line",
+      "opex_line",
+      "cost_centre",
+      "ageing_bucket",
+      "market_scope",
+      "source_basis",
+      "competitor",
+      "provider",
+      "criterion",
+      "survey",
+      "respondent_segment",
+      "role",
+      "function",
+      "employment_type",
+      "site_status",
+      "fuel_type",
+      "category",
+      "payer",
+      "procedure_type",
+      "vertical",
+      "partner_type",
+      "contract",
+      "maturity_year",
+      "lease_year",
+      "price_type",
+      "driver",
+      "growth_metric",
+      "series",
+      "metric",
+      "year",
+      "counterparty",
+      "case",
+      "line"
+     ]
+    },
+    "member_id": {
+     "type": "string"
+    },
+    "label": {
+     "type": "string"
+    },
+    "parent_member_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "is_complete_set": {
+     "type": "boolean",
+     "description": "true when the members of this dimension sum to the total (enables R-DIM-01)"
+    },
+    "aliases": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "reconciliation": {
+   "type": "object",
+   "required": [
+    "deal_id",
+    "selected_fact_id",
+    "comparative_fact_id",
+    "variance"
+   ],
+   "properties": {
+    "deal_id": {
+     "type": "string"
+    },
+    "selected_fact_id": {
+     "type": "string"
+    },
+    "comparative_fact_id": {
+     "type": "string"
+    },
+    "variance": {
+     "type": "number"
+    },
+    "variance_pct": {
+     "type": [
+      "number",
+      "null"
+     ]
+    },
+    "explanation": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "status": {
+     "enum": [
+      "OPEN",
+      "EXPLAINED",
+      "ACCEPTED"
+     ]
+    }
+   }
+  },
+  "flag": {
+   "type": "object",
+   "required": [
+    "flag_id",
+    "deal_id",
+    "code",
+    "severity",
+    "fact_ids"
+   ],
+   "properties": {
+    "flag_id": {
+     "type": "string"
+    },
+    "deal_id": {
+     "type": "string"
+    },
+    "code": {
+     "type": "string",
+     "description": "rule id or reason code"
+    },
+    "severity": {
+     "enum": [
+      "block",
+      "warn",
+      "flag"
+     ]
+    },
+    "materiality": {
+     "type": [
+      "number",
+      "null"
+     ]
+    },
+    "schedule_id": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "fact_ids": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "message": {
+     "type": "string"
+    },
+    "status": {
+     "enum": [
+      "OPEN",
+      "RESOLVED",
+      "WAIVED"
+     ]
+    }
+   }
+  },
+  "mapping_decision": {
+   "type": "object",
+   "required": [
+    "deal_id",
+    "doc_id",
+    "ontology_version",
+    "label_as_read",
+    "concept_id",
+    "method"
+   ],
+   "properties": {
+    "deal_id": {
+     "type": "string"
+    },
+    "doc_id": {
+     "type": "string"
+    },
+    "ontology_version": {
+     "type": "string",
+     "description": "ontology version the row was built with"
+    },
+    "label_as_read": {
+     "type": "string"
+    },
+    "label_path": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "concept_id": {
+     "type": "string"
+    },
+    "dimensions": {
+     "type": "object"
+    },
+    "method": {
+     "type": "string"
+    },
+    "confidence": {
+     "type": "number"
+    },
+    "validated_by_rules": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "reviewer": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   }
+  }
+ }
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -45,6 +46,8 @@ from agetic_cdd_api.services_databook_store import (
 )
 from agetic_cdd_api.services_ingestion import utc_now_iso
 from agetic_cdd_api.services_library import load_library_index
+
+logger = logging.getLogger(__name__)
 
 
 def _params_from_env(base: DealDatabookParams | None = None) -> DealDatabookParams:
@@ -114,7 +117,7 @@ def _summary_from_store(deal: Deal) -> DatabookSummary:
         deal_id=deal.id,
         meta=meta,
         flags=flags,
-        promoted_preview=promoted[:20],
+        promoted_preview=promoted,
         freshness=databook_freshness(deal),
         release=release_summary_dict(current),
         file_register={
@@ -723,6 +726,12 @@ def reread_databook_document(db: Session, deal: Deal, filename: str) -> Databook
     meta = load_meta(deal)
     meta = meta.model_copy(update={"last_deep_at": utc_now_iso()})
     save_meta(deal, meta)
+    try:
+        from agetic_cdd_api.services_databook_hitl import reread_document
+
+        reread_document(deal, filename)
+    except Exception:
+        logger.warning("Ontology reread failed for %s", filename, exc_info=True)
     return rescan_databook(deal)
 
 

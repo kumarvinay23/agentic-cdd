@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     port: int = 4600
 
     database_url: str = f"sqlite:///{_DEFAULT_DB}"
+    # PostgreSQL 16 databook. Empty leaves the app database untouched.
+    databook_database_url: str = ""
+    # Series read path: ontology | file | dual. Phase 4 is in, so ontology is the default.
+    # dual prefers ontology facts and may still mirror the file store on HITL.
+    databook_ui_source: str = "ontology"
     deals_storage_path: str = str(_DEFAULT_DEALS)
     jwt_secret: str = "dev-only-change-me-agetic-cdd-jwt-secret-32b"
     jwt_algorithm: str = "HS256"
@@ -49,6 +54,14 @@ class Settings(BaseSettings):
 
     # Deep Dive hybrid refine (Slice 3+). Off by default; heuristics always run first.
     deep_dive_llm: bool = False
+
+    @property
+    def databook_source(self) -> str:
+        """ontology | file | dual. Anything else stays on ontology."""
+        value = str(self.databook_ui_source or "").strip().lower()
+        if value in {"ontology", "file", "dual"}:
+            return value
+        return "ontology"
 
     @property
     def is_production(self) -> bool:

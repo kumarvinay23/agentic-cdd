@@ -30,6 +30,9 @@ from agetic_cdd_api.settings import settings
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from agetic_cdd_api.services_ontology import load_ontology
+
+    load_ontology()
     Base.metadata.create_all(bind=engine)
     ensure_schema()
     db = SessionLocal()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -26,12 +27,12 @@ from agetic_cdd_api.services_pipeline import (
     refresh_deal_pipeline_counters,
     run_to_dict,
     upsert_run,
-    write_agent_output,
 )
 from agetic_cdd_api.services_pipeline_run import (
     execute_pipeline_keys,
     execute_pipeline_keys_background,
     schedule_pipeline_run,
+    store_agent_result,
 )
 
 router = APIRouter(tags=["pipeline"])
@@ -42,6 +43,19 @@ class PipelineRunBody(BaseModel):
     agent_key: str | None = None
     # Re-queue analysis agents from Data Ingestion onward (ignores next_phase).
     restart: bool = False
+
+
+class ProfileConfirmBody(BaseModel):
+    country: str | None = None
+    currency: str | None = None
+    sector: str | None = None
+    business_model: str | None = None
+    deal_type: str | None = None
+    legal_entities: list[str] | None = None
+    fiscal_year_end: str | None = None
+    latest_actual_month: str | None = None
+    sector_pack: str | None = None
+    ebitda_policy: dict[str, Any] | None = None
 
 
 def _sse_pack(event: dict) -> str:
@@ -68,6 +82,45 @@ def pipeline_phases_get(
     """DiligenceIQ-compatible phases list (status available|completed, agentList, src)."""
     deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
     return {"success": True, "data": phases_list_payload(db, deal=deal)}
+
+
+@router.get("/portfolios/{deal_id}/profile")
+def deal_profile_get(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    from agetic_cdd_api.services_deal_profile import refresh_profile
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    return {"success": True, "data": refresh_profile(deal)}
+
+
+@router.post("/portfolios/{deal_id}/profile/confirm")
+def deal_profile_confirm(
+    deal_id: str,
+    body: ProfileConfirmBody,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    from agetic_cdd_api.services_deal_profile import confirm_profile
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    profile = confirm_profile(deal, body.model_dump(exclude_unset=True))
+    return {"success": True, "data": profile}
+
+
+@router.post("/portfolios/{deal_id}/databook/publish")
+def databook_publish(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    from agetic_cdd_api.services_deal_profile import publish_databook
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    published = publish_databook(deal, confirmed_by=auth.user.email)
+    return {"success": True, "data": published}
 
 
 @router.post("/portfolios/{deal_id}/pipeline/run", status_code=status.HTTP_202_ACCEPTED)
@@ -141,24 +194,7 @@ def _stream_phase_run(
                 key = str(event.get("agent_key") or "")
                 payload = event.get("output") if isinstance(event.get("output"), dict) else None
                 if key and payload:
-                    write_agent_output(deal, agent_key=key, output=payload)
-                    if payload.get("status") == "failed":
-                        upsert_run(
-                            db,
-                            deal_id=deal.id,
-                            agent_key=key,
-                            status="failed",
-                            output=payload,
-                            error_message=str(payload.get("error") or payload.get("summary") or "failed"),
-                        )
-                    else:
-                        upsert_run(
-                            db,
-                            deal_id=deal.id,
-                            agent_key=key,
-                            status="completed",
-                            output=payload,
-                        )
+                    store_agent_result(db, deal=deal, agent_key=key, output=payload)
                     refresh_deal_pipeline_counters(db, deal)
                     db.commit()
 
@@ -186,24 +222,7 @@ def _stream_phase_run(
                 key = str(event.get("agent_key") or "")
                 payload = event.get("output") if isinstance(event.get("output"), dict) else None
                 if key and payload:
-                    write_agent_output(deal, agent_key=key, output=payload)
-                    if payload.get("status") == "failed":
-                        upsert_run(
-                            db,
-                            deal_id=deal.id,
-                            agent_key=key,
-                            status="failed",
-                            output=payload,
-                            error_message=str(payload.get("error") or payload.get("summary") or "failed"),
-                        )
-                    else:
-                        upsert_run(
-                            db,
-                            deal_id=deal.id,
-                            agent_key=key,
-                            status="completed",
-                            output=payload,
-                        )
+                    store_agent_result(db, deal=deal, agent_key=key, output=payload)
                     refresh_deal_pipeline_counters(db, deal)
                     db.commit()
 

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _EDITABLE_HEADERS = [
     "row_id",
+    "fact_id",
     "caption",
     "metric_key",
     "fiscal_year",
@@ -96,7 +97,14 @@ def databook_freshness(deal: Deal) -> dict[str, Any]:
 
 
 def build_editable_workbook(deal: Deal) -> bytes:
-    """Export non-dropped extract rows as an editable Excel workbook for round-trip import."""
+    """Export an editable workbook. Ontology mode round-trips fact ids, not file row ids."""
+    from agetic_cdd_api.settings import settings
+    from agetic_cdd_api.services_databook_view import build_databook_lines
+
+    if settings.databook_source != "file":
+        lines = build_databook_lines(str(deal.id))
+        if settings.databook_source == "ontology" or lines.rows:
+            return _workbook_from_facts(lines.rows)
     rows = [r for r in load_rows(deal) if r.status != RowStatus.DROPPED]
     wb = Workbook()
     ws = wb.active
@@ -112,6 +120,7 @@ def build_editable_workbook(deal: Deal) -> bytes:
         ws.append(
             [
                 row.row_id,
+                "",
                 row.caption,
                 row.metric_key or "",
                 row.fiscal_year if row.fiscal_year is not None else "",
@@ -143,6 +152,73 @@ def build_editable_workbook(deal: Deal) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _workbook_from_facts(rows: list[Any]) -> bytes:
+    """Editable sheet whose identity is the ontology fact id."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Databook"
+    ws.append(_EDITABLE_HEADERS)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    for row in rows:
+        fact_id = str(getattr(row, "fact_id", None) or "")
+        if not fact_id:
+            continue
+        ws.append(
+            [
+                fact_id,
+                fact_id,
+                getattr(row, "line_item", "") or "",
+                getattr(row, "metric", "") or "",
+                getattr(row, "period", "") or "",
+                getattr(row, "value", ""),
+                getattr(row, "unit", "") or "",
+                getattr(row, "currency", "") or "",
+                "",
+                "SELECTED",
+                getattr(row, "source", "") or "",
+                "0",
+            ]
+        )
+    guide = wb.create_sheet("README", 0)
+    guide["A1"] = "Databook editable export"
+    guide["A1"].font = Font(bold=True, size=14)
+    guide["A3"] = "fact_id is the ontology fact. Import writes that fact; it does not create a file-store row."
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _apply_fact_edit(
+    deal: Deal,
+    fact_id: str | None,
+    value: float | None,
+    actor: str,
+    line_no: int,
+    applied: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+) -> bool:
+    """Update an ontology fact when the sheet names one. False when this id is not a fact."""
+    if not fact_id or value is None:
+        return False
+    from agetic_cdd_api.services_fact_repository import get_fact, update_fact
+
+    fact = get_fact(fact_id)
+    if fact is None or str(fact.get("deal_id") or "") != str(deal.id):
+        return False
+    current = fact.get("value")
+    try:
+        unchanged = current is not None and abs(float(current) - float(value)) <= 1e-9
+    except (TypeError, ValueError):
+        unchanged = False
+    if unchanged:
+        skipped.append({"line": line_no, "fact_id": fact_id, "reason": "unchanged"})
+        return True
+    update_fact(fact_id, {"value": float(value), "reviewed_by": actor})
+    applied.append({"line": line_no, "fact_id": fact_id, "row_id": fact_id, "value": float(value)})
+    return True
 
 
 def _cell_str(value: Any) -> str | None:
@@ -218,8 +294,8 @@ def import_edited_workbook(
 
     headers = [str(h).strip().lower() if h is not None else "" for h in header_row]
     col = {name: idx for idx, name in enumerate(headers) if name}
-    if "row_id" not in col or "value" not in col:
-        raise ValueError("Workbook must include row_id and value columns (export from Databook first)")
+    if "value" not in col or ("row_id" not in col and "fact_id" not in col):
+        raise ValueError("Workbook must include value and row_id or fact_id (export from Databook first)")
 
     by_id = {r.row_id: r for r in load_rows(deal)}
     applied: list[dict[str, Any]] = []
@@ -237,7 +313,13 @@ def import_edited_workbook(
                 return None
             return values[idx]
 
-        row_id = _cell_str(get("row_id"))
+        row_id = _cell_str(get("row_id")) or _cell_str(get("fact_id"))
+        fact_id = _cell_str(get("fact_id")) or row_id
+        if not row_id and not fact_id:
+            skipped.append({"line": line_no, "reason": "missing row_id"})
+            continue
+        if _apply_fact_edit(deal, fact_id, _cell_float(get("value")), actor, line_no, applied, skipped):
+            continue
         if not row_id:
             skipped.append({"line": line_no, "reason": "missing row_id"})
             continue

@@ -245,7 +245,7 @@ def build_phase0_report_spec(
             title="Assembly note",
             body=(
                 "Phase 0/1 stub assembly — full A–K sections land in later phases. "
-                "Every figure above resolves from the exhibit store via number tokens."
+                "Every figure above is taken from the approved databook exhibits."
             ),
             cell_refs=all_refs[:1],
         )

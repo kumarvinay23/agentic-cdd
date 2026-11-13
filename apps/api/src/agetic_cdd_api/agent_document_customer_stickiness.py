@@ -892,14 +892,46 @@ def _bridge_filled(bridge: dict[str, Any]) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _library_percent(calc_id: str, inputs: dict[str, float]) -> float:
+    """Ask the calculation library. Rates move as ratios and come back as points."""
+    from decimal import Decimal
+
+    from agetic_cdd_api.services_calculation_library import ask_calculation
+
+    ratios = {key: float(Decimal(str(value)) / Decimal(100)) for key, value in inputs.items()}
+    return ask_calculation(calc_id, inputs=ratios, scale="percent", rounding=2)["value"]
+
+
+def _derived_complement(target: str, base: float) -> float:
+    if target == "logo_churn_pct":
+        return _library_percent("CALC-KPI-LOGO-CHURN", {"logo_retention": base})
+    if target == "logo_retention_pct":
+        return _library_percent("CALC-KPI-LOGO-RETENTION", {"logo_churn": base})
+    if target == "grr_pct":
+        return _grr_from_churn(base)
+    return round(100.0 - base, 2)
+
+
 def _complement(found: dict[str, float], target: str, source: str) -> str:
     """Fill ``target`` as 100% − ``source`` and return a note describing the derivation."""
     base = found.get(source)
     if target in found or base is None or not (0 <= base <= 100):
         return ""
-    found[target] = round(100.0 - base, 2)
+    found[target] = _derived_complement(target, base)
     return (f"{_METRIC_LABEL[target]} derived as 100% − {_METRIC_LABEL[source].lower()} ({base:g}%) = "
             f"{found[target]:g}% on the same population {_COMPUTED}")
+
+
+def _grr_from_churn(revenue_churn: float) -> float:
+    from agetic_cdd_api.services_calculation_library import ask_calculation
+
+    result = ask_calculation(
+        "CALC-KPI-GRR",
+        inputs={"opening_revenue": 100, "contraction": 0, "churn": revenue_churn, "expansion": 0},
+        scale="percent",
+        rounding=2,
+    )
+    return result["value"]
 
 
 def _expansion_note(found: dict[str, float]) -> str:
@@ -909,7 +941,8 @@ def _expansion_note(found: dict[str, float]) -> str:
     if nrr + 0.05 < grr:
         return (f"NRR ({nrr:g}%) sits below GRR ({grr:g}%), which cannot hold with non-negative expansion — "
                 f"the rates are on different populations or periods and must be re-cut before use {_COMPUTED}")
-    return (f"Expansion contributes {nrr - grr:+.1f} pp between GRR ({grr:g}%) and NRR ({nrr:g}%) on the "
+    spread = _library_percent("CALC-KPI-EXPANSION", {"nrr": nrr, "grr": grr})
+    return (f"Expansion contributes {spread:+.1f} pp between GRR ({grr:g}%) and NRR ({nrr:g}%) on the "
             f"same population {_COMPUTED}")
 
 

@@ -21,6 +21,14 @@ from pptx.util import Inches
 from agetic_cdd_api.report_builder_base import BuildContext, DealProfile
 from agetic_cdd_api.report_cdd_evidence import EvidenceBook, _absorb_vdr, build_agent_evidence
 from agetic_cdd_api.report_cdd_factcheck import contradicts_profit_return, drop_mislabeled_contract_revenue
+from agetic_cdd_api.report_cdd_calcs import (
+    DeckMath,
+    _cim_leaders,
+    _cim_milestones,
+    _research_file,
+    _room_executives,
+    _room_web,
+)
 from agetic_cdd_api.report_cdd_skill import _as_waterfall, _margin_title, build_skill_content
 from agetic_cdd_api.report_storyline import default_storyline
 
@@ -626,6 +634,53 @@ def test_waterfall_hook_converts_only_a_start_and_an_end(caplog):
     assert longer["chart_type"] == "column"
     assert longer["categories"] == ["2024", "2025", "2030P"]
     assert "not a start and an end" in caplog.text
+
+
+def test_leadership_and_history_do_not_require_one_company():
+    book = EvidenceBook()
+    math = DeckMath()
+    slides = [
+        (
+            "LEADERSHIP TEAM "
+            "Ada Chen CEO Acquired the operating company in 2016 and still runs it. "
+            "Luis Ortega Chief Financial Officer Joined from a regional lender in 2021."
+        ),
+        (
+            "COMPANY HISTORY FOUNDED 2014 Started with two routes. "
+            "ACQUISITION 2016 Bought the city franchise. "
+            "EXPANSION 2022 Opened a second yard."
+        ),
+    ]
+    _cim_leaders(book, math, slides, ["cim.pptx"])
+    _cim_milestones(book, math, slides, ["cim.pptx"])
+    assert [person["name"] for person in math.leaders] == ["Ada Chen", "Luis Ortega"]
+    assert "2016" in math.leaders[0]["bio"]
+    assert "Ben Parry" not in " ".join(item["what"] for item in math.milestones)
+    assert [item["when"] for item in math.milestones] == ["2014", "2016", "2022"]
+
+    other = BuildContext(
+        deal_slug="phase0-harbor-people",
+        report_type="cdd_deck",
+        profile=DealProfile(deal_slug="phase0-harbor-people", company="Harbor Bend"),
+        agent_outputs={
+            "management_quality": {"spec": {"executives": [
+                {"name": "Mina Shah", "role": "CEO", "tenure": "Since 2019"},
+                {"name": "Owen Blake", "role": "CFO", "tenure": "Since 2022"},
+            ]}},
+            "competitor_identification": {"spec": {"competitors": [
+                {"name": "Pilot Travel Center", "geography": "I-10", "url": "https://www.pilotflyingj.com/", "price": "$3.40"},
+                {"name": "Customer doing nothing", "url": "https://example.invalid/none"},
+            ]}},
+        },
+    )
+    people = DeckMath()
+    _room_executives(other, EvidenceBook(), people)
+    assert [person["name"] for person in people.leaders] == ["Mina Shah", "Owen Blake"]
+    web = DeckMath()
+    _room_web(other, EvidenceBook(), web)
+    names = [row["name"] for row in web.web_competitors]
+    assert names == ["Pilot Travel Center"]
+    assert _research_file(other) is None
 
 
 def test_margin_title_skips_a_cell_that_is_not_a_number(caplog):

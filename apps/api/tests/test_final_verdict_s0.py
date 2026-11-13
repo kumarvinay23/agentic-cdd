@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from agetic_cdd_api.app import app
+from foundation_inputs import upload_analysis_inputs
 from agetic_cdd_api.pipeline_catalog import PHASE4_AGENT_KEYS
 from agetic_cdd_api.verdict_store import (
     assert_verdict_context,
@@ -43,6 +44,7 @@ def _create_deal_with_doc(client: TestClient, headers: dict[str, str], *, name: 
         files={"file": ("CIM.pdf", BytesIO(b"%PDF-1.4 market sizing TAM SAM"), "application/pdf")},
     )
     assert upload.status_code == 200
+    upload_analysis_inputs(client, headers, deal_id)
     return deal_id
 
 

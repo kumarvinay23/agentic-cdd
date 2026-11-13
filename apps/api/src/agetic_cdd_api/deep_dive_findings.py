@@ -59,6 +59,11 @@ def write_deep_dive_findings(deal: Deal, store: dict) -> Path:
     path = findings_path(deal)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(store, indent=2), encoding="utf-8")
+    slug = getattr(deal, "slug", None) or getattr(deal, "id", None) or ""
+    if slug and isinstance(store, dict):
+        from agetic_cdd_api.services_step_log import record_findings_store
+
+        record_findings_store(str(slug), store)
     return path
 
 

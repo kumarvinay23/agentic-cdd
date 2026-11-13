@@ -21,6 +21,7 @@ from agetic_cdd_api.fdd_schemas import (
     ExhibitStoreDoc,
     FactTableDoc,
     FddRunManifest,
+    FindingsDoc,
     GateId,
     ModelChecksDoc,
     QaPackDoc,
@@ -143,6 +144,10 @@ def qoe_path(deal_slug: str, run_id: str) -> Path:
 
 def commentary_path(deal_slug: str, run_id: str) -> Path:
     return run_dir(deal_slug, run_id) / "commentary.json"
+
+
+def findings_path(deal_slug: str, run_id: str) -> Path:
+    return run_dir(deal_slug, run_id) / "findings.json"
 
 
 def qa_path(deal_slug: str, run_id: str) -> Path:
@@ -576,6 +581,25 @@ def load_commentary(deal_slug: str, run_id: str) -> CommentaryDoc | None:
         return None
     try:
         return CommentaryDoc.model_validate(raw)
+    except Exception:
+        return None
+
+
+def save_findings(doc: FindingsDoc) -> FindingsDoc:
+    updated = doc.model_copy(update={"updated_at": _now()})
+    _write_json(
+        findings_path(updated.deal_slug, updated.run_id),
+        updated.model_dump(mode="json"),
+    )
+    return updated
+
+
+def load_findings(deal_slug: str, run_id: str) -> FindingsDoc | None:
+    raw = _read_json(findings_path(deal_slug, run_id))
+    if not raw:
+        return None
+    try:
+        return FindingsDoc.model_validate(raw)
     except Exception:
         return None
 

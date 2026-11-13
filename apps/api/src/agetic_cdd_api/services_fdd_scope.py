@@ -230,6 +230,7 @@ def update_scope_profile(
         "materiality_pct",
         "sections_in_scope",
         "notes",
+        "deck_include_exhibit_appendix",
     }
     updates: dict[str, Any] = {
         key: value for key, value in patch.items() if key in allowed

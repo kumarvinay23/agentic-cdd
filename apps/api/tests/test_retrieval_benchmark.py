@@ -46,7 +46,7 @@ def _setup_benchmark_deal(client: TestClient, headers: dict[str, str], *, file_c
     assert created.status_code == 201, created.text
     deal_id = created.json()["data"]["id"]
 
-    for filename, body in synthetic_benchmark_vdr(file_count):
+    for filename, body in synthetic_benchmark_vdr(file_count, company="Ola Electric"):
         res = client.post(
             f"/api/v1/portfolios/{deal_id}/cdd/vdr/upload",
             headers=headers,

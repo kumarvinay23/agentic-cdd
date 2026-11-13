@@ -100,6 +100,7 @@ class DeckMath:
     web_competitors: list[dict[str, Any]] = field(default_factory=list)
     conclusion: dict[str, Any] | None = None
     model_price: dict[str, Any] | None = None
+    published_pages: list[dict[str, Any]] = field(default_factory=list)
 
     def payload(self) -> list[dict[str, Any]]:
         return [calc.as_dict() for calc in self.calculations]
@@ -144,7 +145,27 @@ def derive(ctx: BuildContext, book: EvidenceBook) -> DeckMath:
     _landscape(ctx, book, math)
     _from_data_room(ctx, book, math)
     _quota_coverage(math)
+    _from_published(ctx, math)
     return math
+
+
+def _from_published(ctx: BuildContext, math: DeckMath) -> None:
+    """Keep the comparisons this deck already draws, and take their numbers from fact ids."""
+    from agetic_cdd_api.services_published_pages import comparisons_from_pages, pages_for_deal
+
+    pages = pages_for_deal(ctx.deal_slug)
+    math.published_pages = pages
+    rows = comparisons_from_pages(pages)
+    if rows:
+        seen: set[tuple[Any, Any]] = set()
+        unique = []
+        for row in rows:
+            key = (row.get("earlier"), row.get("later"))
+            if key in seen or key[0] == key[1]:
+                continue
+            seen.add(key)
+            unique.append(row)
+        math.yoy = unique
 
 
 def _margins(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> None:
@@ -1892,6 +1913,7 @@ def _vdr_room(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> None:
     _room_reconcile(ctx, book, math)
     _room_ytd(ctx, book, math)
     _room_cim(ctx, book, math)
+    _room_executives(ctx, book, math)
     _room_web(ctx, book, math)
     _room_conclusion(book, math)
 
@@ -1904,14 +1926,16 @@ _MONTHS = {
 
 
 def _research_file(ctx: BuildContext) -> Path | None:
-    """A deal file wins. Otherwise use the example pack whose folder matches the company."""
-    from agetic_cdd_api.report_cdd_evidence import deal_vdr_dir
+    """Outside-competitor file for any company.
 
-    folder = deal_vdr_dir(ctx.deal_slug)
-    if folder is not None:
-        direct = folder.parent / "research.yaml"
-        if direct.is_file():
-            return direct
+    A research.yaml next to the deal wins. Otherwise an example pack is used
+    only when its folder name is that company's slug.
+    """
+    from agetic_cdd_api.services_deals import deals_root
+
+    direct = deals_root() / str(ctx.deal_slug or "") / "research.yaml"
+    if direct.is_file():
+        return direct
     company = str(ctx.profile.company) if ctx.profile and ctx.profile.company else ""
     slug = re.sub(r"[^a-z0-9]+", "_", company.lower()).strip("_")
     if not slug:
@@ -1931,63 +1955,139 @@ def _retrieved_phrase(raw: str) -> str:
     return f"Retrieved {int(day)} {label} {year}"
 
 
+_NOT_A_COMPETITOR = re.compile(
+    r"(?i)doing nothing|in-hous|information request|not a competitor|status quo|unknown|^\s*n/?a\s*$"
+)
+
+
+def _outside_competitor(row: dict[str, Any]) -> bool:
+    """A named company read on the web, for any deal. Placeholders stay off the page."""
+    name = str(row.get("name") or row.get("competitor") or "").strip()
+    if not name or _NOT_A_COMPETITOR.search(name):
+        return False
+    url = str(row.get("url") or row.get("source_url") or "").strip()
+    source = " ".join(
+        str(row.get(key) or "")
+        for key in ("source", "basis", "record", "note")
+    )
+    return bool(url) or row.get("outside_data_room") is True or bool(
+        re.search(r"(?i)\bweb\b|outside the data room|https?://", source)
+    )
+
+
+def _remember_web_row(
+    book: EvidenceBook,
+    rows: list[dict[str, Any]],
+    *,
+    fid: str,
+    name: str,
+    footprint: str,
+    price: str,
+    commercial: str,
+    retrieved: str,
+    title: str,
+    url: str,
+    body: str,
+) -> None:
+    if not name or fid in book.by_id or any(row["name"].lower() == name.lower() for row in rows):
+        return
+    fact = {
+        "id": fid,
+        "module": "CID",
+        "module_title": "Secondary research (analyst)",
+        "text": " ".join(body.split())[:500],
+        "citations": {
+            "doc": [],
+            "web": [f"{title} <{url}> {retrieved}".strip()],
+            "computed": False,
+        },
+        "basis": "web",
+        "grade": "indicated",
+        "period_status": {},
+        "class": "fact",
+        "source": "analyst_research",
+        "flags": ["SECONDARY_RESEARCH"],
+        "cells": {"Competitor": name, "Footprint": footprint, "Residential price": price},
+        "row_label": name,
+        "section_title": title or "Secondary research",
+    }
+    book.facts.append(fact)
+    book.by_id[fid] = fact
+    rows.append({
+        "id": fid,
+        "name": name,
+        "footprint": footprint or "—",
+        "price": price or "Not published",
+        "commercial": commercial,
+        "retrieved": retrieved,
+    })
+
+
 def _room_web(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> None:
-    """Competitor pages read on the web. They stay basis web and never become data-room facts."""
+    """Competitor pages read on the web, for any company. They never become data-room facts."""
     if math.web_competitors:
         return
+    rows: list[dict[str, Any]] = []
     path = _research_file(ctx)
-    if path is None:
-        return
-    import yaml
+    if path is not None:
+        import yaml
 
-    cfg = yaml.safe_load(path.read_text()) or {}
-    phrase = _retrieved_phrase(str(cfg.get("retrieved") or ""))
-    rows = []
-    for item in cfg.get("items") or []:
-        if not isinstance(item, dict):
-            continue
-        cells = item.get("cells") if isinstance(item.get("cells"), dict) else {}
-        name = str(cells.get("Competitor") or "").strip()
-        fid = str(item.get("id") or "")
-        if not name or not fid.startswith("WEB-") or fid in book.by_id:
-            continue
-        body = item.get("text") or " | ".join(f"{key}: {value}" for key, value in cells.items())
-        if phrase:
-            body = f"{body} {phrase}."
-        body = f"{body} Outside the data room."
-        title = str(item.get("title") or "Secondary research")
-        url = str(item.get("url") or "")
-        fact = {
-            "id": fid,
-            "module": str(item.get("module") or "CID"),
-            "module_title": "Secondary research (analyst)",
-            "text": " ".join(body.split())[:500],
-            "citations": {
-                "doc": [],
-                "web": [f"{title} <{url}> {phrase}".strip()],
-                "computed": False,
-            },
-            "basis": "web",
-            "grade": "indicated",
-            "period_status": {},
-            "class": "fact",
-            "source": "analyst_research",
-            "flags": ["SECONDARY_RESEARCH"],
-            "cells": {str(key): str(value) for key, value in cells.items()},
-            "row_label": name,
-            "section_title": title,
-        }
-        book.facts.append(fact)
-        book.by_id[fid] = fact
-        rows.append({
-            "id": fid,
-            "name": name,
-            "footprint": str(cells.get("Footprint") or "—"),
-            "price": str(cells.get("Residential price") or "Not published"),
-            "commercial": str(cells.get("Commercial entry price") or ""),
-            "retrieved": phrase,
-        })
-    math.web_competitors = rows
+        cfg = yaml.safe_load(path.read_text()) or {}
+        phrase = _retrieved_phrase(str(cfg.get("retrieved") or ""))
+        for item in cfg.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            cells = item.get("cells") if isinstance(item.get("cells"), dict) else {}
+            name = str(cells.get("Competitor") or "").strip()
+            fid = str(item.get("id") or "")
+            if not name or not fid.startswith("WEB-"):
+                continue
+            body = item.get("text") or " | ".join(f"{key}: {value}" for key, value in cells.items())
+            if phrase:
+                body = f"{body} {phrase}."
+            body = f"{body} Outside the data room."
+            _remember_web_row(
+                book,
+                rows,
+                fid=fid,
+                name=name,
+                footprint=str(cells.get("Footprint") or "—"),
+                price=str(cells.get("Residential price") or "Not published"),
+                commercial=str(cells.get("Commercial entry price") or ""),
+                retrieved=phrase,
+                title=str(item.get("title") or "Secondary research"),
+                url=str(item.get("url") or ""),
+                body=body,
+            )
+    peers = _spec(_resolve(ctx, "competitor_identification")).get("competitors") or []
+    if isinstance(peers, list):
+        company = str(ctx.profile.company) if ctx.profile and ctx.profile.company else ""
+        number = 0
+        for row in peers:
+            if not isinstance(row, dict) or not _outside_competitor(row):
+                continue
+            name = str(row.get("name") or row.get("competitor") or "").strip()
+            if company and name.lower() == company.lower():
+                continue
+            number += 1
+            price = str(row.get("residential_price") or row.get("price") or "Not published")
+            footprint = str(row.get("geography") or row.get("footprint") or "—")
+            url = str(row.get("url") or row.get("source_url") or "")
+            _remember_web_row(
+                book,
+                rows,
+                fid=f"WEB-AGT-{number:02d}",
+                name=name,
+                footprint=footprint,
+                price=price,
+                commercial=str(row.get("commercial_price") or ""),
+                retrieved="",
+                title=str(row.get("source") or "Secondary research"),
+                url=url,
+                body=f"{name}. {footprint}. {price}. Outside the data room.",
+            )
+    if rows:
+        math.web_competitors = rows
 
 
 def _room_conclusion(book: EvidenceBook, math: DeckMath) -> None:
@@ -2939,17 +3039,18 @@ def _year_cell(cells: dict[str, Any], year: str) -> tuple[str, str]:
 
 
 def _room_forward(math: DeckMath, facts: list[dict[str, Any]]) -> None:
-    """Plan lines the segment sheet already names: the DC municipal line and Utica."""
+    """Plan lines the segment sheet already names, including the municipal line."""
     if math.forward is not None:
         return
-    dc = utica = None
+    dc = ramp = None
     lines: list[dict[str, Any]] = []
     for fact in facts:
         if not _in_section(fact, "revenue by segment"):
             continue
-        label = str(fact.get("row_label") or "").strip().lower()
+        raw_label = str(fact.get("row_label") or "").strip()
+        label = raw_label.lower()
         cells = fact.get("cells") or {}
-        if not isinstance(cells, dict):
+        if not isinstance(cells, dict) or not raw_label or re.search(r"(?i)^total\b", raw_label):
             continue
         if label == "municipal - dc" and dc is None:
             actual_year, actual = _year_cell(cells, "2025")
@@ -2957,6 +3058,7 @@ def _room_forward(math: DeckMath, facts: list[dict[str, Any]]) -> None:
             mix = str(cells.get("2025 Mix") or "").strip()
             if actual and plan:
                 dc = {
+                    "name": raw_label,
                     "actual": actual,
                     "actual_year": actual_year,
                     "plan": plan,
@@ -2964,45 +3066,41 @@ def _room_forward(math: DeckMath, facts: list[dict[str, Any]]) -> None:
                     "mix": mix,
                     "id": fact.get("id") or "",
                 }
-        if label == "utica" and utica is None:
-            early_year, early = _year_cell(cells, "2026")
-            plan_year, plan = _year_cell(cells, "2030")
-            if early and plan:
-                utica = {
-                    "early": early,
-                    "early_year": early_year,
-                    "plan": plan,
-                    "plan_year": plan_year,
-                    "id": fact.get("id") or "",
-                }
-        if label in {"utica", "key compostables", "compost & products"}:
-            actual_year, actual = _year_cell(cells, "2025")
-            plan_year, plan = _year_cell(cells, "2030")
-            actual_amount = _num(actual)
-            plan_amount = _num(plan)
-            if actual and plan and actual_amount is not None and plan_amount is not None:
-                lines.append({
-                    "name": {"utica": "Utica", "key compostables": "Key Compostables", "compost & products": "Compost and products"}[label],
-                    "actual": actual,
-                    "actual_year": actual_year,
-                    "actual_amount": actual_amount,
-                    "plan": plan,
-                    "plan_year": plan_year,
-                    "plan_amount": plan_amount,
-                    "id": fact.get("id") or "",
-                })
+            continue
+        early_year, early = _year_cell(cells, "2026")
+        plan_year, plan = _year_cell(cells, "2030")
+        actual_year, actual = _year_cell(cells, "2025")
+        actual_amount = _num(actual)
+        plan_amount = _num(plan)
+        if ramp is None and early and plan and (not actual or actual_amount == 0):
+            ramp = {
+                "name": raw_label,
+                "early": early,
+                "early_year": early_year,
+                "plan": plan,
+                "plan_year": plan_year,
+                "id": fact.get("id") or "",
+            }
+        if actual and plan and actual_amount is not None and plan_amount is not None:
+            lines.append({
+                "name": raw_label,
+                "actual": actual,
+                "actual_year": actual_year,
+                "actual_amount": actual_amount,
+                "plan": plan,
+                "plan_year": plan_year,
+                "plan_amount": plan_amount,
+                "id": fact.get("id") or "",
+            })
     products = _segment_pair(math, facts, lines)
-    if dc or utica or products:
-        math.forward = {"dc": dc, "utica": utica, "products": products}
+    if dc or ramp or products:
+        math.forward = {"dc": dc, "ramp": ramp, "products": products}
 
 
 def _segment_pair(math: DeckMath, facts: list[dict[str, Any]], lines: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Share of workbook revenue for Utica plus Key Compostables, actual and plan."""
+    """Share of workbook revenue for the segment lines, actual and plan."""
     if len(lines) < 2:
         return None
-    by_name = {line["name"]: line for line in lines}
-    utica = by_name.get("Utica")
-    key = by_name.get("Key Compostables")
     workbook = next(
         (
             fact for fact in facts
@@ -3011,7 +3109,7 @@ def _segment_pair(math: DeckMath, facts: list[dict[str, Any]], lines: list[dict[
         ),
         None,
     )
-    if utica is None or key is None or workbook is None:
+    if workbook is None:
         return {"lines": lines}
     cells = workbook.get("cells") or {}
     actual_amount = _num(str(cells.get("2025") or ""))
@@ -3020,16 +3118,24 @@ def _segment_pair(math: DeckMath, facts: list[dict[str, Any]], lines: list[dict[
     workbook_id = str(workbook.get("id") or "")
     if not actual_amount or plan_amount is None or not workbook_id:
         return {"lines": lines}
-    now = round((utica["actual_amount"] + key["actual_amount"]) / actual_amount * 100, 1)
-    later = round((utica["plan_amount"] + key["plan_amount"]) / plan_amount * 100, 1)
+    actual_sum = sum(line["actual_amount"] for line in lines)
+    plan_sum = sum(line["plan_amount"] for line in lines)
+    now = round(actual_sum / actual_amount * 100, 1)
+    later = round(plan_sum / plan_amount * 100, 1)
+    now_inputs = {
+        f"line_{index}": _inp(line["actual_amount"], line["id"])
+        for index, line in enumerate(lines)
+    }
+    now_inputs["revenue"] = _inp(actual_amount, workbook_id)
+    plan_inputs = {
+        f"line_{index}": _inp(line["plan_amount"], line["id"])
+        for index, line in enumerate(lines)
+    }
+    plan_inputs["revenue"] = _inp(plan_amount, workbook_id)
     math.calculations.append(Calc(
         id="CALC-SEGMENT-NOW",
-        formula="(utica + key) / revenue * 100",
-        inputs={
-            "utica": _inp(utica["actual_amount"], utica["id"]),
-            "key": _inp(key["actual_amount"], key["id"]),
-            "revenue": _inp(actual_amount, workbook_id),
-        },
+        formula="(sum of segment lines) / revenue * 100",
+        inputs=now_inputs,
         output=now,
         unit="%",
         rounding=1,
@@ -3037,12 +3143,8 @@ def _segment_pair(math: DeckMath, facts: list[dict[str, Any]], lines: list[dict[
     ))
     math.calculations.append(Calc(
         id="CALC-SEGMENT-PLAN",
-        formula="(utica + key) / revenue * 100",
-        inputs={
-            "utica": _inp(utica["plan_amount"], utica["id"]),
-            "key": _inp(key["plan_amount"], key["id"]),
-            "revenue": _inp(plan_amount, workbook_id),
-        },
+        formula="(sum of segment lines) / revenue * 100",
+        inputs=plan_inputs,
         output=later,
         unit="%",
         rounding=1,
@@ -3315,100 +3417,58 @@ def _cim_claims(book: EvidenceBook, math: DeckMath, slides: list[str], docs: lis
 
 _ROLE = re.compile(
     r"([A-Z][a-z]+(?: [A-Z][a-z]+){1,2}) "
-    r"(CEO|Chief Revenue Officer|Sr\. Director of Composting|Vice President of Operations)"
+    r"(CEO|CFO|COO|CTO|President|Founder|"
+    r"Chief [A-Z][A-Za-z]+ Officer|"
+    r"(?:Sr\. |Senior )?Director of [A-Z][A-Za-z]+|"
+    r"Vice President of [A-Z][A-Za-z]+|"
+    r"Managing Director)"
 )
+_HISTORY_LABELS = ("FOUNDED", "ACQUISITION", "DIVERSIFICATION", "ACCELERATION", "EXPANSION")
 
 
-def _leadership_bios(slide: str) -> dict[int, str]:
-    """Biographies follow the named roles, in the same order, on the leadership page."""
-    starts = (
-        "Acquired Compost Crew in 2018",
-        "Recently joined Compost Crew to lead business development",
-        "Joined Compost Crew in 2019",
-        "Recently joined Compost Crew to lead operations",
-    )
-    spots = [(slide.find(start), start) for start in starts if slide.find(start) >= 0]
-    spots.sort()
-    bios: list[str] = []
-    for index, (pos, _start) in enumerate(spots):
-        end = spots[index + 1][0] if index + 1 < len(spots) else len(slide)
-        bios.append(" ".join(slide[pos:end].split()))
-    return {index: text for index, text in enumerate(bios[:4])}
-
-
-def _cim_milestones(book: EvidenceBook, math: DeckMath, slides: list[str], docs: list[str]) -> None:
-    """History-page labels, plus the 2018 acquisition sentence on the leadership page."""
-    if math.milestones:
-        return
-    labels = ("FOUNDED", "ACQUISITION", "DIVERSIFICATION", "ACCELERATION", "EXPANSION")
-    history = ""
-    leadership = ""
-    for slide in slides:
-        if "FOUNDED" in slide and "ACQUISITION" in slide and not history:
-            history = slide
-        if "LEADERSHIP TEAM" in slide and "Acquired Compost Crew in 2018" in slide and not leadership:
-            leadership = slide
-    rows: list[tuple[str, str]] = []
-    if history:
-        spots = sorted((history.find(label), label) for label in labels if history.find(label) >= 0)
-        for index, (pos, label) in enumerate(spots):
-            end = spots[index + 1][0] if index + 1 < len(spots) else len(history)
-            raw = history[pos + len(label):end]
-            body = re.sub(r"COMPOST CREW HISTORY", " ", raw)
-            body = re.sub(r"\b20\d{2}(?:-\d{4}| and beyond)?\b", " ", body)
-            body = " ".join(body.split(" ,"))
-            body = " ".join(body.split()).strip(" .")
-            if body:
-                rows.append((label.title(), body, " ".join(raw.split())))
-    acquired = ""
-    if leadership:
-        match = re.search(r"Acquired Compost Crew in 2018\..*?(?:India)", leadership)
-        if match:
-            acquired = " ".join(match.group(0).split())
-    milestones = []
-    from agetic_cdd_api.report_cdd_factcheck import is_plan_milestone
-
-    for when, what, raw in rows:
-        if is_plan_milestone(raw) or is_plan_milestone(what):
+def _leadership_bios(slide: str, pairs: list[tuple[str, str]]) -> dict[int, str]:
+    """Text after each name and role, until the next named person."""
+    spans: list[tuple[int, int, int]] = []
+    for index, (name, role) in enumerate(pairs):
+        pos = slide.find(f"{name} {role}")
+        if pos < 0:
             continue
-        text = f"{when}. {what}."
-        shown = what
-        years = re.findall(r"\b(20\d{2})\b", raw)
-        if when == "Acceleration" and "Key City" in raw and "Washington, DC in 2023" in raw:
-            shown = "Acquired Key City in June 2024 and signed the Washington, DC contract in 2023"
-            text = f"{when}. {what}. {shown}."
-        if when == "Acquisition" and acquired:
-            text = f"2018. Ben Parry acquires Compost Crew and Fat Worm Compost. {acquired}"
-            when = "2018"
-            shown = "Acquired in 2018, from three trucks and five people to $13M+ revenue and 25K customers"
-        elif years:
-            when = max(years)
-        else:
+        spans.append((pos, pos + len(f"{name} {role}"), index))
+    spans.sort()
+    bios: dict[int, str] = {}
+    for order, (_pos, end_name, index) in enumerate(spans):
+        stop = spans[order + 1][0] if order + 1 < len(spans) else len(slide)
+        bio = " ".join(slide[end_name:stop].split()).strip(" .,-")
+        if len(bio) >= 24:
+            bios[index] = bio
+    sentences = [part.strip() for part in re.split(r"(?<=[.])\s+", slide) if part.strip()]
+    for index, (name, _role) in enumerate(pairs):
+        if index in bios:
             continue
-        fid = book.add(
-            module="CBG", title="Company Background", text=text, docs=docs, bucket="history", grade="asserted",
-        )
-        if fid:
-            milestones.append({"when": when, "what": _clip_cell(shown, 80), "id": fid})
-    if len(milestones) >= 2:
-        math.milestones = milestones
+        last = name.split()[-1]
+        owned = [sentence for sentence in sentences if re.search(rf"\b{re.escape(last)}\b", sentence)]
+        if owned:
+            bios[index] = " ".join(owned)
+    return bios
 
 
-def _cim_leaders(book: EvidenceBook, math: DeckMath, slides: list[str], docs: list[str]) -> None:
-    blob = next((slide for slide in slides if re.search(r"LEADERSHIP TEAM", slide)), "")
-    pairs = _ROLE.findall(blob)
-    if len(pairs) < 2:
+def _store_leaders(
+    book: EvidenceBook,
+    math: DeckMath,
+    pairs: list[tuple[str, str, str]],
+    docs: list[str],
+    sentence: str,
+) -> None:
+    if math.leaders or len(pairs) < 1:
         return
-    sentence = "The CIM leadership page names " + "; ".join(f"{name}, {role}" for name, role in pairs[:4]) + "."
     fact_id = book.add(
         module="CBG", title="Company Background", text=sentence, docs=docs, bucket="leadership", grade="asserted",
     )
     if not fact_id:
         return
-    bios = _leadership_bios(blob)
     math.leaders.extend(
-        {"name": name, "role": role, "id": fact_id, "bio": bios.get(index, ""), "bio_id": ""}
-        for index, (name, role) in enumerate(pairs[:4])
+        {"name": name, "role": role, "id": fact_id, "bio": bio, "bio_id": ""}
+        for name, role, bio in pairs[:4]
     )
     for person in math.leaders:
         bio = str(person.get("bio") or "").strip()
@@ -3423,6 +3483,114 @@ def _cim_leaders(book: EvidenceBook, math: DeckMath, slides: list[str], docs: li
             grade="asserted",
         )
         person["bio_id"] = bio_id or ""
+
+
+def _cim_milestones(book: EvidenceBook, math: DeckMath, slides: list[str], docs: list[str]) -> None:
+    """Year labels on a history page. The wording on the page is kept."""
+    if math.milestones:
+        return
+    history = ""
+    hits = 0
+    for slide in slides:
+        found = sum(1 for label in _HISTORY_LABELS if label in slide)
+        if found > hits:
+            history, hits = slide, found
+    if hits < 2:
+        return
+    rows: list[tuple[str, str, str]] = []
+    spots = sorted((history.find(label), label) for label in _HISTORY_LABELS if history.find(label) >= 0)
+    for index, (pos, label) in enumerate(spots):
+        end = spots[index + 1][0] if index + 1 < len(spots) else len(history)
+        raw = history[pos + len(label):end]
+        body = re.sub(r"(?i)\b[A-Z][A-Z0-9&.' -]{2,40} HISTORY\b", " ", raw)
+        body = re.sub(r"\b20\d{2}(?:-\d{4}| and beyond)?\b", " ", body)
+        body = " ".join(body.split(" ,"))
+        body = " ".join(body.split()).strip(" .")
+        if body:
+            rows.append((label.title(), body, " ".join(raw.split())))
+    acquired = ""
+    acquired_year = ""
+    for person in math.leaders:
+        bio = str(person.get("bio") or "")
+        if not re.search(r"(?i)\bacquir", bio):
+            continue
+        acquired = bio.split(". ")[0].strip().rstrip(".")
+        year_match = re.search(r"\b((?:19|20)\d{2})\b", acquired)
+        if year_match:
+            acquired_year = year_match.group(1)
+        break
+    milestones = []
+    from agetic_cdd_api.report_cdd_factcheck import is_plan_milestone
+
+    for when, what, raw in rows:
+        if is_plan_milestone(raw) or is_plan_milestone(what):
+            continue
+        text = f"{when}. {what}."
+        shown = what
+        years = re.findall(r"\b((?:19|20)\d{2})\b", raw)
+        if when == "Acquisition" and acquired:
+            when = acquired_year or (max(years) if years else when)
+            text = f"{when}. {acquired}."
+            shown = acquired
+        elif years:
+            when = max(years)
+        else:
+            continue
+        fid = book.add(
+            module="CBG", title="Company Background", text=text, docs=docs, bucket="history", grade="asserted",
+        )
+        if fid:
+            milestones.append({"when": when, "what": _clip_cell(shown, 80), "id": fid})
+    if len(milestones) >= 2:
+        math.milestones = milestones
+
+
+def _cim_leaders(book: EvidenceBook, math: DeckMath, slides: list[str], docs: list[str]) -> None:
+    blob = next((slide for slide in slides if re.search(r"(?i)leadership team", slide)), "")
+    pairs = _ROLE.findall(blob)[:4]
+    if len(pairs) < 2:
+        return
+    bios = _leadership_bios(blob, pairs)
+    sentence = "The CIM leadership page names " + "; ".join(f"{name}, {role}" for name, role in pairs) + "."
+    _store_leaders(
+        book,
+        math,
+        [(name, role, bios.get(index, "")) for index, (name, role) in enumerate(pairs)],
+        docs,
+        sentence,
+    )
+
+
+def _room_executives(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> None:
+    """Named executives from the management module, when the CIM did not name a team."""
+    if math.leaders:
+        return
+    raw = _spec(_resolve(ctx, "management_quality")).get("executives") or []
+    if not isinstance(raw, list):
+        return
+    people: list[tuple[str, str, str]] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        name = " ".join(str(row.get("name") or "").split())
+        role = " ".join(str(row.get("role") or row.get("title") or "Executive").split())
+        if len(name.split()) < 2 or _NOT_A_COMPETITOR.search(name):
+            continue
+        bits = [
+            str(row.get(key) or "").strip()
+            for key in ("tenure", "prior_delivery", "relevant_scale")
+        ]
+        bio = ". ".join(
+            bit for bit in bits
+            if bit and not re.match(r"(?i)n/?a|information request", bit)
+        )
+        people.append((name, role, bio))
+        if len(people) >= 4:
+            break
+    if not people:
+        return
+    sentence = "The management record names " + "; ".join(f"{name}, {role}" for name, role, _bio in people) + "."
+    _store_leaders(book, math, people, [], sentence)
 
 
 _LOGO_WORDS = {

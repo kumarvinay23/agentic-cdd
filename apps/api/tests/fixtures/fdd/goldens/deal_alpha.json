@@ -9,6 +9,9 @@
   "expect_draft_mode": false,
   "expect_g6_allowed": true,
   "expect_g5_ready": true,
+  "expect_front_matter": true,
+  "expect_findings_built": true,
+  "max_deck_slides": 22,
   "expect_exhibits": [
     "ex_db_is",
     "ex_m1_trading",

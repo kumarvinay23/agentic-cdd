@@ -1,7 +1,7 @@
 """Extract text and tables from VDR files.
 
-Phase 2 adds per-page metadata for the page register. Full OCR / vision remain
-out of scope — scanned and image-only pages are surfaced as unread instead.
+Page metadata feeds the page register. Scanned pages, standalone images, and
+pictures on slides are read when the document graph can recover their text.
 """
 
 from __future__ import annotations
@@ -26,32 +26,35 @@ def _clip(text: str, limit: int = MAX_TEXT_CHARS) -> str:
 
 
 def extract_file(path: Path) -> dict:
-    """Return {text, tables, pages, page_count, parser, error} for a document on disk."""
+    """Return {text, tables, pages, page_count, parser, error, graph} for a document on disk."""
     suffix = path.suffix.lower().lstrip(".")
     if not path.is_file():
-        return {
-            "text": "",
-            "tables": [],
-            "pages": [],
-            "page_count": 0,
-            "parser": "missing",
-            "error": "File not found",
-        }
+        return _attach_document_graph(
+            path,
+            {
+                "text": "",
+                "tables": [],
+                "pages": [],
+                "page_count": 0,
+                "parser": "missing",
+                "error": "File not found",
+            },
+        )
     try:
         if suffix in {"txt", "md", "log"}:
-            return _extract_text_file(path)
-        if suffix == "csv":
-            return _extract_csv(path)
-        if suffix == "pdf":
-            return _extract_pdf(path)
-        if suffix == "docx":
-            return _extract_docx(path)
-        if suffix in {"xlsx", "xls"}:
-            return _extract_xlsx(path)
-        if suffix == "pptx":
-            return _extract_pptx(path)
-        if suffix in {"png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp"}:
-            return {
+            result = _extract_text_file(path)
+        elif suffix == "csv":
+            result = _extract_csv(path)
+        elif suffix == "pdf":
+            result = _extract_pdf(path)
+        elif suffix == "docx":
+            result = _extract_docx(path)
+        elif suffix in {"xlsx", "xls"}:
+            result = _extract_xlsx(path)
+        elif suffix == "pptx":
+            result = _extract_pptx(path)
+        elif suffix in {"png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp"}:
+            result = {
                 "text": "",
                 "tables": [],
                 "pages": [
@@ -69,16 +72,17 @@ def extract_file(path: Path) -> dict:
                 "parser": "image",
                 "error": "Image file — OCR not available",
             }
-        return {
-            "text": "",
-            "tables": [],
-            "pages": [],
-            "page_count": 0,
-            "parser": "unsupported",
-            "error": f"No extractor for .{suffix}" if suffix else "Unknown format",
-        }
+        else:
+            result = {
+                "text": "",
+                "tables": [],
+                "pages": [],
+                "page_count": 0,
+                "parser": "unsupported",
+                "error": f"No extractor for .{suffix}" if suffix else "Unknown format",
+            }
     except Exception as exc:
-        return {
+        result = {
             "text": "",
             "tables": [],
             "pages": [],
@@ -86,6 +90,82 @@ def extract_file(path: Path) -> dict:
             "parser": suffix or "unknown",
             "error": str(exc),
         }
+    return _attach_document_graph(path, result)
+
+
+def _attach_document_graph(path: Path, result: dict) -> dict:
+    """Add the document graph and fill text that only an image reader can see."""
+    if not path.is_file():
+        result["graph"] = None
+        return result
+    try:
+        from agetic_cdd_api.services_document_graph import read_document
+
+        graph = read_document(path)
+    except Exception:
+        result["graph"] = None
+        return result
+    result["graph"] = graph
+    _merge_graph(result, graph)
+    return result
+
+
+def _merge_graph(result: dict, graph: dict) -> None:
+    pages = {page.get("page"): page for page in result.get("pages") or []}
+    extra: list[str] = []
+    for part in graph.get("parts") or []:
+        _consume_graph_part(result, pages, extra, part)
+    _append_extra_text(result, extra)
+    _fill_missing_tables(result, graph)
+
+
+def _consume_graph_part(result: dict, pages: dict, extra: list[str], part: dict) -> None:
+    if part.get("pointer") and part.get("text"):
+        result["text"] = str(result.get("text") or "").replace(str(part["text"]), " ")
+        return
+    if part.get("level") not in {"block", "cell"} or not part.get("usable_as_source"):
+        return
+    text = str(part.get("text") or "")
+    locator = part.get("locator") or {}
+    page = pages.get(locator.get("page") or locator.get("slide"))
+    if page and page.get("unread") and text:
+        _mark_page_read(page, text)
+        extra.append(text)
+    elif result.get("parser") == "image" and text:
+        extra.append(text)
+
+
+def _mark_page_read(page: dict, text: str) -> None:
+    page["unread"] = False
+    page["ocr_status"] = "read"
+    page["char_count"] = max(int(page.get("char_count") or 0), len(text))
+    if page.get("kind") in {"scan", "image", "blank", "mixed"}:
+        page["kind"] = "text"
+
+
+def _fill_missing_tables(result: dict, graph: dict) -> None:
+    if result.get("tables"):
+        return
+    tables = [
+        {"name": part.get("name") or "table", "rows": part["rows"]}
+        for part in graph.get("parts") or []
+        if part.get("level") == "table" and part.get("rows")
+    ]
+    if tables:
+        result["tables"] = tables
+
+
+def _append_extra_text(result: dict, extra: list[str]) -> None:
+    current = " ".join(str(result.get("text") or "").split())
+    addition = "\n".join(text for text in extra if text not in current)
+    if addition:
+        result["text"] = _clip((current + "\n" + addition).strip())
+    if result.get("parser") == "image" and (result.get("text") or "").strip():
+        result["error"] = None
+        for page in result.get("pages") or []:
+            page["unread"] = False
+            page["ocr_status"] = "read"
+            page["kind"] = "text"
 
 
 def _extract_text_file(path: Path) -> dict:

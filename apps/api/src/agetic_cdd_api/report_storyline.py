@@ -152,7 +152,7 @@ _MARKET_DECK_SECTIONS: list[dict] = [
                 "buying_behavior", "company_background", "customer_satisfaction"]},
 ]
 
-# v4 CDD standard (Compost Crew CDD v4 outline). A chapter with no evidenced
+# v4 CDD standard. A chapter with no evidenced
 # pages is withheld rather than filled.
 _CDD_DECK_SECTIONS: list[dict] = [
     {"idx": 1, "title": "Engagement Overview", "kind": "cover",

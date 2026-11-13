@@ -71,7 +71,7 @@ def _create_synthetic_deal(
     )
     created.raise_for_status()
     deal_id = created.json()["data"]["id"]
-    for filename, body in synthetic_benchmark_vdr(file_count):
+    for filename, body in synthetic_benchmark_vdr(file_count, company=company):
         client.post(
             f"/api/v1/portfolios/{deal_id}/cdd/vdr/upload",
             headers=headers,
@@ -90,7 +90,7 @@ def main() -> int:
         metavar="N",
         help="Create a synthetic deal with N VDR files and benchmark it",
     )
-    parser.add_argument("--company", default="Ola Electric", help="Company subject for prompts")
+    parser.add_argument("--company", default="Subject", help="Company subject for prompts")
     parser.add_argument("--json", action="store_true", help="Print JSON report")
     args = parser.parse_args()
 

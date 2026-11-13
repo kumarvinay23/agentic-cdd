@@ -391,6 +391,30 @@ def correct_row(
     }
 
 
+def _ontology(action: str, deal: Deal, **kwargs: Any) -> dict[str, Any] | None:
+    """Mirror a file-backed decision onto ontology facts when the id is a fact."""
+    from agetic_cdd_api.services_databook_hitl import (
+        accept_conflict as accept_ontology,
+        drop_fact,
+        remap_fact,
+        vouch_fact,
+    )
+
+    deal_id = str(deal.id)
+    try:
+        if action == "accept":
+            return accept_ontology(deal_id, **kwargs)
+        if action == "remap":
+            return remap_fact(deal_id, **kwargs)
+        if action in {"vouch", "confirm"}:
+            return vouch_fact(deal_id, action=action, **kwargs)
+        if action in {"drop", "exclude"}:
+            return drop_fact(deal_id, action=action, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return None
+
+
 def drop_row(
     deal: Deal,
     row_id: str,
@@ -401,8 +425,14 @@ def drop_row(
 ) -> dict[str, Any]:
     """Not a figure — remove from candidates."""
     reason = _require_reason(reason)
+    ontology = _ontology(action, deal, fact_id=row_id, reason=reason, actor=actor)
     rows = load_rows(deal)
-    row = _find_row(rows, row_id)
+    try:
+        row = _find_row(rows, row_id)
+    except HTTPException as exc:
+        if ontology is not None and exc.status_code == status.HTTP_404_NOT_FOUND:
+            return ontology
+        raise
     decision_id, decision = _write_decision(deal, action=action, row=row, reason=reason, actor=actor)
     updated = row.model_copy(update={"status": RowStatus.DROPPED})
     new_rows = [updated if r.row_id == row_id else r for r in rows]
@@ -418,6 +448,7 @@ def drop_row(
         "action": action,
         "row": updated.model_dump(mode="json"),
         "release": release,
+        "ontology": ontology,
     }
 
 
@@ -431,8 +462,14 @@ def vouch_row(
 ) -> dict[str, Any]:
     """Read was correct; release on reviewer authority (must not be used just to clear a list)."""
     reason = _require_reason(reason)
+    ontology = _ontology(action, deal, fact_id=row_id, reason=reason, actor=actor)
     rows = load_rows(deal)
-    row = _find_row(rows, row_id)
+    try:
+        row = _find_row(rows, row_id)
+    except HTTPException as exc:
+        if ontology is not None and exc.status_code == status.HTTP_404_NOT_FOUND:
+            return ontology
+        raise
     if not row.metric_key or row.fiscal_year is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -473,6 +510,7 @@ def vouch_row(
         "action": action,
         "row": updated.model_dump(mode="json"),
         "release": release,
+        "ontology": ontology,
     }
 
 
@@ -488,6 +526,16 @@ def accept_conflict(
 ) -> dict[str, Any]:
     """Accept a conflict candidate (proposal or alternate) as governing value."""
     reason = _require_reason(reason)
+    ontology = _ontology(
+        "accept",
+        deal,
+        fact_id=row_id,
+        metric_key=metric_key,
+        fiscal_year=fiscal_year,
+        value=value,
+        reason=reason,
+        actor=actor,
+    )
     hit = map_caption(metric_key)
     resolved_key = hit.metric_key if hit else metric_key.strip()
     rows = load_rows(deal)
@@ -504,6 +552,8 @@ def accept_conflict(
             r for r in rows if r.row_id == row_id
         ]
     if not target_rows:
+        if ontology is not None:
+            return ontology
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No matching candidate rows for that metric/year/value",
@@ -553,6 +603,7 @@ def accept_conflict(
         "value": float(value),
         "sources": win_sources,
         "release": release,
+        "ontology": ontology,
     }
 
 
@@ -625,15 +676,31 @@ def remap_row(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="metric_key is required for remap",
         )
-    return correct_row(
+    reason = _require_reason(reason)
+    ontology = _ontology(
+        "remap",
         deal,
-        row_id,
+        fact_id=row_id,
+        metric_key=metric_key.strip(),
         reason=reason,
         actor=actor,
-        metric_key=metric_key.strip(),
-        value=value,
-        action="remap",
     )
+    try:
+        result = correct_row(
+            deal,
+            row_id,
+            reason=reason,
+            actor=actor,
+            metric_key=metric_key.strip(),
+            value=value,
+            action="remap",
+        )
+    except HTTPException as exc:
+        if ontology is not None and exc.status_code == status.HTTP_404_NOT_FOUND:
+            return ontology
+        raise
+    result["ontology"] = ontology
+    return result
 
 def _find_overlay_index(
     working: list[ExtractedRow],

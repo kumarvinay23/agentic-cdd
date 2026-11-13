@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from agetic_cdd_api.foundation_roles import BIND_FILENAME_TYPES, bind_for_slug, foundation_binds, primary_role_codes_for_kind
 from agetic_cdd_api.models import Deal
@@ -285,6 +288,7 @@ def ingest_vdr_to_library(db: Session, *, deal: Deal) -> dict:
     parsed_docs: list[dict] = []
     index_entries: list[dict] = []
     routing: list[dict] = []
+    graph_paths: list[Path] = []
     now = utc_now_iso()
     doc_dir = library_dir(deal) / "documents"
     doc_dir.mkdir(parents=True, exist_ok=True)
@@ -298,6 +302,8 @@ def ingest_vdr_to_library(db: Session, *, deal: Deal) -> dict:
             continue
 
         path = resolved_document_path(deal, filename)
+        if path.is_file():
+            graph_paths.append(path)
         extracted = extract_file(path)
         text = str(extracted.get("text") or "")
         tables = list(extracted.get("tables") or [])
@@ -310,6 +316,10 @@ def ingest_vdr_to_library(db: Session, *, deal: Deal) -> dict:
         parser = extracted.get("parser")
         status = "error" if parser in {"missing", "unsupported"} and not text else "ready"
         chunks = build_document_chunks(text, tables=tables) if status == "ready" else []
+        if chunks:
+            from agetic_cdd_api.services_evidence_router import tag_chunks
+
+            tag_chunks(chunks)
 
         row.update(
             {
@@ -384,11 +394,20 @@ def ingest_vdr_to_library(db: Session, *, deal: Deal) -> dict:
         json.dumps({"deal_id": deal.id, "generated_at": now, "documents": routing}, indent=2),
         encoding="utf-8",
     )
+    _write_document_graph(lib, graph_paths)
     save_docs(db, deal, parsed_docs)
     from agetic_cdd_api.services_library_search import rebuild_search_index
 
     rebuild_search_index(deal, index=index)
     return index
+
+
+def _write_document_graph(lib: Path, paths: list[Path]) -> None:
+    """Store the deal document graph: document, then page or sheet, then block or cell."""
+    from agetic_cdd_api.services_document_graph import read_documents
+
+    corpus = read_documents(paths)
+    (lib / "document_graph.json").write_text(json.dumps(corpus, indent=2), encoding="utf-8")
 
 
 def library_index_stats(deal: Deal) -> dict[str, Any]:
@@ -647,4 +666,13 @@ def phase1_agent_output(deal: Deal, *, agent_key: str, index: dict) -> dict:
 def ingest_phase1(db: Session, *, deal: Deal) -> dict[str, dict]:
     """Build the library and return outputs for both Phase 1 agents."""
     index = ingest_vdr_to_library(db, deal=deal)
+    from agetic_cdd_api.services_statement_reader import read_confirmed_room
+
+    try:
+        read_confirmed_room(deal)
+    except Exception:
+        logger.exception(
+            "statement room read failed for deal %s — Financial history will stay empty",
+            getattr(deal, "id", None) or getattr(deal, "slug", None),
+        )
     return {key: phase1_agent_output(deal, agent_key=key, index=index) for key in PHASE1_AGENT_KEYS}

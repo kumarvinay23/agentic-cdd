@@ -81,7 +81,14 @@ class DealDatabookParams(BaseModel):
         if not metric_key:
             return False
         key = metric_key.strip().lower()
-        if key in {"nrr", "grr", "nrr_commercial", "grr_commercial"}:
+        if key in {
+            "nrr",
+            "grr",
+            "nrr_commercial",
+            "grr_commercial",
+            "nrr_residential",
+            "grr_residential",
+        }:
             return False
         only = {m.strip().lower() for m in self.saas_only_metrics if m}
         if key not in only:

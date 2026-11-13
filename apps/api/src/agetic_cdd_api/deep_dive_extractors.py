@@ -55,9 +55,9 @@ _SIZING_HEADER_TRIAD = re.compile(
 )
 _SIZING_ROW_TRIAD = re.compile(
     r"(?i)(Logistics\s*\(Hauling\)|Compost\s+Sales(?:\s*&\s*Soil\s+Amendments)?|"
-    r"KeyCompostables|Organics(?:\s+Collection)?)"
+    r"[A-Za-z][A-Za-z0-9]{3,}|Organics(?:\s+Collection)?)"
     r"\s+(Current|Expanded[^\d→]{0,80}?)"
-    r"(?:(?!\b(?:Logistics\s*\(Hauling\)|Compost\s+Sales|KeyCompostables|TOTAL)\b).){0,320}?"
+    r"(?:(?!\b(?:Logistics\s*\(Hauling\)|Compost\s+Sales|TOTAL)\b).){0,320}?"
     r"(?:→\s*SOM|SOM)\s*"
     r"([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)\s+([\d,]+(?:\.\d+)?)"
 )

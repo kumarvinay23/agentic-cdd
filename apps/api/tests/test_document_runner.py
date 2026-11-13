@@ -14,6 +14,7 @@ from agetic_cdd_api.services_document_runner import (
     merge_document_section,
     resolve_capabilities,
     select_capabilities,
+    select_web_capabilities,
     _section_heading,
 )
 
@@ -38,6 +39,37 @@ def test_select_capabilities_growth() -> None:
     caps = select_capabilities("What is the revenue growth rate of the company?")
     ids = [c["id"] for c in caps]
     assert "growth_trend" in ids
+
+
+def test_web_search_stays_off_for_company_facts() -> None:
+    from agetic_cdd_api.services_web_research import build_web_queries, research_web
+
+    caps = select_web_capabilities("What is the revenue growth rate and EBITDA margin?")
+    assert caps == []
+
+    internal, web = resolve_capabilities(
+        "What is EBITDA and who is the CEO?",
+        capability_ids=["gx_x_market_funnel", "ma_precedent_transactions"],
+    )
+    assert internal == []
+    assert web == []
+    found, queries = research_web(
+        prompt="What is the company's revenue?",
+        subject="Northwind",
+        capability={"id": "gx_x_market_funnel", "src": "web", "title": "Market funnel"},
+    )
+    assert found == []
+    assert queries == []
+
+    market = select_web_capabilities("What is the industry market growth and market price level?")
+    ids = [c["id"] for c in market]
+    assert "gx_x_market_evidence" in ids
+    queries = build_web_queries(
+        prompt="industry market growth",
+        subject="Northwind",
+        capability={"id": "gx_x_market_evidence", "title": "Market evidence"},
+    )
+    assert all("revenue" not in q.lower() for q in queries)
 
 
 def test_resolve_capabilities_explicit_ids() -> None:

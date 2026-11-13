@@ -1,10 +1,9 @@
 """Render the CDD deck with the DiligenceIQ v4.1 template.
 
-The builder in ``tools/cdd-report-builder`` is the renderer that produced
-Compost_Crew_CDD_v4: a fixed slide master, native charts, and pages removed
-when the evidence does not support them. This module fills ``content.json``
-from the deal's agent specs and calls that renderer. Deal-specific sentences
-from the Compost Crew analyst script are not copied.
+The builder in ``tools/cdd-report-builder`` is the renderer: a fixed slide master,
+native charts, and pages removed when the evidence does not support them.
+This module fills ``content.json`` from the deal's agent specs and calls that
+renderer. Deal-specific sentences from an analyst script are not copied.
 """
 
 from __future__ import annotations
@@ -990,7 +989,7 @@ def build_skill_content(
         _bind_ids([item["id"] for item in math.milestones])
         put("S010_platform_evolution", {
             "title": _title(f"How {company} was built, from the milestones the CIM states"),
-            "subtitle": _title("The 2018 line is the leadership-page biography. These are not accounts."),
+            "subtitle": _title("These are the CIM's own history lines. They are not accounts."),
             "elements": {
                 "flow": _table(["When", "Event"], [[item["when"], item["what"]] for item in math.milestones[:6]]),
                 "right": _bullets([f"{item['when']}: {item['what']}" for item in math.milestones[:4]]),
@@ -1137,10 +1136,11 @@ def build_skill_content(
                     ["Step", "$M", "%"],
                     [[f"{row['earlier']} to {row['later']}", f"{row['delta']:+.2f}", f"{row['pct']:+.1f}"] for row in math.yoy],
                 ),
-                "right": _bullets([
+                "right": _bullets(list(dict.fromkeys([
                     f"{row['earlier']} to {row['later']}: {row['delta']:+.2f} million, {row['pct']:+.1f}%."
                     for row in math.yoy
-                ]),
+                    if row.get("earlier") != row.get("later")
+                ]))),
             },
         })
 
@@ -1167,12 +1167,20 @@ def build_skill_content(
         bio_ids = [person["bio_id"] for person in bios if person.get("bio_id")]
         if bio_ids:
             _bind_ids([math.leaders[0]["id"], *bio_ids])
-        ben = next((person for person in math.leaders if person["name"] == "Ben Parry" and "2018" in person.get("bio", "")), None)
+        buyer = next(
+            (person for person in math.leaders if re.search(r"(?i)\bacquir", str(person.get("bio") or ""))),
+            None,
+        )
+        buyer_year = ""
+        if buyer:
+            year_match = re.search(r"\b((?:19|20)\d{2})\b", str(buyer.get("bio") or ""))
+            if year_match:
+                buyer_year = f" in {year_match.group(1)}"
         put("S015_barriers", {
             "title": _title(
-                "Ben Parry acquired the company in 2018, on the CIM leadership page"
-                if ben else
-                "The CIM names a leadership team and the biography under each name"
+                f"{buyer['name']} acquired the company{buyer_year}, on the CIM leadership page"
+                if buyer else
+                "The record names a leadership team and the biography under each name"
             ),
             "subtitle": _title("The biographies are the CIM's wording. These people were not interviewed."),
             "heads": {
@@ -1190,10 +1198,10 @@ def build_skill_content(
                 ]),
                 "right": _bullets(
                     [
-                        "The 2018 acquisition sentence is the biography under Ben Parry, CEO.",
+                        f"The acquisition sentence is the biography under {buyer['name']}.",
                         "No interview file was loaded for these names.",
                     ]
-                    if ben else
+                    if buyer else
                     [
                         "No interview file was loaded for these names.",
                         "The management module did not return a separate biography.",
@@ -1709,7 +1717,7 @@ def build_skill_content(
             })
     if math.forward and "S072_growth_levers_overview" not in slides:
         dc_line = (math.forward or {}).get("dc") or {}
-        utica_line = (math.forward or {}).get("utica") or {}
+        ramp_line = (math.forward or {}).get("ramp") or {}
         step = next((item for item in math.claims if item["name"] == "Rate step-up"), None)
         lever_rows = []
         lever_ids = []
@@ -1720,13 +1728,13 @@ def build_skill_content(
                 dc_line.get("mix") or "—",
             ])
             lever_ids.append(dc_line["id"])
-        if utica_line.get("id"):
+        if ramp_line.get("id"):
             lever_rows.append([
-                "Utica",
-                f"{utica_line['early']} in {utica_line['early_year']}",
-                f"{utica_line['plan']} in {utica_line['plan_year']}",
+                ramp_line.get("name") or "Ramp line",
+                f"{ramp_line['early']} in {ramp_line['early_year']}",
+                f"{ramp_line['plan']} in {ramp_line['plan_year']}",
             ])
-            lever_ids.append(utica_line["id"])
+            lever_ids.append(ramp_line["id"])
         if step:
             lever_rows.append(["Rate step-up", step["stated"], step["test"]])
             lever_ids.append(step["id"])
@@ -2060,13 +2068,33 @@ def build_skill_content(
         if products.get("revenue_id"):
             product_ids.append(products["revenue_id"])
         _bind_ids(product_ids)
-        put("S082_l6_product_expansion", {
-            "title": _title(
-                f"Utica and Key Compostables are {products['now']:.1f}% of 2025 workbook revenue "
+        zero_lines = [
+            line for line in products["lines"]
+            if line.get("actual_amount") == 0 and line.get("name")
+        ]
+        zero_notes = [
+            f"{line['name']} is zero in {line.get('actual_year') or 'the actual year'} on this sheet. Its plan amount is not a result."
+            for line in zero_lines[:2]
+        ] or ["A line with no actual amount is not a result."]
+        named = [str(line.get("name") or "") for line in products["lines"] if line.get("name")]
+        if (
+            products.get("now") is not None
+            and products.get("later") is not None
+            and len(named) == 2
+        ):
+            product_title = (
+                f"{named[0]} and {named[1]} are {products['now']:.1f}% of 2025 workbook revenue "
                 f"and {products['later']:.1f}% of the 2030 plan"
-                if products.get("now") is not None and products.get("later") is not None else
-                f"Utica and the product lines on the segment sheet for {company}"
-            ),
+            )
+        elif products.get("now") is not None and products.get("later") is not None:
+            product_title = (
+                f"Segment lines are {products['now']:.1f}% of 2025 workbook revenue "
+                f"and {products['later']:.1f}% of the 2030 plan"
+            )
+        else:
+            product_title = f"Lines on the segment sheet for {company}"
+        put("S082_l6_product_expansion", {
+            "title": _title(product_title),
             "subtitle": _title("Each amount is the segment sheet. The shares use workbook revenue for the same year."),
             "heads": {
                 "left_head": "Lines on the segment sheet",
@@ -2078,7 +2106,7 @@ def build_skill_content(
                     [[line["name"], line["actual"], line["plan"]] for line in products["lines"]],
                 ),
                 "right": _bullets([
-                    "Utica is zero in 2025 on this sheet. Its plan amount is not a result.",
+                    *zero_notes,
                     "A permit and a grant are not a facility profit and loss.",
                 ]),
             },
@@ -2481,6 +2509,7 @@ def build_skill_content(
         "slides": slides,
         "withhold": withhold,
         "calculations": math.payload(),
+        **({"published_pages": math.published_pages} if math.published_pages else {}),
         "exceptions": [
             {
                 "severity": gap["severity"],
@@ -2515,6 +2544,13 @@ def render_cdd_with_skill(ctx: BuildContext, out_path: Path) -> None:
     work.mkdir(parents=True, exist_ok=True)
     book = prepare_evidence(ctx, work)
     content, _withheld = build_skill_content(ctx, book)
+    from agetic_cdd_api.services_step_log import record_calculations
+
+    ctx.lineage_step_ids = record_calculations(
+        ctx.deal_slug,
+        list(content.get("calculations") or []),
+        book,
+    )
     (work / "content.json").write_text(json.dumps(content), encoding="utf-8")
     (work / "evidence.json").write_text(json.dumps({"facts": book.facts}), encoding="utf-8")
     subprocess.run(

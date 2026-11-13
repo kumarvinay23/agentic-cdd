@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DatabookLineItems } from "@/components/deal/DatabookLineItems";
 import { DataQualityReview } from "@/components/deal/DataQualityReview";
+import { FinancialHistoryGrid } from "@/components/deal/FinancialHistoryGrid";
+import {
+  FigureSourceTip,
+  SourceDocumentPanel,
+  type SourceTarget,
+} from "@/components/deal/SourceDocumentPanel";
 import {
   DEFAULT_PAGE_SIZE,
   ListPagination,
@@ -20,6 +27,7 @@ import {
   databookExportPromotedCsv,
   databookFindingsRequest,
   databookImportExcelRequest,
+  databookLinesRequest,
   databookReleaseRequest,
   databookRemapRequest,
   databookRescanRequest,
@@ -27,11 +35,14 @@ import {
   databookRowsRequest,
   databookSummaryRequest,
   databookValidationPackRequest,
+  databookViewRequest,
   databookVouchRequest,
   dataQualityRequest,
   type DatabookFinding,
+  type DatabookLineRow,
   type DatabookRow,
   type DatabookSummary,
+  type DatabookView,
   type DataQualityCandidate,
   type DataQualityItem,
   type DataQualityPayload,
@@ -39,7 +50,7 @@ import {
   type ValidationPack,
 } from "@/lib/api";
 
-type Tab = "files" | "derived" | "findings" | "quality" | "pack";
+type Tab = "history" | "files" | "derived" | "findings" | "quality" | "pack";
 
 export function DealDatabook({
   dealId,
@@ -50,10 +61,13 @@ export function DealDatabook({
   accessToken?: string;
   onError: (msg: string | null) => void;
 }) {
-  const [tab, setTab] = useState<Tab>("quality");
+  const [tab, setTab] = useState<Tab>("history");
   const [summary, setSummary] = useState<DatabookSummary | null>(null);
+  const [view, setView] = useState<DatabookView | null>(null);
+  const [lineRows, setLineRows] = useState<DatabookLineRow[]>([]);
   const [rows, setRows] = useState<DatabookRow[]>([]);
   const [findings, setFindings] = useState<DatabookFinding[]>([]);
+  const [showWorkingStore, setShowWorkingStore] = useState(false);
   const [quality, setQuality] = useState<DataQualityPayload | null>(null);
   const [pack, setPack] = useState<ValidationPack | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,6 +80,13 @@ export function DealDatabook({
   const [rereadFile, setRereadFile] = useState("");
   const [materialOnly, setMaterialOnly] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [sourceTarget, setSourceTarget] = useState<SourceTarget | null>(null);
+  const [rowTip, setRowTip] = useState<{
+    x: number;
+    y: number;
+    title: string;
+    readFrom: string;
+  } | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -73,18 +94,31 @@ export function DealDatabook({
     setLoading(true);
     onError(null);
     try {
-      const [sum, dq, rowRes, findRes, packRes] = await Promise.all([
-        databookSummaryRequest(accessToken, dealId),
-        dataQualityRequest(accessToken, dealId),
-        databookRowsRequest(accessToken, dealId, { material: materialOnly }),
-        databookFindingsRequest(accessToken, dealId),
-        databookValidationPackRequest(accessToken, dealId).catch(() => null),
+      const [viewRes, linesRes] = await Promise.all([
+        databookViewRequest(accessToken, dealId).catch(() => null),
+        databookLinesRequest(accessToken, dealId, { limit: 4000 }).catch(() => null),
       ]);
-      setSummary(sum.data);
-      setQuality(dq);
-      setRows(rowRes.data.items);
-      setFindings(findRes.data.items);
-      setPack(packRes?.data ?? null);
+      const nextView = viewRes?.data ?? null;
+      setView(nextView);
+      setLineRows(linesRes?.data.rows ?? []);
+      // The series grid stays on the ontology view. Working-store counts, review,
+      // findings, and the validation pack still come from the file store.
+      try {
+        const [sum, dq, rowRes, findRes, packRes] = await Promise.all([
+          databookSummaryRequest(accessToken, dealId),
+          dataQualityRequest(accessToken, dealId),
+          databookRowsRequest(accessToken, dealId, { material: materialOnly }),
+          databookFindingsRequest(accessToken, dealId),
+          databookValidationPackRequest(accessToken, dealId).catch(() => null),
+        ]);
+        setSummary(sum.data);
+        setQuality(dq);
+        setRows(rowRes.data.items);
+        setFindings(findRes.data.items);
+        setPack(packRes?.data ?? null);
+      } catch (storeErr) {
+        if (nextView?.source !== "ontology") throw storeErr;
+      }
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Failed to load Databook");
     } finally {
@@ -92,9 +126,31 @@ export function DealDatabook({
     }
   }, [accessToken, dealId, materialOnly, onError]);
 
+  const loadFileStore = useCallback(async () => {
+    if (!accessToken) return;
+    const [sum, dq, rowRes, findRes, packRes] = await Promise.all([
+      databookSummaryRequest(accessToken, dealId),
+      dataQualityRequest(accessToken, dealId),
+      databookRowsRequest(accessToken, dealId, { material: materialOnly }),
+      databookFindingsRequest(accessToken, dealId),
+      databookValidationPackRequest(accessToken, dealId).catch(() => null),
+    ]);
+    setSummary(sum.data);
+    setQuality(dq);
+    setRows(rowRes.data.items);
+    setFindings(findRes.data.items);
+    setPack(packRes?.data ?? null);
+  }, [accessToken, dealId, materialOnly]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const needsFile =
+      tab === "quality" || tab === "files" || tab === "findings" || tab === "pack" || showWorkingStore;
+    if (view?.source === "ontology" && needsFile) void loadFileStore();
+  }, [tab, showWorkingStore, view?.source, loadFileStore]);
 
   const requireReason = () => {
     const text = reason.trim();
@@ -330,6 +386,12 @@ export function DealDatabook({
   };
 
   const flags = summary?.flags || {};
+  const historyView = useMemo(
+    () => annotateHistory(historyFromWorkingStore(view, summary), rows, quality),
+    [view, summary, rows, quality],
+  );
+  const historyFromStore =
+    historyView?.source === "file" && (view == null || view.source === "ontology");
   const needsReview = quality?.summary?.needs_review ?? 0;
   const packTotal = pack?.counts?.total ?? summary?.validation_pack?.counts?.total ?? 0;
   const heldRows = rows.filter((r) => r.status === "held_out" || r.status === "candidate");
@@ -370,11 +432,28 @@ export function DealDatabook({
                 ? ` · ${summary.release.request_count ?? summary.release.counts?.requests} open requests`
                 : null}
             </p>
+          ) : view?.source === "ontology" ? (
+            <p className="mt-1 text-[12px] text-[#64748b]">
+              {historyFromStore
+                ? "Financial history below is the working store. Ontology facts are not published for this deal yet."
+                : `Financial history is read from ontology facts${
+                    view.reporting_currency ? ` (${view.reporting_currency})` : ""
+                  }.`}
+            </p>
           ) : (
             <p className="mt-1 text-[12px] text-[#b45309]">
               No release yet — reports will withhold material agent figures until Rescan or Release.
             </p>
           )}
+          {summary?.release && view?.source === "ontology" ? (
+            <p className="mt-1 text-[12px] text-[#64748b]">
+              {historyFromStore
+                ? "Financial history below is the working store. Ontology facts are not published for this deal yet."
+                : `Financial history is read from ontology facts${
+                    view.reporting_currency ? ` (${view.reporting_currency})` : ""
+                  }. The counts below are the working store.`}
+            </p>
+          ) : null}
           {freshness?.stale_reason ? (
             <p className="mt-1 text-[12px] text-[#b45309]">{freshness.stale_reason}</p>
           ) : summary?.meta?.last_rescan_at || summary?.meta?.last_deep_at ? (
@@ -494,9 +573,16 @@ export function DealDatabook({
       <div className="flex flex-wrap gap-6 border-b border-[#e5e7eb] text-[13px]">
         {(
           [
+            [
+              "history",
+              `Financial history (${historyView?.totals.metrics ?? Object.keys(historyView?.series || {}).length})`,
+            ],
             ["quality", `Needs review (${needsReview})`],
             ["pack", `Validation pack (${packTotal})`],
-            ["derived", `Derived data (${rows.length})`],
+            [
+              "derived",
+              `Derived data (${lineRows.length || rows.length})`,
+            ],
             ["findings", `Findings (${findings.length})`],
             ["files", "Uploaded files"],
           ] as const
@@ -532,6 +618,38 @@ export function DealDatabook({
 
       {loading ? <p className="text-[13px] text-[#64748b]">Loading Databook…</p> : null}
 
+      {!loading && tab === "history" ? (
+        <section className="space-y-3">
+          <FinancialHistoryGrid
+            view={historyView}
+            busy={busy}
+            onOpenSource={setSourceTarget}
+            onAcceptCell={(selection) => {
+              if (selection.cell?.value == null || !selection.cell.fact_id) return;
+              void onAccept(
+                {
+                  kind: "conflict",
+                  metric: selection.metric,
+                  fiscal_year: selection.year,
+                  chosen: selection.cell.value,
+                  candidates: [],
+                  scope: "ontology",
+                  rule: "hitl",
+                },
+                {
+                  value: selection.cell.value,
+                  sources: selection.cell.source ? [selection.cell.source] : [],
+                  captions: selection.cell.line_item ? [selection.cell.line_item] : [],
+                  chosen: true,
+                  stated_by: 1,
+                  row_ids: [selection.cell.fact_id],
+                },
+              );
+            }}
+          />
+        </section>
+      ) : null}
+
       {!loading && tab === "quality" ? (
         <section className="space-y-3">
           <DataQualityReview
@@ -563,100 +681,162 @@ export function DealDatabook({
       ) : null}
 
       {!loading && tab === "derived" ? (
-        <section className="space-y-3">
-          <p className="text-[13px] text-[#64748b]">
-            Select a held-out / candidate row, then Correct, Drop, or Vouch with a reason above.
-          </p>
-          <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-white">
-            <table className="w-full text-left text-[13px]">
-              <thead className="border-b border-[#e5e7eb] text-[11px] uppercase tracking-wide text-[#94a3b8]">
-                <tr>
-                  <th className="px-3 py-2 pr-2 font-medium" />
-                  <th className="py-2 pr-3 font-medium">Caption</th>
-                  <th className="py-2 pr-3 font-medium">Metric</th>
-                  <th className="py-2 pr-3 font-medium">FY</th>
-                  <th className="py-2 pr-3 font-medium">Value</th>
-                  <th className="py-2 pr-3 font-medium">Status</th>
-                  <th className="py-2 pr-3 font-medium">Source</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#e5e7eb]">
-                {derivedPager.pageItems.map((row) => (
-                  <tr
-                    key={row.row_id}
-                    className={selectedRowId === row.row_id ? "bg-[#f8fafc]" : undefined}
-                    onClick={() => setSelectedRowId(row.row_id)}
-                  >
-                    <td className="px-3 py-2 pr-2">
-                      <input
-                        type="radio"
-                        name="databook-row"
-                        checked={selectedRowId === row.row_id}
-                        onChange={() => setSelectedRowId(row.row_id)}
-                      />
-                    </td>
-                    <td className="py-2 pr-3 text-[#0f172a]">{row.caption}</td>
-                    <td className="py-2 pr-3 text-[#64748b]">{row.metric_key || "—"}</td>
-                    <td className="py-2 pr-3">{row.fiscal_year ?? "—"}</td>
-                    <td className="py-2 pr-3 font-medium">{formatNum(row.value)}</td>
-                    <td className="py-2 pr-3">
-                      <StatusPill status={row.status} />
-                    </td>
-                    <td className="py-2 pr-3 text-[#64748b]">{row.source_name}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <ListPagination
-              page={derivedPager.page}
-              pageCount={derivedPager.pageCount}
-              total={derivedPager.total}
-              from={derivedPager.from}
-              to={derivedPager.to}
-              pageSize={derivedPageSize}
-              onPageChange={derivedPager.setPage}
-              onPageSizeChange={setDerivedPageSize}
-            />
-          </div>
-          {selectedRowId ? (
-            <div className="flex flex-wrap gap-2">
+        <section className="space-y-5">
+          {lineRows.length > 0 ? <DatabookLineItems rows={lineRows} view={view} /> : null}
+
+          {lineRows.length === 0 && rows.length === 0 ? (
+            <p className="rounded-lg border border-[#e5e7eb] bg-white py-10 text-center text-[13px] text-[#64748b]">
+              No derived rows for this deal yet.
+            </p>
+          ) : null}
+
+          {lineRows.length > 0 ? (
+            <div className="border-t border-[#e5e7eb] pt-4">
               <button
                 type="button"
-                disabled={busy}
-                onClick={() => {
-                  const row = rows.find((r) => r.row_id === selectedRowId);
-                  if (row) void onCorrectRow(row);
-                }}
-                className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-medium text-[#0f172a] hover:bg-[#f8fafc] disabled:opacity-50"
+                onClick={() => setShowWorkingStore((v) => !v)}
+                className="text-[12px] font-medium text-[#1e3a5f] hover:underline"
               >
-                Correct
+                {showWorkingStore ? "Hide" : "Show"} file-backed working store ({rows.length})
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void onDropRow(selectedRowId)}
-                className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-medium text-[#0f172a] hover:bg-[#f8fafc] disabled:opacity-50"
-              >
-                Drop
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void onVouchRow(selectedRowId)}
-                className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-medium text-[#0f172a] hover:bg-[#f8fafc] disabled:opacity-50"
-              >
-                Vouch
-              </button>
-              <span className="self-center text-[11px] text-[#94a3b8]">
-                {heldRows.some((r) => r.row_id === selectedRowId)
-                  ? "Held-out / candidate selected"
-                  : "Already decided rows can still be corrected"}
-              </span>
             </div>
           ) : null}
-          {rows.length === 0 ? (
-            <p className="py-8 text-center text-[13px] text-[#64748b]">No derived rows yet.</p>
-          ) : null}
+
+          {(lineRows.length === 0 && rows.length > 0) || (lineRows.length > 0 && showWorkingStore) ? (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-[15px] font-semibold text-[#0f172a]">
+                    {lineRows.length === 0 ? "All line items" : "File-backed working store"}
+                  </h3>
+                  <p className="mt-0.5 text-[12px] text-[#64748b]">
+                    {rows.length.toLocaleString()} working-store rows
+                    {materialOnly ? " (material)" : ""}. Select a row, then Correct, Drop, or Vouch
+                    with a reason above.
+                    {lineRows.length === 0
+                      ? " Ontology line items are not published for this deal yet."
+                      : ""}
+                  </p>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-white">
+                  <table className="w-full text-left text-[13px]">
+                    <thead className="border-b border-[#e5e7eb] text-[11px] uppercase tracking-wide text-[#94a3b8]">
+                      <tr>
+                        <th className="px-3 py-2 pr-2 font-medium" />
+                        <th className="py-2 pr-3 font-medium">Caption</th>
+                        <th className="py-2 pr-3 font-medium">Metric</th>
+                        <th className="py-2 pr-3 font-medium">FY</th>
+                        <th className="py-2 pr-3 font-medium">Value</th>
+                        <th className="py-2 pr-3 font-medium">Status</th>
+                        <th className="py-2 pr-3 font-medium">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#e5e7eb]">
+                      {derivedPager.pageItems.map((row) => (
+                        <tr
+                          key={row.row_id}
+                          className={selectedRowId === row.row_id ? "bg-[#f8fafc]" : undefined}
+                          onMouseEnter={(event) => {
+                            const box = event.currentTarget.getBoundingClientRect();
+                            const table = row.table_name || row.source_ref?.table || "";
+                            setRowTip({
+                              x: box.left + 24,
+                              y: box.bottom + 6,
+                              title: `${row.caption} — ${row.source_name}`,
+                              readFrom: table ? `${table} · ${row.caption}` : row.caption,
+                            });
+                          }}
+                          onMouseLeave={() => setRowTip(null)}
+                          onClick={() => setSelectedRowId(row.row_id)}
+                        >
+                          <td className="px-3 py-2 pr-2">
+                            <input
+                              type="radio"
+                              name="databook-row"
+                              checked={selectedRowId === row.row_id}
+                              onChange={() => setSelectedRowId(row.row_id)}
+                            />
+                          </td>
+                          <td className="py-2 pr-3 text-[#0f172a]">{row.caption}</td>
+                          <td className="py-2 pr-3 text-[#64748b]">{row.metric_key || "—"}</td>
+                          <td className="py-2 pr-3">{row.fiscal_year ?? "—"}</td>
+                          <td className="py-2 pr-3 font-medium">{formatNum(row.value)}</td>
+                          <td className="py-2 pr-3">
+                            <StatusPill status={row.status} />
+                          </td>
+                          <td className="py-2 pr-3 text-[#64748b]">
+                            <button
+                              type="button"
+                              className="text-left text-[#1e3a5f] hover:underline"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setRowTip(null);
+                                setSourceTarget({
+                                  filename: row.source_name,
+                                  sheet: row.table_name || row.source_ref?.table || null,
+                                  line: row.caption,
+                                  metric: row.metric_key || undefined,
+                                  year: row.fiscal_year ?? undefined,
+                                  row: row.source_ref?.row,
+                                  col: row.source_ref?.col,
+                                });
+                              }}
+                            >
+                              {row.source_name}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <ListPagination
+                    page={derivedPager.page}
+                    pageCount={derivedPager.pageCount}
+                    total={derivedPager.total}
+                    from={derivedPager.from}
+                    to={derivedPager.to}
+                    pageSize={derivedPageSize}
+                    onPageChange={derivedPager.setPage}
+                    onPageSizeChange={setDerivedPageSize}
+                  />
+                </div>
+                {selectedRowId ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        const row = rows.find((r) => r.row_id === selectedRowId);
+                        if (row) void onCorrectRow(row);
+                      }}
+                      className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-medium text-[#0f172a] hover:bg-[#f8fafc] disabled:opacity-50"
+                    >
+                      Correct
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void onDropRow(selectedRowId)}
+                      className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-medium text-[#0f172a] hover:bg-[#f8fafc] disabled:opacity-50"
+                    >
+                      Drop
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void onVouchRow(selectedRowId)}
+                      className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-medium text-[#0f172a] hover:bg-[#f8fafc] disabled:opacity-50"
+                    >
+                      Vouch
+                    </button>
+                    <span className="self-center text-[11px] text-[#94a3b8]">
+                      {heldRows.some((r) => r.row_id === selectedRowId)
+                        ? "Held-out / candidate selected"
+                        : "Already decided rows can still be corrected"}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
         </section>
       ) : null}
 
@@ -796,6 +976,24 @@ export function DealDatabook({
           </div>
         </section>
       ) : null}
+      {rowTip ? (
+        <FigureSourceTip
+          x={rowTip.x}
+          y={rowTip.y}
+          title={rowTip.title}
+          readFrom={rowTip.readFrom}
+          issues={[]}
+        />
+      ) : null}
+      {sourceTarget ? (
+        <SourceDocumentPanel
+          accessToken={accessToken}
+          dealId={dealId}
+          target={sourceTarget}
+          rows={rows}
+          onClose={() => setSourceTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -836,6 +1034,123 @@ function triageRank(triage: string | null | undefined): number {
   if (!triage) return 99;
   const idx = order.indexOf(triage);
   return idx >= 0 ? idx : 50;
+}
+
+function historyFromWorkingStore(
+  view: DatabookView | null,
+  summary: DatabookSummary | null,
+): DatabookView | null {
+  if (view && view.status === "ready" && Object.keys(view.series || {}).length > 0) return view;
+  const series = seriesFromPromoted(summary?.promoted_preview);
+  const metrics = Object.keys(series).length;
+  if (metrics === 0) return view;
+  let mapped = 0;
+  let currency = view?.reporting_currency || "";
+  for (const byYear of Object.values(series)) {
+    for (const cell of Object.values(byYear)) {
+      mapped += 1;
+      if (!currency && cell.currency) currency = cell.currency;
+    }
+  }
+  return {
+    files: view?.files ?? [],
+    series,
+    model: view?.model ?? null,
+    totals: { ...(view?.totals ?? {}), metrics, mapped_rows: mapped, building: 0 },
+    reporting_currency: currency,
+    actual_through: view?.actual_through ?? null,
+    dq_cells: view?.dq_cells ?? {},
+    status: "ready",
+    source: "file",
+  };
+}
+
+function annotateHistory(
+  view: DatabookView | null,
+  rows: DatabookRow[],
+  quality: DataQualityPayload | null,
+): DatabookView | null {
+  if (!view) return view;
+  const series: DatabookView["series"] = {};
+  for (const [metric, byYear] of Object.entries(view.series || {})) {
+    series[metric] = {};
+    for (const [year, cell] of Object.entries(byYear || {})) {
+      const hit = matchRow(rows, metric, Number(year), cell?.value);
+      if (!hit) {
+        series[metric][year] = { ...cell };
+        continue;
+      }
+      const table = hit.table_name || hit.source_ref?.table || "";
+      series[metric][year] = {
+        ...cell,
+        line_item: hit.caption || cell?.line_item,
+        source: hit.source_name || cell?.source,
+        statement: hit.statement || cell?.statement || "",
+        sheet: table,
+        raw: table ? `${table} · ${hit.caption}` : hit.caption,
+        source_row: hit.source_ref?.row ?? null,
+        source_col: hit.source_ref?.col ?? null,
+      };
+    }
+  }
+  const dq = { ...(view.dq_cells || {}) };
+  let n = 1;
+  for (const item of quality?.items ?? []) {
+    if (item.kind !== "conflict" || item.fiscal_year == null) continue;
+    const metric = item.metric_key || item.metric;
+    if (!metric || !series[metric]?.[String(item.fiscal_year)]) continue;
+    const key = `${metric}|${item.fiscal_year}`;
+    if ((dq[key] || []).length > 0) continue;
+    const detail = item.candidates
+      .map((candidate) => {
+        const caption = candidate.captions?.[0] || metric;
+        const source = candidate.sources?.[0] || "a source";
+        const used = candidate.chosen ? " (used)" : "";
+        return `${formatNum(candidate.value)} as '${caption}' in ${source}${used}`;
+      })
+      .join("\n");
+    dq[key] = [{ n, kind: "conflict", label: "Sources disagree", detail }];
+    n += 1;
+  }
+  return { ...view, series, dq_cells: dq };
+}
+
+function matchRow(
+  rows: DatabookRow[],
+  metric: string,
+  year: number,
+  value: number | null | undefined,
+): DatabookRow | null {
+  const hits = rows.filter((row) => row.metric_key === metric && row.fiscal_year === year);
+  if (hits.length === 0 || value == null || !Number.isFinite(value)) return hits[0] ?? null;
+  return hits.reduce((best, row) =>
+    Math.abs(row.value - value) < Math.abs(best.value - value) ? row : best,
+  );
+}
+
+function seriesFromPromoted(
+  preview: Array<Record<string, unknown>> | undefined,
+): DatabookView["series"] {
+  const series: DatabookView["series"] = {};
+  for (const row of preview ?? []) {
+    const metric = typeof row.metric_key === "string" ? row.metric_key : "";
+    const year = Number(row.fiscal_year);
+    const value = typeof row.value === "number" ? row.value : Number(row.value);
+    if (!metric || !Number.isFinite(year) || !Number.isFinite(value)) continue;
+    const sources = Array.isArray(row.sources) ? row.sources.map(String) : [];
+    const captions = Array.isArray(row.captions) ? row.captions.map(String) : [];
+    const byYear = (series[metric] ??= {});
+    byYear[String(year)] = {
+      value,
+      currency: typeof row.currency === "string" ? row.currency : "",
+      unit: typeof row.unit === "string" ? row.unit : null,
+      source: sources[0] || "",
+      line_item: captions[0] || metric,
+      statement: typeof row.statement === "string" ? row.statement : "",
+      fact_id: null,
+    };
+  }
+  return series;
 }
 
 function formatNum(value: unknown): string {

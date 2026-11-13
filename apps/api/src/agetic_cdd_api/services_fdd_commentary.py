@@ -487,14 +487,46 @@ def _qoe_has_real_adjustments(qoe: QoeWorkbookDoc | None) -> bool:
         return bool(register)
 
 
-def _ebitda_basis_sentence(
+def _ebitda_cells_for_year(
+    store: ExhibitStoreDoc, year: int
+) -> tuple[ExhibitCell | None, ExhibitCell | None]:
+    """Return (workbook, pack) EBITDA cells for *year* when present."""
+    wb: ExhibitCell | None = None
+    pack: ExhibitCell | None = None
+    for ex in store.exhibits or []:
+        for cell in ex.cells or []:
+            if (cell.metric_key or "").lower() != "ebitda":
+                continue
+            if cell.fiscal_year != year or cell.value is None:
+                continue
+            blob = " ".join(
+                str(x or "")
+                for x in (cell.basis_label, cell.label, cell.model_id)
+            ).lower()
+            mid = (cell.model_id or "").upper()
+            if (
+                "workbook" in blob
+                or mid in {"M1", "M2", "M8"}
+                or ex.exhibit_id in {TRADING_EXHIBIT_ID, "ex_db_metrics"}
+            ):
+                if wb is None or mid in {"M1", "M2"}:
+                    wb = cell
+            if "monthly pack" in blob or "management" in blob or ex.exhibit_id == "ex_db_is":
+                if pack is None or ex.exhibit_id == "ex_db_is":
+                    pack = cell
+    return wb, pack
+
+
+def _ebitda_basis_sentences(
     deal_slug: str,
     run_id: str,
     store: ExhibitStoreDoc,
-) -> CommentarySentence | None:
-    """One-line note: report uses investor-workbook EBITDA (via exhibit token)."""
-    from agetic_cdd_api.services_fdd_sources import classify_source, display_source_name
-    from agetic_cdd_api.services_fdd_store import load_fact_table
+) -> list[CommentarySentence]:
+    """Workbook EBITDA headline plus a one-line pack peer when they diverge."""
+    from datetime import date
+
+    from agetic_cdd_api.services_fdd_findings import _pack_metric_from_claims
+    from agetic_cdd_api.services_fdd_tokens import format_fdd_number, make_token
 
     tok, ref, cell = _first_cell_token(
         store,
@@ -505,28 +537,72 @@ def _ebitda_basis_sentence(
         historical_only=True,
     )
     if tok is None or cell is None:
-        return None
+        return []
+    # Closed-year trading / IS EBITDA is workbook-locked after bridge. Do not
+    # re-label from a competing pack fact (that produced contradictory basis).
     src = "investor workbook"
-    facts = load_fact_table(deal_slug, run_id)
-    if facts:
-        year = int(cell.fiscal_year or 0)
-        for f in facts.facts:
-            if (
-                f.metric_key == "ebitda"
-                and f.value is not None
-                and int(f.fiscal_year or 0) == year
-            ):
-                kind = classify_source(
-                    f.sources, f.labels.source if f.labels else None
-                )
-                src = display_source_name(kind, f.sources)
-                break
-    # Use the exhibit token only — never type raw decimals into prose (P6 ban).
-    return _sentence(
-        "A",
-        f"EBITDA basis is the {src}; closed-year figure is {tok}.",
-        citation=ref or cell_ref(cell.exhibit_id, cell.cell_id),
-    )
+    mid = (cell.model_id or "").upper()
+    if mid and mid not in {"M1", "M2", "M8"}:
+        src = _cell_basis_source_label(cell)
+    out = [
+        _sentence(
+            "A",
+            f"EBITDA basis is the {src}; closed-year figure is {tok}.",
+            citation=ref or cell_ref(cell.exhibit_id, cell.cell_id),
+        )
+    ]
+    # Peer note: prior-year workbook vs pack when they differ (e.g. 1.12 vs 1.14).
+    closed = date.today().year - 1
+    prior = closed - 1
+    wb_prior, pack_prior = _ebitda_cells_for_year(store, prior)
+    pack_v: float | None = None
+    pack_cite = f"gap:ebitda:{prior}"
+    if pack_prior is not None:
+        try:
+            pack_v = float(pack_prior.value)  # type: ignore[arg-type]
+            pack_cite = cell_ref(pack_prior.exhibit_id, pack_prior.cell_id)
+        except (TypeError, ValueError):
+            pack_v = None
+    if pack_v is None:
+        claimed = _pack_metric_from_claims(
+            deal_slug, run_id, metric_key="ebitda", years={prior}
+        )
+        pack_v = claimed.get(prior)
+        if pack_v is not None:
+            pack_cite = f"claim:ebitda:FY{prior}"
+    wb_v: float | None = None
+    wb_tok: str | None = None
+    if wb_prior is not None:
+        try:
+            wb_v = float(wb_prior.value)  # type: ignore[arg-type]
+            wb_tok = make_token(wb_prior.exhibit_id, wb_prior.cell_id)
+        except (TypeError, ValueError):
+            wb_v = None
+    if (
+        wb_v is not None
+        and pack_v is not None
+        and wb_tok is not None
+        and abs(wb_v - pack_v) >= 0.005
+    ):
+        out.append(
+            _sentence(
+                "A",
+                f"Prior-year EBITDA: investor workbook {wb_tok} vs monthly pack "
+                f"{format_fdd_number(pack_v)}.",
+                citation=pack_cite,
+            )
+        )
+    return out
+
+
+def _ebitda_basis_sentence(
+    deal_slug: str,
+    run_id: str,
+    store: ExhibitStoreDoc,
+) -> CommentarySentence | None:
+    """Back-compat: first EBITDA basis sentence only."""
+    sentences = _ebitda_basis_sentences(deal_slug, run_id, store)
+    return sentences[0] if sentences else None
 
 
 def _is_adjusted_earnings_cell(cell: ExhibitCell | None) -> bool:
@@ -653,11 +729,25 @@ def _prefer_metric_ref(
     *,
     historical_only: bool = True,
 ) -> str | None:
-    """Latest matching cell_ref for *metric_key* within *exhibit_ids*."""
+    """Latest matching cell_ref for *metric_key* within *exhibit_ids*.
+
+    When years tie, prefer earlier *exhibit_ids* (callers put calculated M2
+    ahead of reported IS so GM% stays on one source).
+    """
     idx = index_cells(store)
     allowed = set(exhibit_ids)
+    # Keep first occurrence so callers can put M2/M1 ahead of *exhibit_ids
+    # without later duplicates overwriting that preferred rank.
+    eid_rank: dict[str, int] = {}
+    for i, eid in enumerate(exhibit_ids):
+        if eid not in eid_rank:
+            eid_rank[eid] = i
+    import re
+
     want = metric_key.lower().replace(" ", "_")
-    candidates: list[tuple[int, str]] = []
+    # Exact metric_key / cell_id, or ``{want}_fyYYYY…`` — not revenue_yoy for revenue.
+    cid_exact = re.compile(rf"^{re.escape(want)}(?:_fy\d{{4}}\w*)?$")
+    candidates: list[tuple[int, int, int, str]] = []
     for ref, cell in idx.items():
         if cell.exhibit_id not in allowed or cell.value is None:
             continue
@@ -665,14 +755,18 @@ def _prefer_metric_ref(
             continue
         mk = (cell.metric_key or "").lower().replace(" ", "_")
         cid = (cell.cell_id or "").lower()
-        if mk != want and not cid.startswith(f"{want}_") and cid != want:
+        if mk != want and cid != want and not cid_exact.match(cid):
             continue
         year = int(cell.fiscal_year or 0)
-        candidates.append((-year, ref))
+        # Prefer calculated levels over reported % when both exist.
+        fig_rank = 0 if str(getattr(cell.figure_type, "value", cell.figure_type)) == "calculated" else 1
+        candidates.append(
+            (-year, eid_rank.get(cell.exhibit_id, 999), fig_rank, ref)
+        )
     if not candidates:
         return None
     candidates.sort()
-    return candidates[0][1]
+    return candidates[0][3]
 
 
 def _prefer_trading_anchor(
@@ -1095,10 +1189,18 @@ def _request_title_is_open_year(title: str, closed_cutoff: int) -> bool:
     title_l = (title or "").lower()
     if "ytd" in title_l:
         return True
-    if " vs " not in title_l and "(contradicted)" not in title_l:
+    years = [int(m.group(1)) for m in re.finditer(r"\bfy\s*(20\d{2})\b", title_l)]
+    if not years:
         return False
-    for match in re.finditer(r"\bfy\s*(20\d{2})\b", title_l):
-        if int(match.group(1)) > closed_cutoff:
+    if any(y > closed_cutoff for y in years):
+        # Plan / open-year claim restatements (contradicted or unverifiable).
+        if (
+            " vs " in title_l
+            or "contradict" in title_l
+            or "unverifiable" in title_l
+            or "resolve claim" in title_l
+            or "gap" in title_l
+        ):
             return True
     return False
 
@@ -1214,13 +1316,39 @@ def _limitation_sentence_text(lim: CommentaryLimitation) -> str:
     return "An open diligence item remains pending coverage."
 
 
+def _costs_basis_label(store: ExhibitStoreDoc, fallback: ExhibitCell | None) -> str:
+    """Prefer the locked M3 revenue cell basis over a raw costs pack line."""
+    for ex in store.exhibits or []:
+        if ex.exhibit_id != "ex_m3_costs":
+            continue
+        for note in ex.footnotes or []:
+            text = str(note)
+            if text.startswith("Basis:"):
+                if "monthly pack" in text.lower():
+                    return "monthly pack"
+                if "workbook" in text.lower():
+                    return "investor workbook"
+        for cell in ex.cells or []:
+            if (cell.metric_key or "").lower() == "revenue" and cell.value is not None:
+                return _cell_basis_source_label(cell)
+    return _cell_basis_source_label(fallback)
+
+
 def _cell_basis_source_label(cell: ExhibitCell | None) -> str:
     """Investor workbook vs monthly pack for Key findings source tags."""
     if cell is None:
         return "investor workbook"
-    # M1 / M2 / M6 / M8 model cells are workbook-preferred after bridge.
+    # Specialist model cells follow the locked exhibit basis after bridge.
     mid = (cell.model_id or "").upper()
-    if mid in {"M1", "M2", "M6", "M8"}:
+    eid = (getattr(cell, "exhibit_id", None) or "").lower()
+    if mid in {"M1", "M2", "M3", "M5", "M6", "M7", "M8"} or eid.startswith(
+        ("ex_m1", "ex_m2", "ex_m8")
+    ):
+        blob_m = " ".join(
+            str(x or "") for x in (cell.basis_label, cell.label)
+        ).lower()
+        if "monthly pack" in blob_m or "management" in blob_m:
+            return "monthly pack"
         return "investor workbook"
     srcs = getattr(cell, "sources", None) or []
     blob = " ".join(
@@ -1238,6 +1366,27 @@ def _cell_basis_source_label(cell: ExhibitCell | None) -> str:
     if "workbook" in blob or "m1" in blob or "m2" in blob:
         return "investor workbook"
     return "investor workbook"
+
+
+def _pair_basis_source_label(
+    curr: ExhibitCell | None, prev: ExhibitCell | None
+) -> str:
+    """YoY source tag — prefer investor workbook when either side is M1/M2.
+
+    Closed-year YoY often pairs a workbook prior with a databook current that
+    still carries a pack ``basis_label``; tagging the pair as pack mislabels
+    the 1.12 → 0.57 workbook reading.
+    """
+    for cell in (curr, prev):
+        if cell is None:
+            continue
+        mid = (cell.model_id or "").upper()
+        eid = (getattr(cell, "exhibit_id", None) or "").lower()
+        if mid in {"M1", "M2", "M8"} or eid.startswith(("ex_m1", "ex_m2", "ex_m8")):
+            return "investor workbook"
+        if "workbook" in (cell.basis_label or "").lower():
+            return "investor workbook"
+    return _cell_basis_source_label(curr or prev)
 
 
 def _substantive_key_findings(
@@ -1284,7 +1433,7 @@ def _substantive_key_findings(
 
     rev_tok, rev_cell = _tok("revenue", closed)
     prev_rev_tok, prev_rev_cell = _tok("revenue", closed - 1)
-    src = _cell_basis_source_label(rev_cell)
+    src = _pair_basis_source_label(rev_cell, prev_rev_cell)
     if (
         rev_tok
         and prev_rev_tok
@@ -1306,7 +1455,7 @@ def _substantive_key_findings(
 
     ebitda_tok, ebitda_cell = _tok("ebitda", closed)
     prev_eb_tok, prev_eb_cell = _tok("ebitda", closed - 1)
-    src = _cell_basis_source_label(ebitda_cell)
+    src = _pair_basis_source_label(ebitda_cell, prev_eb_cell)
     if (
         ebitda_tok
         and prev_eb_tok
@@ -1327,7 +1476,7 @@ def _substantive_key_findings(
 
     margin_tok, margin_cell = _tok("ebitda_margin", closed)
     if margin_tok:
-        src = _cell_basis_source_label(margin_cell)
+        src = _pair_basis_source_label(margin_cell, None)
         out.append(f"FY{closed} EBITDA margin is {margin_tok} ({src}).")
 
     return out[:4]
@@ -1611,9 +1760,7 @@ def draft_section(
                     citation=QOE_EXHIBIT_ID,
                 ),
             ]
-            basis = _ebitda_basis_sentence(deal_slug, run_id, store)
-            if basis is not None:
-                sentences.append(basis)
+            sentences.extend(_ebitda_basis_sentences(deal_slug, run_id, store))
             if limitations:
                 sentences.append(
                     _sentence(
@@ -1700,17 +1847,83 @@ def draft_section(
                     citation="executive_summary",
                 ),
             ]
-            basis = _ebitda_basis_sentence(deal_slug, run_id, store)
-            if basis is not None:
-                sentences.append(basis)
-            if limitations:
-                sentences.append(
-                    _sentence(
-                        "Q",
-                        "Material open diligence items remain.",
-                        citation=limitations[0].item_id,
-                    )
+            # KPI strip helpers — prefer closed-year revenue / GM / net debt tokens.
+            # Gross margin: prefer M2 calculated GP÷revenue over reported IS %.
+            for mk, label in (
+                ("revenue", "Revenue"),
+                ("gross_margin", "Gross margin"),
+                ("net_debt", "Net debt"),
+                ("nwc", "NWC"),
+            ):
+                prefer_ids = (
+                    [MARGIN_EXHIBIT_ID, TRADING_EXHIBIT_ID, "ex_db_is", *exhibit_ids]
+                    if mk == "gross_margin"
+                    else [
+                        TRADING_EXHIBIT_ID,
+                        MARGIN_EXHIBIT_ID,
+                        NET_DEBT_EXHIBIT_ID,
+                        NWC_EXHIBIT_ID,
+                        "ex_db_is",
+                        *exhibit_ids,
+                    ]
                 )
+                mk_tok, mk_ref, mk_cell = _first_cell_token(
+                    store,
+                    prefer_ids,
+                    prefer=_prefer_metric_ref(
+                        store,
+                        prefer_ids,
+                        mk,
+                        historical_only=True,
+                    ),
+                    historical_only=True,
+                )
+                if mk_tok and mk_ref and mk_cell is not None and mk_ref != ref:
+                    cell_refs.append(mk_ref)
+                    sentences.append(
+                        _sentence(
+                            "F",
+                            f"{label}: {_headline_figure_phrase(mk_tok, mk_cell, qoe_pending=False)}.",
+                            citation=mk_ref,
+                        )
+                    )
+            sentences.extend(_ebitda_basis_sentences(deal_slug, run_id, store))
+            # Findings dashboard lives on assemble nodes (slide_es_dashboard /
+            # finding cards) so SEC-ES prose stays free of typed digits (S1).
+            try:
+                from agetic_cdd_api.services_fdd_store import load_findings
+
+                findings_doc = load_findings(deal_slug, run_id)
+                if findings_doc and findings_doc.findings:
+                    sentences.append(
+                        _sentence(
+                            "Q",
+                            "Open diligence findings are summarised on the IC dashboard and key-findings pages.",
+                            citation="findings.json",
+                        )
+                    )
+            except Exception:
+                pass
+            if limitations:
+                from datetime import date as _date
+
+                closed_cut = _date.today().year - 1
+                material = [
+                    lim
+                    for lim in limitations
+                    if not _request_title_is_open_year(
+                        getattr(lim, "text", None) or getattr(lim, "item_id", "") or "",
+                        closed_cut,
+                    )
+                ]
+                if material:
+                    sentences.append(
+                        _sentence(
+                            "Q",
+                            "Material open diligence items remain.",
+                            citation=material[0].item_id,
+                        )
+                    )
             action = f"IC headline: {phrase}"
     elif section_id == "SEC-B":
         cite = (
@@ -1741,7 +1954,10 @@ def draft_section(
                 ),
                 _sentence(
                     "A",
-                    "Revenue and earnings on this page use the investor workbook basis.",
+                    (
+                        f"Revenue and earnings on this page use the "
+                        f"{_cell_basis_source_label(anchor_cell)} basis."
+                    ),
                     citation=cite,
                 ),
             ]
@@ -1769,9 +1985,7 @@ def draft_section(
                         citation=cite,
                     )
                 )
-                basis = _ebitda_basis_sentence(deal_slug, run_id, store)
-                if basis is not None:
-                    sentences.append(basis)
+                sentences.extend(_ebitda_basis_sentences(deal_slug, run_id, store))
             yoy_tok, yoy_ref, yoy_cell = _first_cell_token(
                 store,
                 exhibit_ids,
@@ -1833,6 +2047,28 @@ def draft_section(
             phrase = _headline_figure_phrase(
                 token, anchor_cell, qoe_pending=False
             )
+            gm_basis = "investor workbook"
+            for ex in store.exhibits or []:
+                if ex.exhibit_id != MARGIN_EXHIBIT_ID:
+                    continue
+                for note in ex.footnotes or []:
+                    if "monthly pack" in str(note).lower() and "gross margin" in str(note).lower():
+                        gm_basis = "monthly pack"
+                        break
+                for cell in ex.cells or []:
+                    if (cell.metric_key or "").lower() != "gross_margin":
+                        continue
+                    if "monthly pack" in (cell.basis_label or "").lower():
+                        gm_basis = "monthly pack"
+                        break
+            basis_line = (
+                f"Gross margin uses the {gm_basis} basis"
+                + (
+                    "; revenue and EBITDA use the investor workbook."
+                    if gm_basis == "monthly pack"
+                    else "."
+                )
+            )
             sentences = [
                 _sentence(
                     "F",
@@ -1841,18 +2077,23 @@ def draft_section(
                 ),
                 _sentence(
                     "A",
-                    "Figures on this page use the investor workbook basis.",
+                    basis_line,
                     citation=cite,
                 ),
             ]
-            delta_tok, delta_ref, delta_cell = _first_cell_token(
-                store,
-                exhibit_ids,
-                prefer=_prefer_metric_ref(
-                    store, exhibit_ids, "gross_margin_delta_pp"
-                ),
-                historical_only=True,
+            # Only cite a real GM Δpp cell — never fall back to EBITDA Δpp.
+            delta_pref = _prefer_metric_ref(
+                store, exhibit_ids, "gross_margin_delta_pp"
             )
+            delta_tok = delta_ref = delta_cell = None
+            if delta_pref:
+                delta_tok, delta_ref, delta_cell = _first_cell_token(
+                    store,
+                    exhibit_ids,
+                    prefer=delta_pref,
+                    historical_only=True,
+                )
+            walk_added = False
             if (
                 delta_tok
                 and delta_ref
@@ -1863,11 +2104,38 @@ def draft_section(
                 sentences.append(
                     _sentence(
                         "A",
-                        f"The gross-margin walk moves {delta_tok} pp year on year.",
+                        f"The gross-margin walk moves {delta_tok} pp year on year "
+                        f"on the {gm_basis} basis.",
                         citation=cite,
                     )
                 )
-            else:
+                walk_added = True
+            em_pref = _prefer_metric_ref(
+                store, exhibit_ids, "ebitda_margin_delta_pp"
+            )
+            if em_pref:
+                em_tok, em_ref, em_cell = _first_cell_token(
+                    store,
+                    exhibit_ids,
+                    prefer=em_pref,
+                    historical_only=True,
+                )
+                if (
+                    em_tok
+                    and em_ref
+                    and em_ref != ref
+                    and em_cell is not None
+                ):
+                    cell_refs.append(em_ref)
+                    sentences.append(
+                        _sentence(
+                            "A",
+                            f"EBITDA margin moves {em_tok} pp year on year on the investor workbook basis.",
+                            citation=cite,
+                        )
+                    )
+                    walk_added = True
+            if not walk_added:
                 sentences.append(
                     _sentence(
                         "A",
@@ -1936,7 +2204,11 @@ def draft_section(
                 ),
                 _sentence(
                     "A",
-                    "Cost ratios on this page use monthly pack revenue (same basis as pack costs).",
+                    (
+                        f"Cost ratios on this page use "
+                        f"{_costs_basis_label(store, anchor_cell)} revenue "
+                        f"(same basis as the cost lines)."
+                    ),
                     citation=cite,
                 ),
             ]
@@ -2099,12 +2371,41 @@ def draft_section(
                     f"Balance sheet: primary closed-year figure is {phrase}.",
                     citation=cite,
                 ),
-                _sentence(
-                    "A",
-                    f"Commentary focus — {focus}.",
-                    citation=section_id,
-                ),
             ]
+            secondary_added = False
+            for mk, label in (
+                ("cash", "Cash"),
+                ("total_equity", "Equity"),
+                ("total_liabilities", "Total liabilities"),
+            ):
+                pref = _prefer_metric_ref(
+                    store, exhibit_ids, mk, historical_only=True
+                )
+                if not pref or pref == ref:
+                    continue
+                tok2, ref2, cell2 = _first_cell_token(
+                    store, exhibit_ids, prefer=pref, historical_only=True
+                )
+                if tok2 and ref2 and cell2 is not None:
+                    cell_refs.append(ref2)
+                    sentences.append(
+                        _sentence(
+                            "A",
+                            f"{label} on the same closed-year basis is "
+                            f"{_headline_figure_phrase(tok2, cell2, qoe_pending=False)}.",
+                            citation=cite,
+                        )
+                    )
+                    secondary_added = True
+                    break
+            if not secondary_added:
+                sentences.append(
+                    _sentence(
+                        "A",
+                        "Supporting balance-sheet lines are shown in the M8 exhibit.",
+                        citation=cite,
+                    )
+                )
             if limitations:
                 sentences.append(
                     _sentence(
@@ -2154,12 +2455,42 @@ def draft_section(
                     f"Net working capital on the closed-year basis is {phrase}.",
                     citation=cite,
                 ),
-                _sentence(
-                    "A",
-                    f"Commentary focus — {focus}.",
-                    citation=section_id,
-                ),
             ]
+            parts: list[str] = []
+            for mk, label in (
+                ("accounts_receivable", "AR"),
+                ("inventory", "inventory"),
+                ("accounts_payable", "AP"),
+            ):
+                pref = _prefer_metric_ref(
+                    store, exhibit_ids, mk, historical_only=True
+                )
+                if not pref:
+                    continue
+                tok2, ref2, cell2 = _first_cell_token(
+                    store, exhibit_ids, prefer=pref, historical_only=True
+                )
+                if tok2 and ref2 and cell2 is not None:
+                    cell_refs.append(ref2)
+                    parts.append(
+                        f"{label} {_headline_figure_phrase(tok2, cell2, qoe_pending=False)}"
+                    )
+            if parts:
+                sentences.append(
+                    _sentence(
+                        "A",
+                        "Composition on the same basis: " + "; ".join(parts) + ".",
+                        citation=cite,
+                    )
+                )
+            else:
+                sentences.append(
+                    _sentence(
+                        "A",
+                        "NWC is on the narrow AR + inventory − AP basis shown in the M5 exhibit.",
+                        citation=cite,
+                    )
+                )
             action = f"NWC: {phrase}"
     elif section_id == "SEC-H":
         cite = (
@@ -2202,12 +2533,39 @@ def draft_section(
                     f"{lead} on the closed-year basis is {phrase}.",
                     citation=cite,
                 ),
-                _sentence(
-                    "A",
-                    f"Commentary focus — {focus}.",
-                    citation=section_id,
-                ),
             ]
+            bridge_bits: list[str] = []
+            for mk, label in (("cash", "cash"), ("gross_debt", "gross debt")):
+                pref = _prefer_metric_ref(
+                    store, exhibit_ids, mk, historical_only=True
+                )
+                if not pref or pref == ref:
+                    continue
+                tok2, ref2, cell2 = _first_cell_token(
+                    store, exhibit_ids, prefer=pref, historical_only=True
+                )
+                if tok2 and ref2 and cell2 is not None:
+                    cell_refs.append(ref2)
+                    period, _unit = _period_unit_label(cell2)
+                    bridge_bits.append(
+                        f"{period + ' ' if period else ''}{label} {tok2}".strip()
+                    )
+            if bridge_bits:
+                sentences.append(
+                    _sentence(
+                        "A",
+                        "Bridge components: " + "; ".join(bridge_bits) + ".",
+                        citation=cite,
+                    )
+                )
+            else:
+                sentences.append(
+                    _sentence(
+                        "A",
+                        f"{lead} equals gross interest-bearing debt less cash.",
+                        citation=cite,
+                    )
+                )
             action = f"{lead}: {phrase}"
     elif section_id == "SEC-K":
         # Key findings lead with substantiated exhibit reads; gaps are secondary.
@@ -2270,6 +2628,27 @@ def draft_section(
                     citation="SEC-K",
                 )
             )
+    elif section_id == "SEC-J":
+        # Keep plan / outer-year margins with the forecast review — do not
+        # drip FY+1E…FY+nE GM into the historical M2 series while this is held.
+        held_back = True
+        held_reason = (
+            "Forecast review held — plan and YTD gross margins remain with this section"
+        )
+        sentences = [
+            _sentence(
+                "Q",
+                "Forecast review is held back until the plan bridge is in scope.",
+                citation=section_id,
+            ),
+            _sentence(
+                "A",
+                "Plan and in-year YTD gross margins stay with this section and are not "
+                "shown on the historical revenue and margin exhibit until the forecast review is released.",
+                citation=section_id,
+            ),
+        ]
+        action = "Forecast review held back"
     else:
         # Generic template for D (and other soft sections)
         if token is None and section_id not in OPTIONAL_SECTIONS:

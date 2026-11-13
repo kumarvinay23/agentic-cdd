@@ -11,7 +11,7 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any  # noqa: TC003 — used in assemble signatures
 
 from agetic_cdd_api.fdd_schemas import (
     ArtefactStatus,
@@ -46,9 +46,45 @@ from agetic_cdd_api.services_fdd_tokens import (
 
 logger = logging.getLogger(__name__)
 
-ASSEMBLY_VERSION = "0.2.1"  # chart year labels A/E; exhibit label FY de-dupe
+ASSEMBLY_VERSION = "0.5.0"  # Phase D exhibit-backed chapter content depth
 _MAX_DECK_BULLETS = 6
+_MAX_DECK_FINDING_SLIDES = 5  # include business findings (e.g. cost growth) with claim gaps
 _TAG_LINE_RE = re.compile(r"^\[([FAMQ])\]\s*(.+)$")
+_DECK_COMMENT_SECTIONS = (
+    "SEC-ES",
+    "SEC-B",
+    "SEC-C",
+    "SEC-D",
+    "SEC-E",
+    "SEC-F",
+    "SEC-G",
+    "SEC-H",
+    "SEC-I",
+    "SEC-K",
+)
+_BRIDGE_EXHIBIT_IDS = frozenset({"ex_qoe_bridge", "ex_m5_nwc", "ex_m6_net_debt"})
+_ABBREVIATIONS = (
+    "EBITDA — Earnings before interest, tax, depreciation and amortisation.",
+    "QoE — Quality of Earnings; normalisation of reported earnings.",
+    "NWC — Net working capital (operating CA less operating CL).",
+    "Net debt — Interest-bearing debt less freely available cash.",
+    "GRR / NRR — Gross / net revenue retention.",
+    "Proven / doubtful — Databook release status on the cited figure.",
+)
+_SECTION_TITLES = {
+    "SEC-A": "Scope & perimeter",
+    "SEC-B": "Historical trading",
+    "SEC-C": "Revenue & margin",
+    "SEC-D": "Costs & people",
+    "SEC-E": "Quality of earnings",
+    "SEC-F": "Balance sheet / NAV",
+    "SEC-G": "Net working capital",
+    "SEC-H": "Net debt",
+    "SEC-I": "Cash flow / capex",
+    "SEC-J": "Forecast",
+    "SEC-K": "Key findings",
+    "SEC-ES": "Executive summary",
+}
 
 
 def _now() -> str:
@@ -182,7 +218,7 @@ def _presentation_standards_body(
         "Rounding: compute unrounded; displays HALF_UP to 2 d.p.; negatives in brackets.",
         "Periods: fiscal labels as shown on exhibits (e.g. FY22A, FY23A, FY24A).",
         "Deck charts: category axis = Period; value axis = currency · scale.",
-        "Sources: every figure resolves from the exhibit store via number tokens.",
+        "Sources: every figure is taken from the approved databook exhibits.",
     ]
     if release_id:
         bits.append(f"Databook release: {release_id}")
@@ -196,6 +232,159 @@ def _presentation_standards_body(
     return "\n".join(bits)
 
 
+def _front_matter_nodes(
+    *,
+    name: str,
+    commentary: CommentaryDoc | None,
+    store: ExhibitStoreDoc,
+    databook_release_id: str | None,
+    currency: str | None,
+    scale: str | None,
+    scope: Any | None,
+    manifest: Any | None,
+    findings_counts: dict[str, int],
+) -> tuple[list[ReportSpecNode], list[ReportSpecNode]]:
+    """Return (report_only_nodes, deck_slide_nodes_without_index)."""
+    from agetic_cdd_api.services_fdd_findings import severity_dashboard_line
+
+    from agetic_cdd_api.services_fdd_tokens import format_fdd_number
+
+    ents = ", ".join((scope.entities_in if scope else [])[:6]) or name
+    periods = ", ".join((scope.periods if scope else [])[:10]) or "as per exhibits"
+    mat = None
+    _basis_labels = {
+        "adj_ebitda": "adjusted EBITDA",
+        "adjusted_ebitda": "adjusted EBITDA",
+        "ebitda": "EBITDA",
+        "revenue": "revenue",
+    }
+    if scope is not None:
+        basis_key = (scope.materiality_basis or "").strip().lower()
+        basis_human = _basis_labels.get(basis_key, (scope.materiality_basis or "").replace("_", " "))
+        if scope.materiality_m is not None:
+            mat = f"{format_fdd_number(float(scope.materiality_m))} {scale or 'M'} ({basis_human})"
+        elif scope.materiality_pct is not None:
+            mat = f"{float(scope.materiality_pct) * 100:.1f}% of {basis_human}"
+    basis_lines = [
+        f"Entities in scope: {ents}",
+        f"Periods: {periods}",
+        f"Currency / scale: {currency or 'USD'} · {scale or 'M'}",
+        f"Materiality: {mat or 'per scope profile'}",
+        f"Databook release: {databook_release_id or 'unpinned'}",
+        "Figures are taken from the approved databook exhibits for this run.",
+    ]
+    caveats: list[str] = []
+    if manifest is not None:
+        if getattr(manifest, "draft_mode", False):
+            caveats.append("Draft mode — databook contract incomplete; partner gate blocked.")
+        if not getattr(manifest, "contract_complete", True):
+            reasons = list(getattr(manifest, "contract_reasons", None) or [])[:4]
+            caveats.append(
+                "Contract gaps: " + (", ".join(reasons) if reasons else "see readiness")
+            )
+        if not getattr(manifest, "g3_passed", True):
+            caveats.append("G3 model checks have open failures — some sections may be held.")
+        if not getattr(manifest, "g4_approved", False):
+            caveats.append("QoE judgements not G4-approved — earnings may be unadjusted.")
+    doubtful = 0
+    for ex in store.exhibits or []:
+        for cell in ex.cells or []:
+            if cell.status and cell.status.value == "doubtful":
+                doubtful += 1
+    if doubtful:
+        caveats.append(f"{doubtful} doubtful figure(s) remain in exhibits.")
+    if findings_counts.get("total"):
+        caveats.append(severity_dashboard_line(findings_counts))
+    if not caveats:
+        caveats.append("No material integrity caveats flagged for this run.")
+
+    toc_lines: list[str] = []
+    if commentary and commentary.sections:
+        for sid in _section_order(commentary):
+            draft = _draft_by_id(commentary).get(sid)
+            label = (draft.title if draft else None) or _SECTION_TITLES.get(sid, sid)
+            flag = " (held)" if draft and draft.held_back else ""
+            toc_lines.append(f"• {label}{flag}")
+    toc_lines.append("• Exhibits appendix")
+    toc_lines.append("• Not evidenced / open items")
+    toc_lines.append("• Presentation standards")
+
+    agenda_lines = [
+        "• Executive summary dashboard",
+        "• Trading, margin, costs",
+        "• QoE and bridges",
+        "• Balance sheet, NWC, net debt, cash",
+        "• Key findings",
+        "• Open items",
+    ]
+
+    report_nodes = [
+        ReportSpecNode(
+            node_id="sec_basis",
+            kind="section",
+            title="Basis of preparation",
+            body="\n".join(basis_lines),
+        ),
+        ReportSpecNode(
+            node_id="sec_integrity",
+            kind="section",
+            title="Data integrity and caveats",
+            body="\n".join(f"• {c}" for c in caveats),
+        ),
+        ReportSpecNode(
+            node_id="sec_toc",
+            kind="section",
+            title="Contents",
+            body="\n".join(toc_lines),
+        ),
+        ReportSpecNode(
+            node_id="sec_abbreviations",
+            kind="section",
+            title="Abbreviations & key terms",
+            body="\n".join(f"• {a}" for a in _ABBREVIATIONS),
+        ),
+    ]
+    deck_nodes = [
+        ReportSpecNode(
+            node_id="slide_agenda",
+            kind="slide",
+            title="Agenda",
+            body="\n".join(
+                agenda_lines
+                + [f"• {c}" for c in caveats[:2]]
+                + basis_lines[:2]
+            ),
+        ),
+    ]
+    return report_nodes, deck_nodes
+
+
+def _slide_spec_to_node(slide: Any, *, slide_index: int) -> ReportSpecNode:
+    """Mirror a chapter SlideSpec into a legacy kind=slide node for render_stub."""
+    lines: list[str] = []
+    if getattr(slide, "headline", None):
+        lines.append(str(slide.headline))
+    for obs in list(getattr(slide, "observations", None) or [])[:8]:
+        lines.append(f"• {obs}")
+    title = (getattr(slide, "banner", None) or getattr(slide, "headline", None) or slide.slide_id)
+    if getattr(slide, "layout", None) == "cover":
+        title = getattr(slide, "deal_name", None) or title
+    exhibit_id = None
+    for fid in list(getattr(slide, "figure_ids", None) or []):
+        if str(fid).startswith("ex_"):
+            exhibit_id = str(fid)
+            break
+    return ReportSpecNode(
+        node_id=f"slide_ch_{slide.slide_id}",
+        kind="slide",
+        title=str(title)[:120],
+        body=apply_currency_to_prose("\n".join(lines), None),
+        exhibit_id=exhibit_id,
+        cell_refs=[],
+        slide_index=slide_index,
+    )
+
+
 def assemble_report_spec(
     *,
     run_id: str,
@@ -206,11 +395,29 @@ def assemble_report_spec(
     databook_release_id: str | None = None,
     currency: str | None = None,
     scale: str | None = None,
+    findings: Any | None = None,
+    scope: Any | None = None,
+    manifest: Any | None = None,
+    include_deck_exhibit_appendix: bool | None = None,
+    qoe: Any | None = None,
+    request_list: Any | None = None,
+    claims: Any | None = None,
 ) -> ReportSpec:
-    """Build the shared Phase 7 report_spec (commentary + exhibits + standards)."""
+    """Build the shared Phase 7 report_spec (commentary + exhibits + chapters).
+
+    Section nodes keep SEC-* depth for legacy report render/tests. Widescreen
+    PPTX uses ``spec.slides`` (expected chapters 01–09). Slide nodes mirror
+    those chapters for ``render_stub(kind='deck')``.
+    """
+    from agetic_cdd_api.services_fdd_chapters import default_chrome, plan_chapter_slides
+    from agetic_cdd_api.services_fdd_findings import (
+        finding_page_title,
+        format_finding_card,
+        not_evidenced_body,
+    )
+
     idx = index_cells(store)
     name = company or deal_slug
-    # Skip empty model shells (held sections) so the appendix never shows stale figures.
     exhibits = sorted(
         (ex for ex in store.exhibits if ex.cells),
         key=_exhibit_sort_key,
@@ -218,6 +425,24 @@ def assemble_report_spec(
     n_cells = len(idx)
     n_ex = len(exhibits)
     n_sections = len(commentary.sections) if commentary else 0
+    findings_list = list(getattr(findings, "findings", None) or [])
+    findings_counts = dict(getattr(findings, "counts", None) or {})
+    if include_deck_exhibit_appendix is None:
+        include_deck_exhibit_appendix = bool(
+            getattr(scope, "deck_include_exhibit_appendix", False)
+        )
+
+    chapter_slides = plan_chapter_slides(
+        company=name,
+        store=store,
+        commentary=commentary,
+        scope=scope,
+        findings=findings,
+        qoe=qoe,
+        request_list=request_list,
+        claims=claims,
+        chrome=default_chrome(company=name, scope=scope),
+    )
 
     nodes: list[ReportSpecNode] = [
         ReportSpecNode(
@@ -225,24 +450,31 @@ def assemble_report_spec(
             kind="section",
             title="Cover",
             body=(
-                f"Financial Due Diligence — {name}\n"
+                f"Financial & tax due diligence — findings report\n"
+                f"Strictly Private and Confidential\n"
                 f"Sections: {n_sections} · Exhibits: {n_ex} · Figures: {n_cells}\n"
-                "One report_spec drives both the PDF report and IC deck (R5)."
+                f"Chapters: {len(chapter_slides)} slide(s) (01–09 storyline)"
             ),
-        ),
-        ReportSpecNode(
-            node_id="slide_title",
-            kind="slide",
-            title=f"FDD — {name}",
-            body=(
-                f"{n_sections} section(s) · {n_ex} exhibit(s) · {n_cells} figure(s)\n"
-                "Shared figures with the PDF report."
-            ),
-            slide_index=0,
         ),
     ]
 
-    slide_i = 1
+    report_fm, _deck_fm = _front_matter_nodes(
+        name=name,
+        commentary=commentary,
+        store=store,
+        databook_release_id=databook_release_id,
+        currency=currency,
+        scale=scale,
+        scope=scope,
+        manifest=manifest,
+        findings_counts=findings_counts,
+    )
+    nodes.extend(report_fm)
+
+    # Chaptered widescreen slides (Phase C) — primary PPTX storyline.
+    for i, slide in enumerate(chapter_slides):
+        nodes.append(_slide_spec_to_node(slide, slide_index=i))
+
     if commentary and commentary.sections:
         by_id = _draft_by_id(commentary)
         for sid in _section_order(commentary):
@@ -250,15 +482,16 @@ def assemble_report_spec(
             if draft is None:
                 continue
             human = draft.title or sid
-            # Report heading: human title when held back; else action_title (may
-            # carry a figure token resolved at render time).
-            if draft.held_back:
+            if sid == "SEC-ES":
+                title = "Executive summary"
+            elif draft.held_back:
                 title = human
             else:
                 title = draft.action_title or human
             title = _humanize_sec_codes(title, fallback_title=human)
+            if sid == "SEC-ES":
+                title = "Executive summary"
             exhibit_id = draft.exhibit_ids[0] if draft.exhibit_ids else None
-            # Preserve order; dedupe draft refs + body tokens (same cell_ref format)
             refs = list(dict.fromkeys(draft.cell_refs or []))
             seen = set(refs)
             for _raw, eid, cid in find_tokens(
@@ -270,12 +503,8 @@ def assemble_report_spec(
                     refs.append(ref)
             body = draft.body or f"{draft.title}\n(No prose drafted.)"
             body = _humanize_sec_codes(body, fallback_title=human)
-            # Stale commentary may still say INR while exhibits are USD
             body = apply_currency_to_prose(body, currency)
             title = apply_currency_to_prose(title, currency)
-            deck_body = apply_currency_to_prose(
-                _deck_body_from_draft(draft), currency
-            )
             nodes.append(
                 ReportSpecNode(
                     node_id=f"sec_comment_{sid}",
@@ -286,18 +515,18 @@ def assemble_report_spec(
                     cell_refs=refs,
                 )
             )
-            nodes.append(
-                ReportSpecNode(
-                    node_id=f"slide_comment_{sid}",
-                    kind="slide",
-                    title=draft.title or sid,
-                    body=deck_body,
-                    exhibit_id=exhibit_id,
-                    cell_refs=refs,
-                    slide_index=slide_i,
+            sec_findings = [f for f in findings_list if f.section_id == sid]
+            for i, finding in enumerate(sec_findings[:4]):
+                nodes.append(
+                    ReportSpecNode(
+                        node_id=f"sec_finding_{sid}_{i}",
+                        kind="section",
+                        title=finding_page_title(finding),
+                        body=format_finding_card(finding),
+                        exhibit_id=exhibit_id,
+                        cell_refs=list(finding.evidence_refs or [])[:8],
+                    )
                 )
-            )
-            slide_i += 1
     else:
         nodes.append(
             ReportSpecNode(
@@ -310,18 +539,18 @@ def assemble_report_spec(
                 ),
             )
         )
-        nodes.append(
-            ReportSpecNode(
-                node_id="slide_comment_pending",
-                kind="slide",
-                title="Commentary pending",
-                body="Build commentary to populate IC slides.",
-                slide_index=slide_i,
-            )
-        )
-        slide_i += 1
 
-    # Exhibit appendix — shared figures for report + deck
+    gap_body = not_evidenced_body(findings=findings_list, commentary=commentary)
+    nodes.append(
+        ReportSpecNode(
+            node_id="sec_not_evidenced",
+            kind="section",
+            title="Not evidenced / open items",
+            body=gap_body,
+        )
+    )
+
+    # Exhibit appendix — section nodes (legacy); PPTX chapters cover narrative.
     if not exhibits:
         nodes.append(
             ReportSpecNode(
@@ -331,16 +560,6 @@ def assemble_report_spec(
                 body="No exhibit cells available.",
             )
         )
-        nodes.append(
-            ReportSpecNode(
-                node_id="slide_exhibits_empty",
-                kind="slide",
-                title="Exhibits",
-                body="No exhibit cells available.",
-                slide_index=slide_i,
-            )
-        )
-        slide_i += 1
     else:
         for ex in exhibits:
             body, refs = _exhibit_body(ex)
@@ -355,18 +574,24 @@ def assemble_report_spec(
                     cell_refs=refs,
                 )
             )
-            nodes.append(
-                ReportSpecNode(
-                    node_id=f"slide_ex_{ex.exhibit_id}",
-                    kind="slide",
-                    title=title,
-                    body=_deck_exhibit_body(ex, body),
-                    exhibit_id=ex.exhibit_id,
-                    cell_refs=refs,
-                    slide_index=slide_i,
+            if include_deck_exhibit_appendix:
+                # Optional appendix slides after chapter storyline.
+                nodes.append(
+                    ReportSpecNode(
+                        node_id=f"slide_ex_{ex.exhibit_id}",
+                        kind="slide",
+                        title=title,
+                        body=_deck_exhibit_body(ex, body),
+                        exhibit_id=ex.exhibit_id,
+                        cell_refs=refs,
+                        slide_index=len(chapter_slides)
+                        + sum(
+                            1
+                            for n in nodes
+                            if n.kind == "slide" and n.slide_index is not None and n.slide_index >= len(chapter_slides)
+                        ),
+                    )
                 )
-            )
-            slide_i += 1
 
     standards = _presentation_standards_body(
         store=store,
@@ -381,7 +606,7 @@ def assemble_report_spec(
             kind="message",
             title="Presentation standards",
             body=standards,
-            cell_refs=[],  # standards are presentation policy, not a figure
+            cell_refs=[],
         )
     )
 
@@ -393,11 +618,13 @@ def assemble_report_spec(
         updated_at=_now(),
         title=f"FDD Report — {name}",
         nodes=nodes,
+        slides=list(chapter_slides),
         content_hash=_content_hash(
             {
                 "assembly": ASSEMBLY_VERSION,
                 "figures": figures,
                 "nodes": [n.model_dump(mode="json") for n in nodes],
+                "slides": [s.model_dump(mode="json") for s in chapter_slides],
             }
         ),
     )
@@ -436,6 +663,30 @@ def assemble_and_persist(
     qoe = load_qoe_workbook(deal_slug, run_id)
     currency, scale = effective_currency_scale(scope=scope, store=store, qoe=qoe)
 
+    from agetic_cdd_api.services_fdd_findings import build_findings
+    from agetic_cdd_api.services_fdd_store import (
+        load_claims_ledger,
+        load_findings,
+        load_request_list,
+    )
+
+    try:
+        findings = build_findings(
+            deal_slug,
+            run_id,
+            store=store,
+            commentary=commentary,
+            update_manifest=True,
+        )
+    except Exception as err:
+        logger.warning(
+            "Findings build failed for %s/%s: %s", deal_slug, run_id, err, exc_info=True
+        )
+        findings = load_findings(deal_slug, run_id)
+
+    request_list = load_request_list(deal_slug, run_id)
+    claims = load_claims_ledger(deal_slug, run_id)
+
     spec = assemble_report_spec(
         run_id=run_id,
         deal_slug=deal_slug,
@@ -447,6 +698,12 @@ def assemble_and_persist(
         ),
         currency=currency,
         scale=scale,
+        findings=findings,
+        scope=scope,
+        manifest=manifest,
+        qoe=qoe,
+        request_list=request_list,
+        claims=claims,
     )
     spec = save_report_spec(spec)
     rebuild_and_persist(deal_slug, run_id=run_id, store=store, spec=spec)
@@ -521,6 +778,26 @@ def ensure_commentary_and_assemble(
     except Exception as err:
         logger.warning(
             "Failed to sync scope currency for %s/%s: %s",
+            deal_slug,
+            run_id,
+            err,
+            exc_info=True,
+        )
+
+    # Seed findings before commentary so SEC-ES can cite severity counts.
+    try:
+        from agetic_cdd_api.services_fdd_findings import build_findings
+
+        build_findings(
+            deal_slug,
+            run_id,
+            store=store,
+            commentary=load_commentary(deal_slug, run_id),
+            update_manifest=True,
+        )
+    except Exception as err:
+        logger.warning(
+            "Pre-commentary findings build failed for %s/%s: %s",
             deal_slug,
             run_id,
             err,

@@ -27,6 +27,7 @@ from agetic_cdd_api.services_databook import (
     rescan_databook,
     reread_databook_document,
 )
+from agetic_cdd_api.services_databook_source import lines_for_deal, view_for_deal
 from agetic_cdd_api.services_databook_consume import (
     filter_material_promoted,
     load_promoted_metrics,
@@ -56,6 +57,7 @@ from agetic_cdd_api.services_pipeline import ingestion_status, merge_roadmap_wit
 from agetic_cdd_api.services_vdr import (
     delete_vdr_file,
     list_vdr_docs,
+    preview_vdr_file,
     sync_vdr_from_disk,
     upload_vdr_file,
     vdr_file_for_download,
@@ -216,6 +218,19 @@ def cdd_analyze(
     return {"success": True, "data": payload}
 
 
+@router.get("/portfolios/{deal_id}/cdd/vdr/files/{filename}/preview")
+def cdd_vdr_preview(
+    deal_id: str,
+    filename: str,
+    sheet: str | None = Query(default=None, max_length=200),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Sheet or text preview of a data-room file cited by a databook figure."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    return {"success": True, "data": preview_vdr_file(deal, filename, sheet=sheet)}
+
+
 @router.get("/portfolios/{deal_id}/cdd/vdr/files/{filename}")
 def cdd_vdr_download(
     deal_id: str,
@@ -286,6 +301,76 @@ def cdd_databook_summary(
     deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
     summary = get_databook_summary(deal, ensure=False)
     return {"success": True, "data": summary.model_dump(mode="json")}
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/view")
+def cdd_databook_view(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Financial history + DQ chips. Source follows databook_ui_source."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    view = view_for_deal(deal)
+    return {"success": True, "data": view.model_dump(mode="json")}
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/lines")
+def cdd_databook_lines(
+    deal_id: str,
+    q: str = Query(default="", max_length=400),
+    unmapped: bool = Query(default=False),
+    issue: str | None = Query(default=None, max_length=40),
+    limit: int | None = Query(default=None, ge=0),
+    offset: int = Query(default=0, ge=0),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """All line items inventory — body key is ``rows``. Source follows databook_ui_source."""
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    lines = lines_for_deal(
+        deal,
+        q=q,
+        unmapped=unmapped,
+        issue=issue,
+        limit=limit,
+        offset=offset,
+    )
+    return {"success": True, "data": lines.model_dump(mode="json")}
+
+
+@router.get("/portfolios/{deal_id}/cdd/vdr/databook")
+def cdd_vdr_databook_view(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Shim for remote DiligenceIQ URL pattern → ontology `/view`."""
+    return cdd_databook_view(deal_id, auth=auth, db=db)
+
+
+@router.get("/portfolios/{deal_id}/cdd/vdr/databook/lines")
+def cdd_vdr_databook_lines(
+    deal_id: str,
+    q: str = Query(default="", max_length=400),
+    unmapped: bool = Query(default=False),
+    issue: str | None = Query(default=None, max_length=40),
+    limit: int | None = Query(default=None, ge=0),
+    offset: int = Query(default=0, ge=0),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Shim for remote DiligenceIQ URL pattern → ontology `/lines`."""
+    return cdd_databook_lines(
+        deal_id,
+        q=q,
+        unmapped=unmapped,
+        issue=issue,
+        limit=limit,
+        offset=offset,
+        auth=auth,
+        db=db,
+    )
 
 
 @router.post("/portfolios/{deal_id}/cdd/databook/rescan")

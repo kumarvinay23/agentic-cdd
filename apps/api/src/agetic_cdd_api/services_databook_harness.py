@@ -1178,6 +1178,10 @@ def run_trap(spec: dict[str, Any]) -> TrapResult:
                     caption=str(n.get("caption") or ""),
                     fiscal_year=n.get("fiscal_year"),
                     value=float(n["value"]),
+                    unit=n.get("unit"),
+                    currency=n.get("currency"),
+                    scale=n.get("scale"),
+                    reason=str(n.get("reason") or "prose"),
                     metric_key=n.get("metric_key"),
                 )
                 for i, n in enumerate(notes_raw)

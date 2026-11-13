@@ -367,10 +367,38 @@ def _peer_nps_lines(text: str, prior_spec: dict | None) -> list[str]:
     if not row:
         return []
     vals = [float(v) for v in re.findall(r"\d+(?:\.\d+)?", row.group(1))]
-    labels = ("Ola Electric", "Ather Energy", "TVS iQube", "Industry Avg")
+    labels = _column_names_before(text or "", row, len(vals))
     for label, val in zip(labels, vals):
         lines.append(f"{label}: NPS {val:g}")
     return lines[:6]
+
+
+def _column_names_before(text: str, anchor: re.Match[str], count: int) -> list[str]:
+    """Names in the metric header that sits just before a numeric row."""
+    window = text[max(0, anchor.start() - 300) : anchor.start()]
+    metric = re.search(r"(?i)\bMetric\s+([A-Z].+)$", window.strip())
+    if not metric or count <= 0:
+        return [f"Peer {index + 1}" for index in range(count)]
+    tokens = metric.group(1).split()
+    names: list[str] = []
+    index = 0
+    while index < len(tokens) and len(names) < count:
+        token = tokens[index]
+        nxt = tokens[index + 1] if index + 1 < len(tokens) else ""
+        remain = len(tokens) - index
+        if nxt and nxt[:1].islower():
+            names.append(f"{token} {nxt}")
+            index += 2
+            continue
+        if nxt and token[:1].isupper() and nxt[:1].isupper() and remain % 2 == 0:
+            names.append(f"{token} {nxt}")
+            index += 2
+            continue
+        names.append(token)
+        index += 1
+    while len(names) < count:
+        names.append(f"Peer {len(names) + 1}")
+    return names[:count]
 
 
 def _extract_segmentation(text: str, sentences: list[str]) -> CustomerSegmentationSpec:

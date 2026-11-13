@@ -18,6 +18,7 @@ from agetic_cdd_api.pipeline_catalog import (
     total_agent_count,
 )
 from agetic_cdd_api.security import new_id
+from agetic_cdd_api.agent_contracts import workflow_state_for
 from agetic_cdd_api.services_deals import ensure_deal_folder
 
 
@@ -62,7 +63,10 @@ def upsert_run(
         row.started_at = now
         row.finished_at = None
         row.error_message = None
-    if status in {"completed", "failed"}:
+    if status == "queued":
+        row.started_at = None
+        row.finished_at = None
+    if status in {"completed", "failed", "needs_repair"}:
         row.finished_at = now
     if error_message is not None:
         row.error_message = error_message
@@ -84,6 +88,7 @@ def run_to_dict(run: PipelineAgentRun) -> dict:
         "finished_at": run.finished_at.isoformat().replace("+00:00", "Z") if run.finished_at else None,
         "error_message": run.error_message,
         "output": output,
+        "workflow_state": workflow_state_for(run.status, output if isinstance(output, dict) else None),
     }
 
 
@@ -112,9 +117,9 @@ def ingestion_status(db: Session, *, deal: Deal) -> dict:
 def _diq_agent_status(status: str) -> str:
     if status == "completed":
         return "completed"
-    if status in {"running", "pending"}:
+    if status in {"running", "pending", "queued"}:
         return "running" if status == "running" else "available"
-    if status == "failed":
+    if status in {"failed", "needs_repair"}:
         return "failed"
     return "available"
 
@@ -211,6 +216,14 @@ def outputs_dir(deal: Deal) -> Path:
 def write_agent_output(deal: Deal, *, agent_key: str, output: dict) -> Path:
     path = outputs_dir(deal) / f"{agent_key}.json"
     path.write_text(json.dumps(output, indent=2), encoding="utf-8")
+    slug = getattr(deal, "slug", None) or getattr(deal, "id", None) or ""
+    if slug and isinstance(output, dict):
+        from agetic_cdd_api.services_step_log import record_agent_output
+
+        record_agent_output(str(slug), agent_key, output)
+    state = str(output.get("workflow_state") or "") if isinstance(output, dict) else ""
+    if state in {"needs_repair", "queued", "generated"}:
+        return path
     try:
         from agetic_cdd_api.services_agent_documents import ensure_agent_document_after_run
 
@@ -259,12 +272,31 @@ def completed_agent_keys(db: Session, *, deal_id: str) -> set[str]:
 
 def next_incomplete_phase(roadmap: list[dict]) -> dict | None:
     for phase in roadmap:
+        if phase.get("phase_id") == "reports":
+            continue
         if phase["status"] != "completed":
             return phase
     return None
 
 
+def release_fixture_report_runs(db: Session, *, deal_id: str) -> None:
+    """Drop report rows left by the workflow stub. Real report files are generated separately."""
+    keys = set(report_agent_keys())
+    removed = False
+    for row in list_runs(db, deal_id=deal_id):
+        if row.agent_key not in keys or row.status != "needs_repair":
+            continue
+        message = row.error_message or ""
+        if "fixture output" not in message and "approved module" not in message:
+            continue
+        db.delete(row)
+        removed = True
+    if removed:
+        db.commit()
+
+
 def pipeline_payload(db: Session, *, deal: Deal) -> dict:
+    release_fixture_report_runs(db, deal_id=deal.id)
     roadmap = merge_roadmap_with_runs(db, deal_id=deal.id)
     total = total_agent_count()
     completed = sum(phase.get("completedAgents", 0) for phase in roadmap)

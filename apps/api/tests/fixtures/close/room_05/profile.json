@@ -1,0 +1,11 @@
+{
+  "reporting_currency": "USD",
+  "fiscal_year_end": "12-31",
+  "latest_actual_month": "2025-12-31",
+  "sector_pack": "fuel_retail",
+  "deal_type": "debt",
+  "expected_statements": [
+    "BS"
+  ],
+  "workbook": "borrowings.xlsx"
+}

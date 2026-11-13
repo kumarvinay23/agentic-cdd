@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import logging
 import re
 import time
 from abc import ABC, abstractmethod
@@ -22,6 +23,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from agetic_cdd_api.report_store import (
     REPORT_TYPES,
@@ -123,21 +126,21 @@ def _clean_legal_name(raw: Any, *, fallback: str | None = None) -> str | None:
         text = str(raw).strip()
     if not text:
         return fallback
-    # "Compost Crew (issuing common equity and options under 2023 Stock Option Plan)"
+    # "Target (issuing common equity and options under 2023 Stock Option Plan)"
     text = re.sub(
         r"\s*\((?:issuing|grant(?:ing)?|under).{0,80}(?:stock\s+option|equity|option\s+plan)[^)]*\)\s*",
         "",
         text,
         flags=re.I,
     ).strip()
-    # "Compost Crew (operating entity under Maryland / D.C. jurisdictions)" — not evidenced
+    # "Target (operating entity under Maryland / D.C. jurisdictions)" — not evidenced
     text = re.sub(
         r"\s*\([^)]*(?:operating entity|organized in|under .{0,40}jurisdiction)[^)]*\)\s*",
         "",
         text,
         flags=re.I,
     ).strip()
-    # "Compost Crew (registered under Maryland and District of Columbia securities exemptions)"
+    # "Target (registered under Maryland and District of Columbia securities exemptions)"
     text = re.sub(
         r"\s*\([^)]*(?:registered under|securities\s+exemption|securities\s+exemptions)[^)]*\)\s*",
         "",
@@ -181,7 +184,7 @@ def strip_corporate_boilerplate(text: str) -> str:
 def strip_unsupported_entity_suffixes(text: str, *, company: str | None = None) -> str:
     """Drop Inc./LLC only when clearly invented; keep Benefit Corporation when present.
 
-    Cap-table titles often read ``Compost Crew Inc., A Benefit Corporation`` —
+    Cap-table titles often read ``Target Inc., A Benefit Corporation`` —
     those suffixes are evidenced and must survive. Invented jurisdiction
     parentheticals are handled by ``strip_corporate_boilerplate``.
     """
@@ -619,6 +622,8 @@ class BuildContext:
     sources: dict[str, Any] = field(default_factory=dict)
     agent_outputs: dict[str, Any] = field(default_factory=dict)
     artifact_path: str | None = None
+    # Optional PDF twin (e.g. FDD Report writes DOCX + PDF).
+    pdf_artifact_path: str | None = None
 
 
 def _evt(stage: str, message: str, **extra: Any) -> dict[str, Any]:
@@ -967,6 +972,17 @@ class ReportBuilder(ABC):
             # 8. export
             artifact = self.export_artifact(self.ctx)
             self.ctx.artifact_path = artifact
+            from agetic_cdd_api.services_step_log import record_report
+
+            record_report(
+                self.deal_slug,
+                report_type=self.report_type,
+                artifact=artifact,
+                status="ready",
+                source_files=list((sources or {}).get("cited_files") or []),
+                agent_keys=list((sources or {}).get("agent_keys") or []),
+                extra_parents=list(getattr(self.ctx, "lineage_step_ids", []) or []),
+            )
 
             # 9. done
             finish_report(
@@ -975,12 +991,28 @@ class ReportBuilder(ABC):
                 storyline=storyline_as_dicts(storyline),
                 sources=sources,
                 artifact_path=artifact,
+                pdf_artifact_path=getattr(self.ctx, "pdf_artifact_path", None),
             )
             export_fmt = REPORT_TYPES.get(self.report_type, {}).get("export", "")
             yield _evt("done",
                        f"{rt_label} — {enabled} sections, export: .{export_fmt}")
 
         except Exception as exc:
+            try:
+                from agetic_cdd_api.services_step_log import record_report
+
+                record_report(
+                    self.deal_slug,
+                    report_type=self.report_type,
+                    artifact=self.ctx.artifact_path,
+                    status="failed",
+                    error=str(exc),
+                    source_files=list((self.ctx.sources or {}).get("cited_files") or []),
+                    agent_keys=list((self.ctx.sources or {}).get("agent_keys") or []),
+                    extra_parents=list(getattr(self.ctx, "lineage_step_ids", []) or []),
+                )
+            except Exception:
+                logger.exception("step log failed")
             finish_report(self.deal_slug, self.report_type, error=str(exc))
             yield _evt("error", str(exc), level="error")
             raise

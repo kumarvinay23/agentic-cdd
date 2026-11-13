@@ -422,9 +422,15 @@ def values_agree(claimed: float, databook: float) -> bool:
     if _values_agree_raw(a, b):
         return True
     # Retention / margin often appear as a fraction in one pack and percent-points
-    # in another — treat 0.762 and 76.2 as the same figure.
+    # in another — treat 0.762 and 76.2 (or 0.018 and 1.80) as the same figure.
     lo, hi = (a, b) if abs(a) <= abs(b) else (b, a)
-    if 0.0 < abs(lo) <= 2.0 and abs(hi) >= 2.0:
+    if 0.0 < abs(lo) <= 1.0 and abs(hi) <= 200.0 and abs(hi) >= abs(lo) * 10.0:
+        # Clear fraction ↔ percent-points (0.018 vs 1.80, 0.762 vs 76.2).
+        if _values_agree_raw(lo * 100.0, hi):
+            return True
+        if _values_agree_raw(hi / 100.0, lo):
+            return True
+    elif 0.0 < abs(lo) <= 2.0 and abs(hi) >= 2.0:
         if _values_agree_raw(lo * 100.0, hi):
             return True
         if abs(hi) <= 200.0 and _values_agree_raw(hi / 100.0, lo):
@@ -463,6 +469,22 @@ def index_facts(facts: list[FddFact]) -> dict[tuple[str, int], FddFact]:
     return idx
 
 
+def _fact_is_open_or_ytd(fact: FddFact) -> bool:
+    """True for plan / YTD stubs that must not contradict closed-year claims."""
+    from datetime import date
+
+    year = int(fact.fiscal_year or 0)
+    closed = date.today().year - 1
+    plen = ""
+    if fact.labels:
+        plen = str(fact.labels.period_length or "").upper()
+    if plen == "YTD":
+        return True
+    if year > closed:
+        return True
+    return False
+
+
 def evaluate_financial_claim(
     claim: ClaimsLedgerEntry, facts_idx: dict[tuple[str, int], FddFact]
 ) -> ClaimsLedgerEntry:
@@ -475,6 +497,16 @@ def evaluate_financial_claim(
                 "failed": True,
             }
         )
+    from datetime import date
+
+    # Plan / incomplete years are not like-for-like vs closed actuals.
+    if int(claim.fiscal_year) > date.today().year - 1:
+        return claim.model_copy(
+            update={
+                "test_result": "unverifiable",
+                "failed": False,
+            }
+        )
     # Strict (metric_key, fiscal_year) match — no cross-year fallback.
     fact = facts_idx.get((claim.metric_key, int(claim.fiscal_year)))
     if fact is None:
@@ -482,6 +514,15 @@ def evaluate_financial_claim(
             update={
                 "test_result": "unverifiable",
                 "failed": True,
+            }
+        )
+    if _fact_is_open_or_ytd(fact):
+        return claim.model_copy(
+            update={
+                "test_result": "unverifiable",
+                "failed": False,
+                "databook_fact_id": fact.fact_id,
+                "databook_value": fact.value,
             }
         )
     if fact.status == CellStatus.MISSING:

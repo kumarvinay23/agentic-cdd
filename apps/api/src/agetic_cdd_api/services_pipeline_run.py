@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import time
+import logging
+
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from agetic_cdd_api.db import SessionLocal
 from agetic_cdd_api.models import Deal
@@ -17,6 +22,7 @@ from agetic_cdd_api.pipeline_catalog import (
     get_agent_meta,
     phase_by_id,
     previous_phase,
+    report_agent_keys,
 )
 from agetic_cdd_api.services_deals import get_deal
 from agetic_cdd_api.services_deep_dive import run_deep_dive
@@ -36,7 +42,79 @@ from agetic_cdd_api.services_pipeline import (
     upsert_run,
     write_agent_output,
 )
+from agetic_cdd_api.agent_module_registry import prepare_completion
 from agetic_cdd_api.services_vdr import list_vdr_docs
+
+
+# Workflow agent key for each report the Reports phase can run.
+REPORT_AGENT_BY_TYPE = {
+    "strategy_report": "strategy_report",
+    "market_deck": "market_intel_deck",
+    "ops_dashboard": "operations_dashboard",
+    "ic_memo": "ic_memo",
+    "cdd_deck": "cdd_deck",
+}
+
+
+def note_report_started(db: Session, deal: Deal, report_type: str) -> None:
+    """Show the workflow row as running while the report file is built."""
+    agent_key = REPORT_AGENT_BY_TYPE.get(report_type)
+    if not agent_key:
+        return
+    upsert_run(db, deal_id=deal.id, agent_key=agent_key, status="running", output={}, error_message="")
+    refresh_deal_pipeline_counters(db, deal)
+    db.commit()
+
+
+def publish_report_workflow(
+    deal_slug: str,
+    report_type: str,
+    *,
+    artifact_path: str | None,
+    error: str | None,
+) -> None:
+    """Record a finished report on its workflow agent. A failed file stays failed."""
+    agent_key = REPORT_AGENT_BY_TYPE.get(report_type)
+    if not agent_key:
+        return
+    filename = artifact_path.rsplit("/", 1)[-1] if artifact_path else report_type
+    if error:
+        output = {
+            "stub": False,
+            "status": "failed",
+            "agent_key": agent_key,
+            "phase_id": "reports",
+            "extract_source": "stores",
+            "source_coverage": "full",
+            "sources": [filename] if artifact_path else [],
+            "summary": error,
+            "error": error,
+            "findings": [],
+        }
+    else:
+        output = {
+            "stub": False,
+            "status": "completed",
+            "agent_key": agent_key,
+            "phase_id": "reports",
+            "extract_source": "stores",
+            "source_coverage": "full",
+            "sources": [filename],
+            "summary": f"{filename} is ready.",
+            "findings": [],
+        }
+    db = SessionLocal()
+    try:
+        deals = list(db.scalars(select(Deal).where(Deal.slug == deal_slug)))
+        for deal in deals:
+            store_agent_result(db, deal=deal, agent_key=agent_key, output=output)
+            refresh_deal_pipeline_counters(db, deal)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("workflow status for %s was not updated", report_type)
+    finally:
+        db.close()
 
 
 def _phase_completed(db: Session, *, deal_id: str, phase: dict) -> bool:
@@ -86,12 +164,37 @@ def _mark_agent_running(db: Session, *, deal: Deal, agent_key: str) -> None:
     time.sleep(0.25)
 
 
+def store_agent_result(db: Session, *, deal: Deal, agent_key: str, output: dict) -> str:
+    """Persist a finished agent. Only the approved module is stored as completed."""
+    output = prepare_completion(agent_key, output)
+    status_value = str(output.get("status") or "needs_repair")
+    if status_value in {"needs_repair", "empty_vdr"}:
+        run_status = "needs_repair"
+        output["status"] = "needs_repair"
+        error = str(output.get("error") or "required input is missing")
+    elif status_value == "failed":
+        run_status = "failed"
+        error = str(output.get("error") or output.get("summary") or "failed")
+    else:
+        run_status = "completed"
+        error = None
+    write_agent_output(deal, agent_key=agent_key, output=output)
+    upsert_run(
+        db,
+        deal_id=deal.id,
+        agent_key=agent_key,
+        status=run_status,
+        output=output,
+        error_message=error if error is not None else "",
+    )
+    return run_status
+
+
 def _complete_agent(db: Session, *, deal: Deal, agent_key: str, output: dict) -> None:
     upsert_run(db, deal_id=deal.id, agent_key=agent_key, status="running")
     refresh_deal_pipeline_counters(db, deal)
     db.commit()
-    write_agent_output(deal, agent_key=agent_key, output=output)
-    upsert_run(db, deal_id=deal.id, agent_key=agent_key, status="completed", output=output)
+    store_agent_result(db, deal=deal, agent_key=agent_key, output=output)
     refresh_deal_pipeline_counters(db, deal)
     db.commit()
 
@@ -118,6 +221,8 @@ def execute_pipeline_keys(db: Session, *, org_id: str, deal_id: str, agent_keys:
 
     try:
         for key in keys:
+            if key in report_agent_keys():
+                continue
             deal = get_deal(db, org_id=org_id, deal_id=deal_id)
             _mark_agent_running(db, deal=deal, agent_key=key)
             if key in PHASE1_AGENT_KEYS and not ingested_phase1:
@@ -210,6 +315,9 @@ def schedule_pipeline_run(
     restart: bool = False,
 ) -> dict:
     deal = get_deal(db, org_id=org_id, deal_id=deal_id)
+    from agetic_cdd_api.services_deal_profile import require_confirmed_profile
+
+    require_confirmed_profile(deal)
     if is_pipeline_busy(db, deal=deal):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pipeline already running")
 
@@ -243,6 +351,14 @@ def schedule_pipeline_run(
 
             cascade_plan = plan_verdict_cascade(deal, [agent_key])
             queued = list(cascade_plan.get("agent_keys") or [])
+        elif agent_key in report_agent_keys():
+            from agetic_cdd_api.services_pipeline import release_fixture_report_runs
+
+            release_fixture_report_runs(db, deal_id=deal.id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Generate reports from the Reports tab. The workflow does not run report files.",
+            )
         else:
             queued = [agent_key]
         target_phase_id = phase["phase_id"]
@@ -250,6 +366,14 @@ def schedule_pipeline_run(
         phase = phase_by_id(phase_id)
         if not phase:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown phase")
+        if phase["phase_id"] == "reports":
+            from agetic_cdd_api.services_pipeline import release_fixture_report_runs
+
+            release_fixture_report_runs(db, deal_id=deal.id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Generate reports from the Reports tab. The workflow does not run report files.",
+            )
         _assert_previous_phase_complete(db, deal_id=deal.id, phase=phase)
         queued = agent_keys_for_phase(phase)
         target_phase_id = phase["phase_id"]

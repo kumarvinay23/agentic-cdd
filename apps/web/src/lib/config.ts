@@ -34,12 +34,16 @@ export const ENDPOINTS = {
     `/api/v1/portfolios/${id}/cdd/vdr/${encodeURIComponent(filename)}`,
   cddVdrDownload: (id: string, filename: string) =>
     `/api/v1/portfolios/${id}/cdd/vdr/files/${encodeURIComponent(filename)}`,
+  cddVdrPreview: (id: string, filename: string) =>
+    `/api/v1/portfolios/${id}/cdd/vdr/files/${encodeURIComponent(filename)}/preview`,
   cddSync: (id: string) => `/api/v1/portfolios/${id}/cdd/sync`,
   cddAnalyze: (id: string) => `/api/v1/portfolios/${id}/cdd/analyze`,
   cddVdrAnalyze: (id: string) => `/api/v1/portfolios/${id}/cdd/vdr/analyze`,
   cddVdrGraph: (id: string) => `/api/v1/portfolios/${id}/cdd/vdr/graph`,
   cddIngestion: (id: string) => `/api/v1/portfolios/${id}/cdd/ingestion`,
   cddDatabook: (id: string) => `/api/v1/portfolios/${id}/cdd/databook`,
+  cddDatabookView: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/view`,
+  cddDatabookLines: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/lines`,
   cddDatabookRescan: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/rescan`,
   cddDatabookDeep: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/deep`,
   cddDatabookRows: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/rows`,
@@ -71,6 +75,9 @@ export const ENDPOINTS = {
   cddDatabookMappingMemory: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/mapping-memory`,
   cddDatabookTraps: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/traps`,
   cddDataQuality: (id: string) => `/api/v1/portfolios/${id}/cdd/data-quality`,
+  dealProfile: (id: string) => `/api/v1/portfolios/${id}/profile`,
+  dealProfileConfirm: (id: string) => `/api/v1/portfolios/${id}/profile/confirm`,
+  databookPublish: (id: string) => `/api/v1/portfolios/${id}/databook/publish`,
   pipeline: (id: string) => `/api/v1/portfolios/${id}/pipeline`,
   pipelinePhases: (id: string) => `/api/v1/portfolios/${id}/pipeline/phases`,
   pipelineRun: (id: string) => `/api/v1/portfolios/${id}/pipeline/run`,
@@ -106,11 +113,17 @@ export const ENDPOINTS = {
     `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/events`,
   reportStatus: (id: string, reportType: string) =>
     `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/status`,
-  reportDownload: (id: string, reportType: string) =>
-    `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/download`,
-  reportPreview: (id: string, reportType: string, sheet?: string) => {
+  reportDownload: (id: string, reportType: string, format?: string) => {
+    const base = `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/download`;
+    return format ? `${base}?format=${encodeURIComponent(format)}` : base;
+  },
+  reportPreview: (id: string, reportType: string, sheet?: string, format?: string) => {
     const base = `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/preview`;
-    return sheet ? `${base}?sheet=${encodeURIComponent(sheet)}` : base;
+    const params = new URLSearchParams();
+    if (sheet) params.set("sheet", sheet);
+    if (format) params.set("format", format);
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
   },
   reportStoryline: (id: string, reportType: string) =>
     `/api/v1/portfolios/${id}/reports/${encodeURIComponent(reportType)}/storyline`,
