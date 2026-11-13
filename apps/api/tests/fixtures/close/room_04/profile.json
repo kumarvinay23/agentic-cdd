@@ -1,0 +1,11 @@
+{
+  "reporting_currency": "GBP",
+  "fiscal_year_end": "03-31",
+  "latest_actual_month": "2025-03-31",
+  "sector_pack": "recurring_collection",
+  "deal_type": "lease",
+  "expected_statements": [
+    "PL"
+  ],
+  "workbook": "rent.xlsx"
+}

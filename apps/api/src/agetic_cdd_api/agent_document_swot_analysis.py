@@ -2959,8 +2959,9 @@ def _collect_prior_agents(
                 disk = None
             if isinstance(disk, dict):
                 payload = disk
-        if isinstance(payload, dict) and (payload.get("spec") or payload.get("findings")):
-            agents[slug] = payload
+        kept = _validated_upstream(payload)
+        if kept:
+            agents[slug] = kept
 
     # Foundation roles → slug map
     roles = foundation.get("roles") if isinstance(foundation, dict) else None
@@ -2970,13 +2971,25 @@ def _collect_prior_agents(
                 continue
             entry = roles.get(code)
             if isinstance(entry, dict) and isinstance(entry.get("spec"), dict):
-                agents[slug] = {
-                    "agent_key": slug,
-                    "spec": entry["spec"],
-                    "findings": entry.get("findings") or [],
-                    "summary": entry.get("summary") or "",
-                }
+                kept = _validated_upstream(
+                    {
+                        "agent_key": slug,
+                        "spec": entry["spec"],
+                        "findings": entry.get("findings") or [],
+                        "status": str(entry.get("status") or ""),
+                    }
+                )
+                if kept:
+                    agents[slug] = kept
     return agents
+
+
+def _validated_upstream(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    from agetic_cdd_api.agent_contracts import as_validated_findings
+
+    if not isinstance(payload, dict) or not (payload.get("spec") or payload.get("findings")):
+        return None
+    return as_validated_findings(payload)
 
 
 def _open_blockers(items: list[dict[str, Any]], agents: dict[str, dict]) -> list[str]:

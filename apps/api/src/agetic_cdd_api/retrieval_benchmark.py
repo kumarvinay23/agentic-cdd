@@ -13,7 +13,7 @@ from agetic_cdd_api.services_document_runner import (
 )
 from agetic_cdd_api.services_library_search import search_library_chunks
 
-DEFAULT_COMPANY = "Ola Electric"
+DEFAULT_COMPANY = "Subject"
 DEFAULT_VDR_FILE_COUNT = 105
 MIN_FTS_RECALL = 0.85
 MIN_PASSAGE_RECALL = 0.80
@@ -235,76 +235,80 @@ BENCHMARK_CASES: tuple[BenchmarkCase, ...] = (
 )
 
 
-def synthetic_benchmark_vdr(count: int = DEFAULT_VDR_FILE_COUNT) -> list[tuple[str, str]]:
+def synthetic_benchmark_vdr(
+    count: int = DEFAULT_VDR_FILE_COUNT,
+    *,
+    company: str = DEFAULT_COMPANY,
+) -> list[tuple[str, str]]:
     """Generate a large synthetic VDR with CDL-shaped filenames for scale testing."""
     patterns: list[tuple[str, str]] = [
         (
             "11_Market_Competition_{i}.txt",
             (
-                "Market competition analysis for Ola Electric. Market share {i} percent FY2024. "
+                "Market competition analysis for {company}. Market share {i} percent FY2024. "
                 "TAM SAM SOM penetration rate competitive landscape marimekko segment mix."
             ),
         ),
         (
             "05_Financial_Due_Diligence_{i}.txt",
             (
-                "Financial due diligence for Ola Electric. Revenue growth rate {i} percent YoY. "
+                "Financial due diligence for {company}. Revenue growth rate {i} percent YoY. "
                 "Revenue CAGR compound annual growth rate EBITDA margin bridge valuation sensitivity."
             ),
         ),
         (
             "03_Investment_Thesis_{i}.txt",
             (
-                "Investment thesis for Ola Electric. Growth strategy business model expansion plan. "
+                "Investment thesis for {company}. Growth strategy business model expansion plan. "
                 "Key investment risks mitigants competitor positioning."
             ),
         ),
         (
             "06_Legal_Due_Diligence_{i}.txt",
             (
-                "Legal due diligence for Ola Electric. Legal compliance contract litigation "
+                "Legal due diligence for {company}. Legal compliance contract litigation "
                 "regulatory summary compliance issues."
             ),
         ),
         (
             "02_Corporate_Overview_{i}.txt",
             (
-                "Corporate overview for Ola Electric. Management team board biography headquarters "
+                "Corporate overview for {company}. Management team board biography headquarters "
                 "leadership organizational structure."
             ),
         ),
         (
             "04_Commercial_Due_Diligence_{i}.txt",
             (
-                "Commercial due diligence for Ola Electric. Customer churn rate NPS retention cohort "
+                "Commercial due diligence for {company}. Customer churn rate NPS retention cohort "
                 "geographic revenue mix sales channel ratio commercial metrics."
             ),
         ),
         (
             "07_Operational_Due_Diligence_{i}.txt",
             (
-                "Operational due diligence for Ola Electric. Manufacturing supply chain operations "
+                "Operational due diligence for {company}. Manufacturing supply chain operations "
                 "capacity supplier operational risk review."
             ),
         ),
         (
             "08_Technical_Due_Diligence_{i}.txt",
             (
-                "Technical due diligence for Ola Electric. Software architecture patent technology "
+                "Technical due diligence for {company}. Software architecture patent technology "
                 "stack IP product roadmap technical IP position R&D engineering."
             ),
         ),
         (
             "13_Valuation_Analysis_{i}.txt",
             (
-                "Valuation analysis for Ola Electric. Implied valuation comparable multiples "
+                "Valuation analysis for {company}. Implied valuation comparable multiples "
                 "EV EBITDA DCF sensitivity trading comps."
             ),
         ),
         (
             "10_HR_Organizational_{i}.txt",
             (
-                "HR organizational structure for Ola Electric. Management team depth human capital "
+                "HR organizational structure for {company}. Management team depth human capital "
                 "workforce review leadership bench."
             ),
         ),
@@ -312,7 +316,7 @@ def synthetic_benchmark_vdr(count: int = DEFAULT_VDR_FILE_COUNT) -> list[tuple[s
     out: list[tuple[str, str]] = []
     for n in range(count):
         template, body = patterns[n % len(patterns)]
-        out.append((template.format(i=n), body.format(i=n)))
+        out.append((template.format(i=n), body.format(i=n, company=company)))
     return out
 
 

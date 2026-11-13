@@ -27,7 +27,7 @@
 | **Models** | M1–M9 workbooks / modules + checks |
 | **QoE** | Adjustment register, G4, bridge / sensitivities |
 | **Narrative** | Tagged commentary + number tokens (P6) |
-| **Assemble** | One report_spec → report + deck (P7) |
+| **Assemble** | One report_spec → one FDD Report PPTX (P7 + Phase G) |
 | **QA-Review** | P8–P10, gates G5–G7, change control |
 | **Harness** | Golden deals, seeded faults, CI ship gate |
 | **API/UI** | Gates, approvals, FDD workspace |
@@ -54,7 +54,7 @@
 | R2 | Agents supply **questions / leads / qualitative evidence**, never figures | Claims ledger rejects numeric exhibit sources from agents | Agents write free prose + some figures | **Partial→strong** (Phase 3) | Claims | Ledger + `agent:` fact_id ban on exhibits; consume strip still applies |
 | R3 | VDR used for **missing / doubtful / disputed** only; finds re-enter databook | No direct VDR→report number path | Databook has targeted extract; FDD P3 missing | **Partial→strong** (Phase 4) | Evidence | P3 rescan→release→bridge→P2; page-scoped extract later |
 | R4 | People approve **judgements** (scope, material adj, conclusions); not arithmetic | Gates G1/G4/G6 logged | Databook HITL exists; no FDD gates | **Partial→strong** (G1+G4+G5+G6) | QA-Review | G7 hash verify landed Phase 8 |
-| R5 | **One report specification** drives report + deck; figure change re-runs dependents | Same cell hash in both renders | Separate builders per report type | **Partial→strong** (Phase 7) | Assemble | Assembled `report_spec` → multi-section PDF + PPTX; identical figures |
+| R5 | **One report specification** drives **one FDD Report PPTX** deliverable; figure change re-runs dependents | Same cell hash across slides; catalog `formats=["pptx"]` only | Separate builders / DOCX+PDF twins | **Done** (Phase 7 + PPTX parity A–G) | Assemble | Assembled `report_spec.slides` → single `fdd_report` PPTX (`fdd_deck` deprecated alias) |
 
 ---
 
@@ -172,7 +172,7 @@ Report blueprint also expects: business overview (CDD-labelled), presentation st
 | AS-2 | Number tokens resolve to one exhibit cell; no typed figures in prose | **Done** (Phase 6) | Resolve + typed-figure ban enforced on drafts |
 | AS-3 | Fixed confidence vocabulary tied to evidence tier | **Partial→strong** (Phase 6) | Allowed list + invest/superlative bans |
 | AS-4 | No invest / not-invest advice | **Partial→strong** (Phase 6) | Invest/superlative bans in commentary checks |
-| AS-5 | One report_spec → Word/PDF report **and** IC deck with identical figures | **Partial→strong** (Phase 7 + UX) | Assembled multi-section DOCX + PDF twin + PPTX |
+| AS-5 | One report_spec → **one PPTX** FDD Report (no Word/PDF twin; `fdd_deck` deprecated alias) | **Done** (Phase A–G) | Chaptered `report_spec.slides` → `*_FDD_Report.pptx` only |
 | AS-6 | Presentation: one scale/exhibit; unrounded compute; periods FY24A…; negatives in brackets | **Partial→strong** (Phase 7 + UX) | HALF_UP displays; negatives in brackets; standards node |
 | AS-7 | Deck quality: one message/slide, ≤6 bullets, labelled axes (S4/S2) | **Partial→strong** (Phase 7 + UX) | ≤6 bullets; multi-year exhibits get Period / scale chart axes |
 

@@ -11,6 +11,7 @@ Implements PDF §5 / Appendix B4:
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -221,7 +222,8 @@ def build_management_to_diligence_walk(
             )
         )
     for row in register:
-        if row.treatment not in _BRIDGE_TREATMENTS:
+        # Include reject: management proposed an amount diligence did not accept.
+        if row.treatment not in (_BRIDGE_TREATMENTS | {"reject"}):
             continue
         delta = _diligence_amount(row) - _management_amount(row)
         if abs(delta) <= 1e-9:
@@ -385,11 +387,13 @@ def recompute_qoe(doc: QoeWorkbookDoc) -> QoeWorkbookDoc:
         else 0.0
     )
 
-    # Management bridge view (uses management amounts where present)
+    # Management view: reported + management's proposed amounts (incl. rejected
+    # add-backs diligence does not accept). Sensitivities / pro forma stay beside.
     mgmt_adj = mgmt_reported
     for row in register:
-        if row.treatment in _BRIDGE_TREATMENTS:
-            mgmt_adj += _management_amount(row)
+        if row.treatment in {"sensitivity", "pro_forma"}:
+            continue
+        mgmt_adj += _management_amount(row)
 
     bridge = build_bridge(
         period=period, reported_ebitda=dil_reported, register=register
@@ -825,6 +829,419 @@ def build_worked_example_qoe(
     return recompute_qoe(doc)
 
 
+def _scale_factor(scale: str | None) -> float:
+    s = (scale or "").strip().lower()
+    if s in {"m", "mm", "mn", "million", "millions", "$m"}:
+        return 1_000_000.0
+    if s in {"k", "000", "thousand", "thousands", "$k"}:
+        return 1_000.0
+    if s in {"b", "bn", "billion", "billions"}:
+        return 1_000_000_000.0
+    return 1.0
+
+
+def _value_in_scale(value: float, *, from_scale: str | None, to_scale: str) -> float:
+    ones = float(value) * _scale_factor(from_scale)
+    denom = _scale_factor(to_scale)
+    return ones / denom if denom else ones
+
+
+def _extract_caption_amount(
+    rows: list[Any],
+    *,
+    captions: tuple[str, ...],
+    year: int,
+    target_scale: str,
+    prefer_source: tuple[str, ...] = ("monthly", "management", "financial"),
+) -> tuple[float | None, str | None]:
+    """Pick a caption×year amount from databook extract rows, scaled to target."""
+    import re
+
+    hits: list[Any] = []
+    for row in rows:
+        cap = str(getattr(row, "caption", None) or "").strip()
+        if not any(cap.lower() == c.lower() for c in captions):
+            continue
+        fy = getattr(row, "fiscal_year", None)
+        if fy is None or int(fy) != int(year):
+            continue
+        if getattr(row, "value", None) is None:
+            continue
+        plen = str(getattr(row, "period_length", None) or getattr(row, "period", "") or "")
+        if re.search(r"\b(YTD|LTM|TTM|plan|budget|forecast)\b", plen, flags=re.I):
+            continue
+        hits.append(row)
+    if not hits:
+        return None, None
+
+    def _rank(row: Any) -> tuple[int, int, float]:
+        src = str(getattr(row, "source_name", "") or "").lower()
+        pref = 0
+        for i, token in enumerate(prefer_source):
+            if token in src:
+                pref = len(prefer_source) - i
+                break
+        # Prefer rows already in target scale; then absolute magnitude sanity.
+        scale = str(getattr(row, "scale", None) or "")
+        scale_hit = 1 if scale.lower() == (target_scale or "").lower() else 0
+        return (pref, scale_hit, abs(float(row.value)))
+
+    best = max(hits, key=_rank)
+    amount = _value_in_scale(
+        float(best.value),
+        from_scale=getattr(best, "scale", None),
+        to_scale=target_scale,
+    )
+    return amount, str(getattr(best, "row_id", None) or "")
+
+
+def _extract_cim_metric(
+    rows: list[Any],
+    *,
+    captions: tuple[str, ...],
+    year: int,
+    target_scale: str,
+) -> float | None:
+    """Investor-workbook / CIM crosswalk figure for a caption×year."""
+    import re
+
+    hits = []
+    for row in rows:
+        src = str(getattr(row, "source_name", "") or "").lower()
+        if not any(t in src for t in ("investor", "cim", "crosswalk", "workbook")):
+            continue
+        if any(t in src for t in ("monthly financial", "management account", "qbo")):
+            continue
+        cap = str(getattr(row, "caption", None) or "").strip()
+        if not any(cap.lower() == c.lower() for c in captions):
+            continue
+        fy = getattr(row, "fiscal_year", None)
+        if fy is None or int(fy) != int(year):
+            continue
+        if getattr(row, "value", None) is None:
+            continue
+        hits.append(row)
+    if not hits:
+        return None
+
+    def _rank(row: Any) -> tuple[int, float]:
+        table = str(getattr(row, "table_name", "") or "").lower()
+        # Prefer summary / model-input tables over segment detail.
+        pref = 2 if any(t in table for t in ("summary", "model", "crosswalk")) else 1
+        return (pref, -abs(float(row.value)))
+
+    best = max(hits, key=_rank)
+    return _value_in_scale(
+        float(best.value),
+        from_scale=getattr(best, "scale", None),
+        to_scale=target_scale,
+    )
+
+
+def propose_register_from_extract(
+    deal_slug: str,
+    *,
+    year: int,
+    period: str,
+    target_scale: str = "M",
+    ebitda_fact: float | None = None,
+) -> tuple[list[AdjustmentRow], dict[str, float | None], list[str]]:
+    """Propose ADJ-01..05 (+ sensitivities) from databook extract captions.
+
+    Bad-debt add-backs that management books into EBITDA are reversed for
+    diligence. Other revenue / fee step-ups are listed as nil candidates or
+    sensitivities. Returns (register, crosswalk meta, notes).
+    """
+    from agetic_cdd_api.services_databook_release import SlugDeal
+    from agetic_cdd_api.services_databook_store import load_rows
+
+    try:
+        rows = load_rows(SlugDeal(id=deal_slug, slug=deal_slug))
+    except Exception:
+        rows = []
+    if not rows:
+        return [], {}, ["Register empty — databook extract unavailable"]
+
+    bad_debt, bad_id = _extract_caption_amount(
+        rows,
+        captions=("Bad Debt", "Bad Debts", "Bad debt expense"),
+        year=year,
+        target_scale=target_scale,
+    )
+    other_rev, other_id = _extract_caption_amount(
+        rows,
+        captions=("Other Revenue", "Other revenue"),
+        year=year,
+        target_scale=target_scale,
+    )
+    prof_fees, fees_id = _extract_caption_amount(
+        rows,
+        captions=("Professional Fees", "Professional fees"),
+        year=year,
+        target_scale=target_scale,
+    )
+    # Business-development captions discovered from the extract (deal-agnostic).
+    bd_caps = sorted(
+        {
+            str(getattr(r, "caption", "") or "").strip()
+            for r in rows
+            if re.search(r"(?i)business\s+development", str(getattr(r, "caption", "") or ""))
+        }
+    ) or ["Business Development"]
+    biz_dev, biz_id = _extract_caption_amount(
+        rows,
+        captions=tuple(bd_caps),
+        year=year,
+        target_scale=target_scale,
+    )
+    biz_dev_label = bd_caps[0] if biz_dev is not None else "Business development"
+    accounts_rev, _ = _extract_caption_amount(
+        rows,
+        captions=("Total Revenues", "Total Revenue", "Total revenues"),
+        year=year,
+        target_scale=target_scale,
+        prefer_source=("monthly", "management", "financial"),
+    )
+    cim_ebitda = _extract_cim_metric(
+        rows, captions=("EBITDA",), year=year, target_scale=target_scale
+    )
+    cim_revenue = _extract_cim_metric(
+        rows,
+        captions=("Revenue", "Total Revenue", "Total Revenues"),
+        year=year,
+        target_scale=target_scale,
+    )
+
+    register: list[AdjustmentRow] = []
+    notes: list[str] = []
+
+    # When the fact-table EBITDA looks like management EBITDA (includes the
+    # bad-debt add-back), strip it so diligence reported = accounts EBITDA.
+    reported_base = ebitda_fact
+    if (
+        ebitda_fact is not None
+        and bad_debt is not None
+        and abs(float(bad_debt)) > 1e-9
+    ):
+        # Heuristic: management EBITDA ≈ accounts reported + bad-debt add-back.
+        reported_base = float(ebitda_fact) - abs(float(bad_debt))
+        notes.append(
+            "Diligence reported EBITDA strips management's bad-debt add-back "
+            f"({abs(float(bad_debt)):.4g} {target_scale})."
+        )
+
+    if bad_debt is not None and abs(float(bad_debt)) > 1e-12:
+        amt = abs(float(bad_debt))
+        register.append(
+            AdjustmentRow(
+                adjustment_id="ADJ-01",
+                event_key=f"bad-debt-addback:{year}",
+                period=period,
+                label="Bad debt add-back reversed",
+                category="normalisation",
+                proposed_by="management",
+                management_amount=amt,
+                diligence_amount=0.0,
+                amount=0.0,
+                difference=-amt,
+                difference_reason="Bad debt is a recurring operating cost — reverse management add-back",
+                treatment="reject",
+                evidence_status="supported",
+                source_fact_ids=[bad_id] if bad_id else [],
+                rationale=(
+                    "Management EBITDA adds back bad debt; diligence treats it as "
+                    "a recurring cost of billing customers."
+                ),
+                recurring_status="recurring",
+                cash_impact="cash",
+                origin=["management", "library"],
+                reviewer_decision="pending",
+            )
+        )
+
+    if other_rev is not None and abs(float(other_rev)) > 1e-12:
+        amt = abs(float(other_rev))
+        register.append(
+            AdjustmentRow(
+                adjustment_id="ADJ-02",
+                event_key=f"other-revenue-nature:{year}",
+                period=period,
+                label="Other revenue, nature unknown",
+                category="normalisation",
+                proposed_by="diligence",
+                management_amount=0.0,
+                diligence_amount=0.0,
+                amount=0.0,
+                treatment="pending",
+                evidence_status="supported",
+                source_fact_ids=[other_id] if other_id else [],
+                rationale=(
+                    f"Other revenue of {amt:.4g} {target_scale} stays in diligence "
+                    "EBITDA pending GL nature; downside sensitivity removes it."
+                ),
+                recurring_status="uncertain",
+                cash_impact="cash",
+                origin=["library"],
+                reviewer_decision="pending",
+            )
+        )
+        # Downside sensitivity: remove other revenue from EBITDA.
+        register.append(
+            AdjustmentRow(
+                adjustment_id="S-01",
+                event_key=f"sensitivity:other-revenue:{year}",
+                period=period,
+                label="Downside: other revenue removed",
+                category="sensitivity",
+                proposed_by="diligence",
+                management_amount=None,
+                diligence_amount=-amt,
+                amount=-amt,
+                treatment="sensitivity",
+                evidence_status="supported",
+                source_fact_ids=[other_id] if other_id else [],
+                rationale="Other revenue nature unknown — downside removes it",
+                recurring_status="uncertain",
+                cash_impact="cash",
+                origin=["diligence"],
+                reviewer_decision="pending",
+            )
+        )
+
+    # Fee / BD step-ups as nil candidates + combined upside sensitivity.
+    prior_fees, _ = _extract_caption_amount(
+        rows,
+        captions=("Professional Fees", "Professional fees"),
+        year=year - 1,
+        target_scale=target_scale,
+    )
+    fees_step = None
+    if prof_fees is not None and prior_fees is not None:
+        fees_step = max(0.0, abs(float(prof_fees)) - abs(float(prior_fees)))
+    if prof_fees is not None:
+        register.append(
+            AdjustmentRow(
+                adjustment_id="ADJ-03",
+                event_key=f"professional-fees-stepup:{year}",
+                period=period,
+                label="Professional fee step-up",
+                category="non_recurring",
+                proposed_by="diligence",
+                management_amount=0.0,
+                diligence_amount=0.0,
+                amount=0.0,
+                treatment="pending",
+                evidence_status="supported",
+                source_fact_ids=[fees_id] if fees_id else [],
+                rationale=(
+                    f"Professional fees {abs(float(prof_fees)):.4g} {target_scale}"
+                    + (
+                        f" (step-up {fees_step:.4g})"
+                        if fees_step is not None and fees_step > 0
+                        else ""
+                    )
+                    + " — nil in diligence pending one-off evidence."
+                ),
+                recurring_status="uncertain",
+                cash_impact="cash",
+                origin=["library"],
+                reviewer_decision="pending",
+            )
+        )
+
+    if biz_dev is not None:
+        register.append(
+            AdjustmentRow(
+                adjustment_id="ADJ-04",
+                event_key=f"business-development:{year}",
+                period=period,
+                label=biz_dev_label[:48],
+                category="non_recurring",
+                proposed_by="diligence",
+                management_amount=0.0,
+                diligence_amount=0.0,
+                amount=0.0,
+                treatment="pending",
+                evidence_status="supported",
+                source_fact_ids=[biz_id] if biz_id else [],
+                rationale=(
+                    f"{biz_dev_label} spend {abs(float(biz_dev)):.4g} {target_scale} "
+                    "— nil in diligence pending one-off evidence."
+                ),
+                recurring_status="uncertain",
+                cash_impact="cash",
+                origin=["library"],
+                reviewer_decision="pending",
+            )
+        )
+
+    register.append(
+        AdjustmentRow(
+            adjustment_id="ADJ-05",
+            event_key=f"owner-related-party:{year}",
+            period=period,
+            label="Owner and related-party pay",
+            category="normalisation",
+            proposed_by="diligence",
+            management_amount=0.0,
+            diligence_amount=0.0,
+            amount=0.0,
+            treatment="pending",
+            evidence_status="pending",
+            rationale="Nil: CEO / related-party pay not separately evidenced in extract.",
+            recurring_status="uncertain",
+            cash_impact="cash",
+            origin=["library"],
+            reviewer_decision="pending",
+        )
+    )
+
+    upside = 0.0
+    if fees_step is not None and fees_step > 0:
+        upside += fees_step
+    if biz_dev is not None and abs(float(biz_dev)) > 0:
+        # Treat evidenced BD as potential one-off upside until nature is confirmed.
+        upside += abs(float(biz_dev))
+    if upside > 1e-12:
+        register.append(
+            AdjustmentRow(
+                adjustment_id="S-02",
+                event_key=f"sensitivity:cost-stepups-oneoff:{year}",
+                period=period,
+                label="Upside: cost step-ups treated as one-off",
+                category="sensitivity",
+                proposed_by="diligence",
+                management_amount=None,
+                diligence_amount=upside,
+                amount=upside,
+                treatment="sensitivity",
+                evidence_status="pending",
+                rationale="Seller case — professional-fee step-up and BD as one-off",
+                recurring_status="uncertain",
+                cash_impact="cash",
+                origin=["diligence"],
+                reviewer_decision="pending",
+            )
+        )
+
+    meta: dict[str, float | None] = {
+        "reported_base": reported_base,
+        "bad_debt": abs(float(bad_debt)) if bad_debt is not None else None,
+        "other_revenue": abs(float(other_rev)) if other_rev is not None else None,
+        "cim_ebitda": cim_ebitda,
+        "cim_revenue": cim_revenue,
+        "accounts_revenue": accounts_rev,
+    }
+    if not register:
+        notes.append("Register empty — no extract captions matched for adjustments")
+    else:
+        notes.append(
+            f"Proposed {len([r for r in register if r.adjustment_id.startswith('ADJ-')])} "
+            "adjustments from databook extract; sensitivities remain beside diligence EBITDA."
+        )
+    return register, meta, notes
+
+
 def build_qoe_from_facts(
     deal_slug: str,
     run_id: str,
@@ -832,7 +1249,7 @@ def build_qoe_from_facts(
     period: str | None = None,
     fiscal_year: int | None = None,
 ) -> QoeWorkbookDoc:
-    """Seed a QoE workbook from the run fact table (baseline only; empty register)."""
+    """Seed a QoE workbook from the fact table + extract-backed ADJ register."""
     facts = load_fact_table(deal_slug, run_id)
     manifest = load_manifest(deal_slug, run_id)
     scope = load_scope_profile(deal_slug, run_id)
@@ -860,7 +1277,7 @@ def build_qoe_from_facts(
         year = 2024
     per = period or f"FY{str(year)[-2:]}A"
 
-    def _fact(metric: str) -> tuple[float | None, str | None]:
+    def _fact(metric: str, *, prefer_accounts: bool = False) -> tuple[float | None, str | None]:
         if not facts:
             return None, None
         hits = [
@@ -883,22 +1300,47 @@ def build_qoe_from_facts(
             blob = " ".join(
                 [*(f.sources or []), (f.labels.source if f.labels else "") or ""]
             ).lower()
-            src = 2 if any(
-                h in blob
-                for h in ("workbook", "investor", "management", "model", "cim")
-            ) else (1 if any(h in blob for h in ("qbo", "quickbooks", "ledger", "xero")) else 0)
+            if prefer_accounts:
+                src = 2 if any(
+                    h in blob
+                    for h in ("monthly", "management", "qbo", "quickbooks", "ledger", "xero", "accounts")
+                ) else (0 if any(h in blob for h in ("cim", "investor", "workbook", "teaser")) else 1)
+            else:
+                src = 2 if any(
+                    h in blob
+                    for h in ("workbook", "investor", "management", "model", "cim")
+                ) else (1 if any(h in blob for h in ("qbo", "quickbooks", "ledger", "xero")) else 0)
             return (status_rank, src)
 
         best = max(hits, key=_rank)
         return best.value, best.fact_id
 
-    revenue, rev_fid = _fact("revenue")
-    ebitda, ebitda_fid = _fact("ebitda")
+    revenue, rev_fid = _fact("revenue", prefer_accounts=True)
+    ebitda, ebitda_fid = _fact("ebitda", prefer_accounts=True)
     if ebitda is None:
-        ebitda, ebitda_fid = _fact("operating_profit")
+        ebitda, ebitda_fid = _fact("operating_profit", prefer_accounts=True)
 
     currency = (scope.currency if scope else None) or "USD"
     scale = (scope.scale if scope else None) or "M"
+
+    register, meta, propose_notes = propose_register_from_extract(
+        deal_slug,
+        year=year,
+        period=per,
+        target_scale=scale or "M",
+        ebitda_fact=ebitda,
+    )
+
+    reported_base = meta.get("reported_base")
+    if reported_base is None:
+        reported_base = ebitda
+    # Management reported base equals diligence reported; add-backs live on register.
+    mgmt_reported = reported_base
+    dil_reported = reported_base
+
+    notes = list(propose_notes)
+    if not register:
+        notes.append("Register empty — add adjustments via PUT …/qoe/register")
 
     doc = QoeWorkbookDoc(
         run_id=run_id,
@@ -916,15 +1358,24 @@ def build_qoe_from_facts(
         baseline=[
             QoeBaselinePeriod(
                 period=per,
-                management_reported_ebitda=ebitda,
-                diligence_reported_ebitda=ebitda,
-                revenue=revenue,
+                management_reported_ebitda=mgmt_reported,
+                diligence_reported_ebitda=dil_reported,
+                revenue=revenue if revenue is not None else meta.get("accounts_revenue"),
                 revenue_fact_id=rev_fid,
                 ebitda_fact_id=ebitda_fid,
-                basis_note="Seeded from databook fact table",
+                basis_note=(
+                    "Seeded from databook fact table + extract-backed ADJ register"
+                    if register
+                    else "Seeded from databook fact table"
+                ),
             )
         ],
-        notes=["Register empty — add adjustments via PUT …/qoe/register"],
+        candidates=list(register),
+        register_rows=list(register),
+        cim_ebitda=meta.get("cim_ebitda"),
+        cim_revenue=meta.get("cim_revenue"),
+        accounts_revenue=meta.get("accounts_revenue") or revenue,
+        notes=notes,
     )
     return recompute_qoe(doc)
 

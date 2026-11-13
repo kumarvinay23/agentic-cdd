@@ -64,3 +64,56 @@ def test_get_report_reads_under_lock(deal_root: Path) -> None:
     )
 
     assert get_report(slug, "ic_memo") == {"status": "ready", "storyline": []}
+
+
+def test_finish_report_clears_pdf_twin_when_absent(deal_root: Path) -> None:
+    slug = "fdd-pptx-only"
+    pptx = deal_root / slug / "reports" / "fdd_report" / "Co_FDD_Report.pptx"
+    pptx.parent.mkdir(parents=True)
+    pptx.write_bytes(b"pptx")
+
+    finish_report(
+        slug,
+        "fdd_report",
+        artifact_path=str(pptx.relative_to(deal_root / slug)),
+        pdf_artifact_path=None,
+    )
+    meta = get_report(slug, "fdd_report")
+    assert meta is not None
+    assert meta["status"] == "ready"
+    assert "pdf_artifact_path" not in meta
+
+    from agetic_cdd_api.report_store import list_reports
+
+    catalog = {r["report_type"]: r for r in list_reports(slug)}
+    assert catalog["fdd_report"]["pdf_available"] is False
+    assert catalog["fdd_report"]["export"] == "pptx"
+    assert catalog["fdd_report"]["formats"] == ["pptx"]
+    assert catalog["fdd_deck"].get("deprecated") is True
+    assert catalog["fdd_deck"]["formats"] == ["pptx"]
+
+
+def test_fdd_finish_strips_pdf_twin_even_if_passed(deal_root: Path) -> None:
+    """Phase F: callers cannot persist a PDF twin on FDD report types."""
+    slug = "fdd-no-twin"
+    pptx = deal_root / slug / "reports" / "fdd_report" / "Co_FDD_Report.pptx"
+    pptx.parent.mkdir(parents=True)
+    pptx.write_bytes(b"pptx")
+
+    finish_report(
+        slug,
+        "fdd_report",
+        artifact_path=str(pptx.relative_to(deal_root / slug)),
+        pdf_artifact_path="reports/fdd_report/Co_FDD_Report.pdf",
+    )
+    meta = get_report(slug, "fdd_report")
+    assert meta is not None
+    assert "pdf_artifact_path" not in meta
+
+    from agetic_cdd_api.report_store import is_fdd_pptx_only, list_reports
+
+    assert is_fdd_pptx_only("fdd_report")
+    assert is_fdd_pptx_only("fdd_deck")
+    catalog = {r["report_type"]: r for r in list_reports(slug)}
+    assert catalog["fdd_report"]["pdf_available"] is False
+    assert catalog["fdd_report"]["pdf_artifact_path"] is None

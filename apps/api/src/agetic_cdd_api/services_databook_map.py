@@ -23,9 +23,10 @@ _DISPLAY_LABELS: dict[str, str] = {
     "yoy_growth": "YoY Growth",
     "nrr": "Net Revenue Retention (NRR)",
     "grr": "Gross Revenue Retention (GRR)",
-    # Prefer these when caption / line already names the commercial segment.
     "nrr_commercial": "Commercial NRR",
     "grr_commercial": "Commercial GRR",
+    "nrr_residential": "Residential NRR",
+    "grr_residential": "Residential GRR",
     "revenue_churn": "Revenue Churn",
     "arr": "ARR",
     "logo_churn": "Logo Churn",

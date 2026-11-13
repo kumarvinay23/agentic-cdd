@@ -634,7 +634,7 @@ def infer_sector_id_from_corpus(corpus: str) -> str:
     t = (corpus or "").lower()
     if not t.strip():
         return "generic"
-    # Company / deal names like "Compost Crew" are decisive even without prose hits.
+    # A sector word in the company or deal name is decisive even without prose hits.
     if re.search(r"\bcompost(?:ing)?\b", t) or re.search(r"\borganics?\b", t):
         organics_hits = 2
     else:

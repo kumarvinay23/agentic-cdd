@@ -132,11 +132,11 @@ def _score_sentence(
 
 
 _SHARE_TREND_ROW = re.compile(
-    r"(Ola Electric|Ather Energy|TVS\s*iQube|Bajaj Chetak|Hero Vida|Ampere(?:\s*\([^)]*\))?)"
+    r"([A-Z][\w.&'()-]*(?:\s+(?!Market\b|Share\b|Dimension\b|Trend\b)[A-Za-z0-9.&'()-]+){0,3})"
     r"\s+(~?\d+%)\s+(~?\d+%)\s+(~?\d+%)"
     r"(?:\s+(Strong Gain|Steady Growth|Losing Share|Declining|Gaining))?",
-    re.IGNORECASE,
 )
+_SHARE_NAME_SKIP = re.compile(r"(?i)^(market|share|dimension|trend|company|others)$")
 _MARKET_SIZE_CLAIM = re.compile(
     r"(?:electric two-wheeler|E2W)\s+market[^.]*?(?:~?\d[\d,]*)\s*units[^.]*?(?:~?\d+%)\s*EV penetration[^.]*\.",
     re.IGNORECASE,
@@ -148,6 +148,8 @@ def _structured_claims(text: str) -> list[str]:
     claims: list[str] = []
     for m in _SHARE_TREND_ROW.finditer(text or ""):
         name = re.sub(r"\s+", " ", m.group(1)).strip()
+        if _SHARE_NAME_SKIP.search(name):
+            continue
         y3 = m.group(4)
         trend = (m.group(5) or "").strip()
         claim = (

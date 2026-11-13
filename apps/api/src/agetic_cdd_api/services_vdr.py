@@ -152,6 +152,7 @@ async def upload_vdr_file(db: Session, deal: Deal, file: UploadFile) -> Deal:
         )
 
     existing = loads_docs(deal.vdr_docs_json)
+    before = {str(doc.get("filename") or "") for doc in existing if isinstance(doc, dict)}
     by_name = index_docs(existing)
     now = utc_now_iso()
     for path in documents_dir(deal).iterdir():
@@ -164,7 +165,53 @@ async def upload_vdr_file(db: Session, deal: Deal, file: UploadFile) -> Deal:
                 uploaded_at=now,
             )
     merged = scan_vdr_docs(deal, existing_json=json.dumps(list(by_name.values())))
+    added = [
+        str(doc.get("filename") or "")
+        for doc in merged
+        if isinstance(doc, dict) and str(doc.get("filename") or "") not in before
+    ]
+    if added and deal.slug:
+        from agetic_cdd_api.services_step_log import record_source_files
+
+        record_source_files(deal.slug, added)
+    uploaded = dest.name
+    if uploaded in before and deal.slug and dest.suffix.lower() != ".zip":
+        from agetic_cdd_api.agent_contracts import apply_corrected_fact
+
+        apply_corrected_fact(db, deal, uploaded)
     return _persist_docs(db, deal, merged)
+
+
+def preview_vdr_file(deal: Deal, filename: str, *, sheet: str | None = None) -> dict:
+    """Text or grid preview of one data-room file, for click-through from a figure."""
+    path = vdr_file_for_download(deal, filename)
+    suffix = path.suffix.lower()
+    if suffix in {".xlsx", ".xlsm"}:
+        from agetic_cdd_api.report_preview import preview_xlsx
+
+        data = preview_xlsx(path, sheet=sheet, max_rows=160)
+        data["rows"] = [
+            [str(cell)[:80] for cell in row[:16]] for row in (data.get("rows") or [])
+        ]
+        data["filename"] = path.name
+        return data
+    if suffix == ".pdf":
+        from agetic_cdd_api.report_preview import preview_pdf
+
+        data = preview_pdf(path, max_pages=8)
+        data["filename"] = path.name
+        return data
+    if suffix in {".txt", ".md", ".csv"}:
+        return {
+            "format": "text",
+            "filename": path.name,
+            "text": path.read_text(encoding="utf-8", errors="replace")[:20000],
+        }
+    return {
+        "format": "unsupported",
+        "filename": path.name,
+        "note": "This file has no text preview.",
+    }
 
 
 def vdr_file_for_download(deal: Deal, filename: str) -> Path:

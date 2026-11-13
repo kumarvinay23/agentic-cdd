@@ -129,6 +129,9 @@ def test_values_agree_tolerance() -> None:
     assert values_agree(0.762, 76.168)
     assert values_agree(76.168, 0.762)
     assert values_agree(0.8727, 87.27)
+    # Sub-2pp margin fraction vs percent (0.018 ↔ 1.80).
+    assert values_agree(0.018, 1.799)
+    assert values_agree(1.799, 0.018)
 
 
 def test_claim_id_is_uuid_hex() -> None:

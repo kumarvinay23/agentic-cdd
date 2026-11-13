@@ -88,16 +88,16 @@ _ACQ_FINANCE_CUE = re.compile(
 )
 _SHAREHOLDER_LINE_RE = re.compile(
     r"(?i)([A-Za-z][A-Za-z0-9 &.\-]{1,40}?)\s*[—\-–:]\s*"
-    r"([\d,]+(?:\.\d+)?)\s*%(?:\s*(?:fully\s+diluted|FD))?"
+    r"(\d[\d,]*(?:\.\d+)?)\s*%(?:\s*(?:fully\s+diluted|FD))?"
 )
 
 _DEBT_LINE_RE = re.compile(
     r"(?i)([A-Za-z][A-Za-z0-9 &/\-()]{2,60}?)\s*[—\-–:]\s*"
-    r"(?:USD|US\$|\$)\s*([\d,]+(?:\.\d+)?)\s*M\b"
+    r"(?:USD|US\$|\$)\s*(\d[\d,]*(?:\.\d+)?)\s*M\b"
 )
 _TOTAL_DEBT_RE = re.compile(
     r"(?i)(?:total\s+(?:gross\s+)?debt|gross\s+debt|debt\s+total)"
-    r"[^.%]{0,40}?(?:USD|US\$|\$)?\s*([\d,]+(?:\.\d+)?)\s*M\b"
+    r"[^.%]{0,40}?(?:USD|US\$|\$)?\s*(\d[\d,]*(?:\.\d+)?)\s*M\b"
 )
 _RATE_RE = re.compile(
     r"(?i)(?:interest\s+rate|coupon|pricing|SOFR|LIBOR|SBI\s*MCLR|repo)"
@@ -118,16 +118,16 @@ _COC_RE = re.compile(
 )
 _CASH_FREE_RE = re.compile(
     r"(?i)(?:freely\s+available\s+cash|unrestricted\s+cash|available\s+cash)"
-    r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*([\d,]+(?:\.\d+)?)\s*(M|Cr|mn)?"
+    r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*(\d[\d,]*(?:\.\d+)?)\s*(M|Cr|mn)?"
 )
 _CASH_RESTRICTED_RE = re.compile(
     r"(?i)(?:restricted\s+cash|escrow|margin\s+money|lien(?:ed)?\s+cash)"
-    r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*([\d,]+(?:\.\d+)?)\s*(M|Cr|mn)?"
+    r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*(\d[\d,]*(?:\.\d+)?)\s*(M|Cr|mn)?"
 )
 _CASH_MINIMUM_RE = re.compile(
     r"(?i)(?:operating\s+minimum|minimum\s+cash|cash\s+floor|"
     r"working\s+capital\s+minimum)"
-    r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*([\d,]+(?:\.\d+)?)\s*(M|Cr|mn)?"
+    r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*(\d[\d,]*(?:\.\d+)?)\s*(M|Cr|mn)?"
 )
 _LEASE_RE = re.compile(
     r"(?i)\b(finance\s+lease|capital\s+lease|lease\s+obligation|"
@@ -362,7 +362,9 @@ def _facilities_from_legacy_and_corpus(
         if re.search(r"(?i)^(total|net|gross|leverage|ratio|coverage)", name):
             continue
         seen.add(key)
-        amount = float(m.group(2).replace(",", ""))
+        amount = _num(m.group(2))
+        if amount is None:
+            continue
         rows.append(
             {
                 "facility": name,
@@ -477,7 +479,7 @@ def _bs_reconciliation(
     if total is None:
         m = _TOTAL_DEBT_RE.search(corpus or "")
         if m:
-            total = float(m.group(1).replace(",", ""))
+            total = _num(m.group(1))
 
     rows: list[dict[str, Any]] = []
     if scheduled is not None:
@@ -843,12 +845,15 @@ def _extract_cap_table(corpus: str, legacy: dict[str, Any]) -> list[dict[str, An
             continue
         if re.search(r"(?i)^(total|fully|ordinary|preference|debt|cash)", holder):
             continue
+        pct = _num(m.group(2))
+        if pct is None:
+            continue
         seen.add(holder.lower())
         rows.append({
             "holder": holder,
             "instrument": "Equity / as stated",
             "shares": _NA,
-            "fully_diluted_pct": float(m.group(2).replace(",", "")),
+            "fully_diluted_pct": pct,
             "source": _DOC_CITE,
             "notes": _CAP_TABLE_RULE,
         })
@@ -978,27 +983,31 @@ def _leverage_discipline(
     # Prefer explicit approved / adjusted EBITDA in corpus
     m = re.search(
         r"(?i)\b(approved|adjusted|quality\s+of\s+earnings)\s+EBITDA\b"
-        r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*([-]?[\d,]+(?:\.\d+)?)\s*(M|Cr|mn)?",
+        r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*(-?\d[\d,]*(?:\.\d+)?)\s*(M|Cr|mn)?",
         text,
     )
     if m:
-        ebitda = float(m.group(2).replace(",", ""))
-        unit = (m.group(3) or "M").upper()
-        ebitda_label = f"Approved/adjusted EBITDA {ebitda:g} {unit}"
-        ebitda_source = _DOC_CITE
-        approved = True
-    else:
+        parsed = _num(m.group(2))
+        if parsed is not None:
+            ebitda = parsed
+            unit = (m.group(3) or "M").upper()
+            ebitda_label = f"Approved/adjusted EBITDA {ebitda:g} {unit}"
+            ebitda_source = _DOC_CITE
+            approved = True
+    if ebitda is None:
         m2 = re.search(
             r"(?i)\b(LTM|NTM|reported)?\s*EBITDA\b"
-            r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*([-]?[\d,]+(?:\.\d+)?)\s*(M|Cr|mn)?",
+            r"[^.%]{0,40}?(?:USD|US\$|\$|INR|₹)?\s*(-?\d[\d,]*(?:\.\d+)?)\s*(M|Cr|mn)?",
             text,
         )
         if m2:
-            ebitda = float(m2.group(2).replace(",", ""))
-            unit = (m2.group(3) or "M").upper()
-            ebitda_label = f"EBITDA {ebitda:g} {unit} (not labelled approved)"
-            ebitda_source = _DOC_CITE
-            approved = False
+            parsed = _num(m2.group(2))
+            if parsed is not None:
+                ebitda = parsed
+                unit = (m2.group(3) or "M").upper()
+                ebitda_label = f"EBITDA {ebitda:g} {unit} (not labelled approved)"
+                ebitda_source = _DOC_CITE
+                approved = False
 
     if ebitda is None and isinstance(hp_spec, dict):
         perf = hp_spec.get("performance_metrics") if isinstance(

@@ -100,12 +100,41 @@ def test_notes_and_draft_to_final_hold() -> None:
             caption="Revenue",
             fiscal_year=2024,
             value=120.0,
+            scale="millions",
+            reason="footnote",
             metric_key="revenue",
         )
     ]
     issues, holds = check_notes_vs_statements(rows, notes, params=DealDatabookParams())
     assert "r" in holds
     assert issues[0]["check_id"] == "notes_vs_statements"
+
+    prose_notes = [
+        NoteFact(
+            note_id="p1",
+            doc_id="d",
+            source_name="cim.pptx",
+            caption="revenue",
+            fiscal_year=2024,
+            value=2025.0,
+            reason="prose",
+            metric_key="revenue",
+        ),
+        NoteFact(
+            note_id="p2",
+            doc_id="d",
+            source_name="cim.pptx",
+            caption="revenue",
+            fiscal_year=2024,
+            value=70.0,
+            reason="prose",
+            metric_key="revenue",
+        ),
+    ]
+    issues, holds = check_notes_vs_statements(rows, prose_notes, params=DealDatabookParams())
+    assert not holds
+    # Year-like scrap skipped; unscaled prose disagreement is advisory only.
+    assert [i["expected"] for i in issues] == [70.0]
 
     draft_rows = [
         _row(

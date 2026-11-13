@@ -20,6 +20,29 @@ from agetic_cdd_api.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Market context only: size, growth, competitors, prices. Company facts stay in the data room.
+MARKET_WEB_CAPABILITIES = frozenset(
+    {
+        "gx_x_market_funnel",
+        "gx_x_market_evidence",
+        "gx_x_competitor_table",
+        "cmp_positioning_scatter",
+    }
+)
+_COMPANY_FACT = re.compile(
+    r"(?i)\b(?:revenue|ebitda|gross\s+margin|net\s+income|net\s+profit|"
+    r"headcount|employees|\bfte\b|management\s+team|\bceo\b|\bcfo\b|founder|"
+    r"litigation|lawsuit|permit|customer\s+concentration|\bchurn\b|\bnrr\b|\bgrr\b|"
+    r"balance\s+sheet|cash\s+flow|net\s+debt|cap\s+table|"
+    r"headquarters|head\s+office|\bfounded\b|legal\s+entity)\b"
+)
+_MARKET_CONTEXT = re.compile(
+    r"(?i)\b(?:market\s+size|\btam\b|\bsam\b|\bsom\b|addressable|penetration|"
+    r"market\s+share|competitor|competition|competitive|\bpeers\b|landscape|"
+    r"market\s+price|industry\s+price|price\s+level|market\s+pricing|"
+    r"market\s+growth|industry\s+growth|industry\s+cagr|market\s+cagr)\b"
+)
+
 _TIMEOUT_S = 35
 _STOP = frozenset(
     {
@@ -228,23 +251,46 @@ def _duckduckgo_search(query: str) -> list[dict[str, Any]]:
     return out
 
 
+def web_search_allowed(*, prompt: str, capability: dict[str, Any] | None) -> bool:
+    """Web search is only for market size, growth, competitors, and prices.
+
+    A company fact (revenue, management, legal, the company's own accounts)
+    is never searched, even when a market capability id is sent with it.
+    """
+    cap_id = str((capability or {}).get("id") or "")
+    if cap_id not in MARKET_WEB_CAPABILITIES:
+        return False
+    text = prompt or ""
+    if _COMPANY_FACT.search(text) and not _MARKET_CONTEXT.search(text):
+        return False
+    return True
+
+
 def build_web_queries(*, prompt: str, subject: str, capability: dict[str, Any]) -> list[str]:
     cap_title = str(capability.get("title") or capability.get("id") or "market")
     base = f"{subject} {cap_title}"
     lower = (prompt or "").lower()
-    queries = [f"{subject} competitors market share", f"{subject} industry overview"]
-    if "competitor" in lower or "peer" in lower:
+    queries = [f"{subject} industry overview", f"{subject} market size"]
+    if "competitor" in lower or "peer" in lower or "landscape" in lower:
         queries = [
             f"{subject} main competitors",
             f"{subject} competitive landscape market share",
         ]
-    elif "share" in lower or "tam" in lower or "penetration" in lower:
+    elif "price" in lower:
+        queries = [
+            f"{subject} industry price level",
+            f"{subject} market pricing",
+        ]
+    elif "share" in lower or "tam" in lower or "penetration" in lower or "market size" in lower:
         queries = [
             f"{subject} market share",
             f"{subject} market size TAM SAM",
         ]
-    elif "growth" in lower:
-        queries = [f"{subject} revenue growth rate", f"{subject} CAGR"]
+    elif "growth" in lower or "cagr" in lower:
+        queries = [
+            f"{subject} industry market growth",
+            f"{subject} industry CAGR",
+        ]
     return [q if subject.lower() in q.lower() else f"{base} {q}" for q in queries[:2]]
 
 
@@ -259,7 +305,12 @@ def research_web(
     Run web research for one capability.
 
     Returns (sources, queries_used). Sources are DiligenceIQ-shaped with origin=web.
+    Company facts are not searched.
     """
+    if not web_search_allowed(prompt=prompt, capability=capability):
+        return [], []
+    from agetic_cdd_api.services_evidence_router import stamp_web_source
+
     queries = build_web_queries(prompt=prompt, subject=subject, capability=capability)
     collected: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
@@ -276,7 +327,7 @@ def research_web(
                 seen_urls.add(href)
             if "passages" not in row:
                 row["passages"] = [str(row.get("snippet") or "")]
-            collected.append(row)
+            collected.append(stamp_web_source(row))
 
     filtered = filter_by_subject(collected, subject=subject, prompt=prompt)
     return filtered[:limit], queries

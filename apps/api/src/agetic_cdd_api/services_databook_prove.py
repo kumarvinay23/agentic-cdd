@@ -309,13 +309,38 @@ def check_ni_cross_statement(
     return issues, hold_ids
 
 
+def _note_looks_like_year(value: float) -> bool:
+    """Reject calendar years scraped as note figures (e.g. 2024.0 near 'Revenue')."""
+    v = abs(float(value))
+    return 1990.0 <= v <= 2100.0 and abs(v - round(v)) < 1e-9
+
+
+def _note_comparable_to_statement(note_value: float, statement_value: float) -> bool:
+    """Skip % / headcount / teaser scraps that are not the same figure type."""
+    if _note_looks_like_year(note_value):
+        return False
+    ratio = abs(float(note_value)) / max(abs(float(statement_value)), 1e-9)
+    return 0.25 <= ratio <= 4.0
+
+
+def _note_can_veto_statement(note: NoteFact) -> bool:
+    """Prose scraps are advisory; scaled/currency notes (or non-prose) may hold rows."""
+    if note.scale or note.currency:
+        return True
+    return (note.reason or "prose").strip().lower() != "prose"
+
+
 def check_notes_vs_statements(
     rows: list[ExtractedRow],
     notes: list[NoteFact] | None,
     *,
     params: DealDatabookParams,
 ) -> tuple[list[dict[str, Any]], set[str]]:
-    """S5-06 lite — note figures that map to a statement metric must agree."""
+    """S5-06 lite — note figures that map to a statement metric must agree.
+
+    Unscaled prose notes never veto promotion (CIM/teaser scrapes often mis-tag
+    years and percentages as revenue). Structured notes still hold on disagree.
+    """
     if not notes:
         return [], set()
     index = _index_by_metric_year(rows)
@@ -339,10 +364,13 @@ def check_notes_vs_statements(
         best = _pick_best(peers)
         if best is None:
             continue
+        if not _note_comparable_to_statement(float(note.value), float(best.value)):
+            continue
         if _ties(float(note.value), float(best.value), rel_tol=rel_tol):
             continue
-        for r in peers:
-            hold_ids.add(r.row_id)
+        if _note_can_veto_statement(note):
+            for r in peers:
+                hold_ids.add(r.row_id)
         issues.append(
             {
                 "kind": "prove_check",

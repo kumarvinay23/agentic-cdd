@@ -28,6 +28,7 @@ from agetic_cdd_api.deps import AuthContext, get_current_auth
 from agetic_cdd_api.report_store import (
     REPORT_TYPES,
     get_report,
+    is_fdd_pptx_only,
     list_reports,
     start_report,
     update_storyline,
@@ -161,7 +162,9 @@ def generate_report(
     if report_type not in REPORT_TYPES:
         raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
     deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
+    from agetic_cdd_api.services_pipeline_run import note_report_started
 
+    note_report_started(db, deal, report_type)
     job_envelope = start_report(deal.slug, report_type)
 
     t = threading.Thread(
@@ -205,6 +208,7 @@ def report_status(
             "status": "not_generated",
             **(REPORT_TYPES.get(report_type, {})),
         }
+    pdf_path = None if is_fdd_pptx_only(report_type) else meta.get("pdf_artifact_path")
     return {
         "report_type": report_type,
         "status": meta.get("status", "not_generated"),
@@ -215,6 +219,8 @@ def report_status(
         "artifact_path": meta.get("artifact_path"),
         "content_sha256": meta.get("content_sha256"),
         "artifact_bytes": meta.get("artifact_bytes"),
+        "pdf_available": bool(pdf_path),
+        "pdf_artifact_path": pdf_path,
         "storyline_count": len(meta.get("storyline", [])),
         "stale_databook": bool(meta.get("stale_databook")),
         "stale_release_id": meta.get("stale_release_id"),
@@ -223,10 +229,57 @@ def report_status(
     }
 
 
+def _resolve_download_artifact(
+    deal_slug: str,
+    meta: dict,
+    *,
+    format: str | None,
+) -> tuple[Path, str]:
+    """Return (filepath, export_fmt) for the primary artifact or PDF twin."""
+    want = (format or "").strip().lower() or None
+    primary = meta.get("artifact_path")
+    if not primary:
+        raise HTTPException(status_code=404, detail="No artifact file found.")
+
+    if want in {None, "", "primary"}:
+        filepath = _resolve_artifact_path(deal_slug, primary)
+        export_fmt = REPORT_TYPES.get(meta.get("report_type") or "", {}).get(
+            "export"
+        ) or Path(str(primary)).suffix.lstrip(".") or "bin"
+        return filepath, str(export_fmt)
+
+    if want == "pdf":
+        report_type = str(meta.get("report_type") or "")
+        if is_fdd_pptx_only(report_type):
+            raise HTTPException(
+                status_code=400,
+                detail="FDD Report is PowerPoint only — PDF download is not available.",
+            )
+        pdf_rel = meta.get("pdf_artifact_path")
+        if pdf_rel:
+            filepath = _resolve_artifact_path(deal_slug, str(pdf_rel))
+        else:
+            # Fallback: sibling of the primary DOCX (legacy builds).
+            primary_path = _resolve_artifact_path(deal_slug, primary)
+            filepath = primary_path.with_suffix(".pdf")
+        if not filepath.exists():
+            raise HTTPException(status_code=404, detail="PDF artifact not available.")
+        return filepath, "pdf"
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unsupported download format: {want!r} (use primary or pdf)",
+    )
+
+
 @router.get("/portfolios/{deal_id}/reports/{report_type}/download")
 def download_report(
     deal_id: str,
     report_type: str,
+    format: str | None = Query(
+        default=None,
+        description="Optional twin format — pass 'pdf' when a PDF twin exists (legacy).",
+    ),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ):
@@ -235,16 +288,15 @@ def download_report(
     if not meta or meta.get("status") not in {"ready", "stale"}:
         raise HTTPException(status_code=404, detail="Report not ready for download.")
 
-    artifact = meta.get("artifact_path")
-    if not artifact:
-        raise HTTPException(status_code=404, detail="No artifact file found.")
-
-    filepath = _resolve_artifact_path(deal.slug, artifact)
+    # Ensure report_type is on meta for export default lookup.
+    meta = {**meta, "report_type": report_type}
+    filepath, export_fmt = _resolve_download_artifact(
+        deal.slug, meta, format=format
+    )
 
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Artifact file missing on disk.")
 
-    export_fmt = REPORT_TYPES.get(report_type, {}).get("export", "bin")
     media_map = {
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -270,16 +322,36 @@ def preview_report(
     deal_id: str,
     report_type: str,
     sheet: str | None = Query(default=None),
+    format: str | None = Query(
+        default=None,
+        description="Optional twin format — pass 'pdf' to preview a legacy PDF twin.",
+    ),
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Return in-browser preview payload (xlsx sheets or docx document blocks)."""
+    """Return in-browser preview payload (xlsx / docx / pptx / pdf blocks)."""
     from agetic_cdd_api.report_preview import preview_docx, preview_pdf, preview_pptx, preview_xlsx
 
     deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
     meta = get_report(deal.slug, report_type)
     if not meta or meta.get("status") not in {"ready", "stale"}:
         raise HTTPException(status_code=404, detail="Report not ready for preview.")
+
+    meta = {**meta, "report_type": report_type}
+    export_fmt = REPORT_TYPES.get(report_type, {}).get("export", "")
+    want = (format or "").strip().lower() or None
+
+    # Explicit PDF twin preview only when requested — never for FDD (PPTX-only).
+    if want == "pdf" and not is_fdd_pptx_only(report_type):
+        try:
+            filepath, resolved_fmt = _resolve_download_artifact(
+                deal.slug, meta, format="pdf"
+            )
+        except HTTPException:
+            filepath, resolved_fmt = None, None  # type: ignore[assignment]
+        if filepath is not None and filepath.exists() and resolved_fmt == "pdf":
+            payload = preview_pdf(filepath)
+            return {"success": True, "report_type": report_type, **payload}
 
     artifact = meta.get("artifact_path")
     if not artifact:
@@ -289,7 +361,6 @@ def preview_report(
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Artifact file missing on disk.")
 
-    export_fmt = REPORT_TYPES.get(report_type, {}).get("export", "")
     if export_fmt == "xlsx":
         payload = preview_xlsx(filepath, sheet=sheet)
     elif export_fmt == "docx":

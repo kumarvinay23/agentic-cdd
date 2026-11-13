@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DealProfileConfirm } from "@/components/deal/DealProfileConfirm";
 import {
   ApiError,
+  dealProfileRequest,
   pipelineAgentOutputRequest,
   pipelinePhaseRunStream,
   pipelineRequest,
   pipelineRunRequest,
+  reportEventsStream,
+  reportGenerateRequest,
+  reportStatusRequest,
+  type DealProfile,
   type PipelinePayload,
   type PipelinePhase,
 } from "@/lib/api";
@@ -27,7 +33,7 @@ function phaseBadge(status: string): string {
 function agentBadge(status: string): string {
   if (status === "completed") return "text-[#15803d]";
   if (status === "running") return "text-[#1d4ed8]";
-  if (status === "failed") return "text-text-danger";
+  if (status === "failed" || status === "needs_repair") return "text-text-danger";
   return "text-text-secondary";
 }
 
@@ -231,7 +237,15 @@ const PHASE_BLURBS: Record<string, string> = {
   foundations: "Build foundational understanding of the company, strategy, and governance.",
   deep_dive: "Deep-dive commercial, operational, financial, and risk workstreams.",
   ic_recommendation: "Synthesize findings into an investment committee recommendation.",
-  reports: "Assemble diligence reports and packs from completed agents.",
+  reports: "Generate the strategy report, market deck, operations dashboard, IC memo, and CDD deck.",
+};
+
+const REPORT_AGENT_TYPES: Record<string, string> = {
+  strategy_report: "strategy_report",
+  market_intel_deck: "market_deck",
+  operations_dashboard: "ops_dashboard",
+  ic_memo: "ic_memo",
+  cdd_deck: "cdd_deck",
 };
 
 export function DealWorkflow({
@@ -248,16 +262,23 @@ export function DealWorkflow({
   onOpenAgentDocument?: (agentKey: string) => void;
 }) {
   const [pipeline, setPipeline] = useState<PipelinePayload | null>(null);
+  const [profile, setProfile] = useState<DealProfile | null>(null);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [reportKey, setReportKey] = useState<string | null>(null);
   const [selectedOutput, setSelectedOutput] = useState<string | null>(null);
   const [outputJson, setOutputJson] = useState<Record<string, unknown> | null>(null);
 
   const refresh = useCallback(async () => {
     if (!accessToken) return;
     try {
-      const res = await pipelineRequest(accessToken, dealId);
+      const [res, profileRes] = await Promise.all([
+        pipelineRequest(accessToken, dealId),
+        dealProfileRequest(accessToken, dealId),
+      ]);
       setPipeline(res.data);
+      setProfile(profileRes.data);
       onError(null);
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Failed to load pipeline");
@@ -286,40 +307,104 @@ export function DealWorkflow({
     return () => window.clearInterval(timer);
   }, [active, refresh]);
 
-  async function runPhase(phaseId?: string, opts?: { restart?: boolean }) {
+  async function waitUntilIdle() {
+    if (!accessToken) return null;
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      const res = await pipelineRequest(accessToken, dealId);
+      setPipeline(res.data);
+      const stillRunning =
+        !!res.data.running ||
+        !!res.data.running_agent_key ||
+        (res.data.phases ?? []).some((phase) =>
+          (phase.agents ?? []).some((agent) => agent.status === "running" || agent.status === "pending"),
+        );
+      if (!stillRunning) return res.data;
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    }
+    return null;
+  }
+
+  async function runReports(agentKey?: string) {
     if (!accessToken) return;
+    const phase = pipeline?.phases.find((item) => item.phase_id === "reports");
+    const keys = agentKey
+      ? [agentKey]
+      : (phase?.agents ?? []).map((agent) => agent.agent_key);
+    for (const key of keys) {
+      const reportType = REPORT_AGENT_TYPES[key];
+      if (!reportType) continue;
+      setReportKey(key);
+      await reportGenerateRequest(accessToken, dealId, reportType);
+      await reportEventsStream(accessToken, dealId, reportType, {
+        onError: (message) => onError(message),
+      });
+      const status = await reportStatusRequest(accessToken, dealId, reportType);
+      if (status.status === "failed") {
+        onError(status.error || "Report generation failed");
+      }
+      await refresh();
+    }
+  }
+
+  async function runPhase(phaseId?: string, opts?: { restart?: boolean }) {
+    if (!accessToken || profile?.confirmed === false) return;
     setRunning(true);
     onError(null);
+    const chain = !opts?.restart;
     try {
-      if (opts?.restart) {
-        await pipelineRunRequest(accessToken, dealId, { restart: true });
-      } else if (phaseId === "deep_dive") {
-        await pipelinePhaseRunStream(accessToken, dealId, phaseId, {
-          onEvent: () => {
-            void refresh();
-          },
-        });
-      } else {
-        await pipelineRunRequest(accessToken, dealId, phaseId ? { phase_id: phaseId } : {});
+      let nextId = phaseId;
+      for (let step = 0; step < 4; step += 1) {
+        let ranId = nextId;
+        if (opts?.restart && step === 0) {
+          await pipelineRunRequest(accessToken, dealId, { restart: true });
+        } else if (nextId === "reports") {
+          await runReports();
+          break;
+        } else if (nextId === "deep_dive") {
+          await pipelinePhaseRunStream(accessToken, dealId, nextId, {
+            onEvent: () => {
+              void refresh();
+            },
+          });
+        } else {
+          const started = await pipelineRunRequest(
+            accessToken,
+            dealId,
+            nextId ? { phase_id: nextId } : {},
+          );
+          ranId = started.data.phase_id ?? nextId;
+        }
+        const settled = await waitUntilIdle();
+        if (!chain || !settled || !ranId) break;
+        const ran = (settled.phases ?? []).find((phase) => phase.phase_id === ranId);
+        const following = settled.next_phase_id;
+        if (ran?.status !== "completed" || !following || following === "reports") break;
+        nextId = following;
       }
       await refresh();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Pipeline run failed");
     } finally {
+      setReportKey(null);
       setRunning(false);
     }
   }
 
   async function runAgent(agentKey: string) {
-    if (!accessToken) return;
+    if (!accessToken || profile?.confirmed === false) return;
     setRunning(true);
     onError(null);
     try {
-      await pipelineRunRequest(accessToken, dealId, { agent_key: agentKey });
-      await refresh();
+      if (REPORT_AGENT_TYPES[agentKey]) {
+        await runReports(agentKey);
+      } else {
+        await pipelineRunRequest(accessToken, dealId, { agent_key: agentKey });
+        await refresh();
+      }
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Agent run failed");
     } finally {
+      setReportKey(null);
       setRunning(false);
     }
   }
@@ -341,15 +426,53 @@ export function DealWorkflow({
   }
   if (!pipeline) return null;
 
-  const busy = active;
   const completed = pipeline.completedAgents ?? 0;
   const total = pipeline.totalAgents ?? 0;
   const pct = pipeline.completionPercentage ?? 0;
   const runningKey = pipeline.running_agent_key;
   const runningName = pipeline.running_agent_name;
 
+  const profileConfirmed = profile?.confirmed !== false;
+  const busy = active;
+
   return (
     <div className="space-y-4">
+      {profile && accessToken && (!profile.confirmed || editingProfile) ? (
+        <DealProfileConfirm
+          dealId={dealId}
+          accessToken={accessToken}
+          profile={profile}
+          onConfirmed={(next) => {
+            setProfile(next);
+            setEditingProfile(false);
+          }}
+          onError={onError}
+          onCancel={profile.confirmed ? () => setEditingProfile(false) : undefined}
+        />
+      ) : null}
+      {profile?.confirmed && profile.pack && !editingProfile ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-[12px] text-text-secondary">
+            Profile confirmed · {profile.pack.currency || "currency unset"} · {profile.pack.tax_terms} · {profile.pack.number_format}
+            {profile.pack.valuation_framing ? ` · ${profile.pack.valuation_framing}` : ""}
+            {typeof profile.fields.fiscal_year_end?.value === "string" && profile.fields.fiscal_year_end.value
+              ? ` · year end ${profile.fields.fiscal_year_end.value}`
+              : ""}
+            {typeof profile.fields.sector_pack?.value === "string" && profile.fields.sector_pack.value
+              ? ` · ${profile.fields.sector_pack.value}`
+              : ""}
+          </p>
+          {accessToken ? (
+            <button
+              type="button"
+              className="text-[12px] font-medium text-text-primary underline underline-offset-2"
+              onClick={() => setEditingProfile(true)}
+            >
+              Edit profile
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <section className="rounded-[10px] border border-border-primary bg-white px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -368,9 +491,11 @@ export function DealWorkflow({
             </button>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || !profileConfirmed}
               title={
-                busy
+                !profileConfirmed
+                  ? "Confirm the deal profile before any agent runs"
+                  : busy
                   ? "Wait for the current run to finish"
                   : pipeline.next_phase_id
                     ? `Run next phase (${pipeline.next_phase_name ?? pipeline.next_phase_id})`
@@ -410,7 +535,13 @@ export function DealWorkflow({
         {pipeline.phases.map((phase: PipelinePhase) => {
           const phaseBusy = (phase.agents ?? []).some((agent) => agent.status === "running")
             || (busy && (phase.agents ?? []).some((agent) => agent.status === "pending"));
-          const canRun = !busy && (pipeline.next_phase_id === phase.phase_id || phase.status === "completed");
+          const isReportPhase = phase.phase_id === "reports";
+          const canRun =
+            profileConfirmed &&
+            !busy &&
+            (isReportPhase ||
+              pipeline.next_phase_id === phase.phase_id ||
+              phase.status === "completed");
           const open = phaseBusy || phase.status === "in_progress" || phase.status === "running";
           return (
             <details
@@ -463,7 +594,10 @@ export function DealWorkflow({
                     </p>
                     <ul className="mt-2 space-y-2">
                       {stage.agents.map((agent) => {
-                        const isRunning = agent.status === "running" || agent.agent_key === runningKey;
+                        const isRunning =
+                          agent.status === "running" ||
+                          agent.agent_key === runningKey ||
+                          agent.agent_key === reportKey;
                         const isPending = agent.status === "pending";
                         const openDocument = () => {
                           if (onOpenAgentDocument) {
@@ -505,9 +639,9 @@ export function DealWorkflow({
                               ) : null}
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
-                              {isRunning || agent.status === "completed" || agent.status === "failed" || (busy && isPending) ? (
+                              {isRunning || agent.status === "completed" || agent.status === "failed" || agent.status === "needs_repair" || (busy && isPending) ? (
                                 <span className={`text-[10px] font-semibold uppercase ${agentBadge(isRunning ? "running" : agent.status)}`}>
-                                  {isRunning ? "running" : busy && isPending ? "queued" : agent.status}
+                                  {isRunning ? "running" : busy && isPending ? "queued" : agent.status.replaceAll("_", " ")}
                                 </span>
                               ) : null}
                               <button
@@ -522,7 +656,7 @@ export function DealWorkflow({
                               </button>
                               <button
                                 type="button"
-                                disabled={busy}
+                                disabled={busy || !profileConfirmed}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   void runAgent(agent.agent_key);

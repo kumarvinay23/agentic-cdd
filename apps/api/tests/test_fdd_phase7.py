@@ -59,10 +59,12 @@ def test_assemble_includes_commentary_and_exhibits(deal_root: Path) -> None:
     store = load_exhibit_store(slug, manifest.run_id) or store
 
     comment_secs = [n for n in spec.nodes if n.node_id.startswith("sec_comment_")]
-    comment_slides = [n for n in spec.nodes if n.node_id.startswith("slide_comment_")]
+    chapter_slides = [n for n in spec.nodes if n.node_id.startswith("slide_ch_")]
     exhibit_secs = [n for n in spec.nodes if n.node_id.startswith("sec_ex_")]
     assert len(comment_secs) >= 5  # in-scope sections
-    assert len(comment_slides) == len(comment_secs)
+    # Phase C: widescreen storyline is chaptered 01–09 (cover+toc+chapters).
+    assert len(getattr(spec, "slides", None) or []) >= 10
+    assert len(chapter_slides) >= 10
     assert len(exhibit_secs) >= 1
     assert any(n.node_id == "msg_standards" for n in spec.nodes)
     assert any(n.node_id == "sec_cover" for n in spec.nodes)
@@ -79,7 +81,7 @@ def test_assemble_includes_commentary_and_exhibits(deal_root: Path) -> None:
     assert man.model_versions.get("fdd_assembly")
 
 
-def test_generate_produces_multi_section_pdf_and_deck(deal_root: Path) -> None:
+def test_generate_produces_pptx_report_and_deck(deal_root: Path) -> None:
     slug = "p7-generate"
     _prep(slug, deal_root)
 
@@ -98,16 +100,19 @@ def test_generate_produces_multi_section_pdf_and_deck(deal_root: Path) -> None:
 
     report_dir = deal_root / slug / "reports" / "fdd_report"
     deck_dir = deal_root / slug / "reports" / "fdd_deck"
+    assert list(report_dir.glob("*_FDD_Report.pptx"))
+    assert not list(report_dir.glob("*.docx"))
+    assert not list(report_dir.glob("*.pdf"))
     report_figs = json.loads(list(report_dir.glob("*_figures.json"))[0].read_text())
     deck_figs = json.loads(list(deck_dir.glob("*_figures.json"))[0].read_text())
     assert report_figs["page_count"] >= 8
     assert deck_figs["page_count"] >= 8
     assert report_figs["figures"] == deck_figs["figures"]
 
-    from pypdf import PdfReader
+    from pptx import Presentation
 
-    pdf = list(report_dir.glob("*.pdf"))[0]
-    assert len(PdfReader(str(pdf)).pages) >= 8
+    pptx_path = list(report_dir.glob("*_FDD_Report.pptx"))[0]
+    assert len(Presentation(str(pptx_path)).slides) >= 8
 
 
 def test_ensure_commentary_and_assemble_idempotent(deal_root: Path) -> None:

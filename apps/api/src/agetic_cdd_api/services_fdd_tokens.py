@@ -79,6 +79,95 @@ def format_fdd_number(
     return body
 
 
+def _to_scale(value: float, *, from_scale: str, to_scale: str) -> float:
+    src = (from_scale or "M").strip().lower()
+    dst = (to_scale or "k").strip().lower()
+    if src in {"$k", "000", "thousands"}:
+        src = "k"
+    if src in {"$m", "mm", "millions"}:
+        src = "m"
+    if dst in {"$k", "000", "thousands"}:
+        dst = "k"
+    if dst in {"$m", "mm", "millions"}:
+        dst = "m"
+    if src == dst:
+        return value
+    if src == "m" and dst == "k":
+        return value * 1000.0
+    if src == "k" and dst == "m":
+        return value / 1000.0
+    return value
+
+
+def format_pptx_money(
+    value: float | None,
+    *,
+    store_scale: str = "M",
+    display_scale: str = "k",
+    prose: bool = False,
+) -> str:
+    """FDD Report PPTX money display.
+
+    - Table cells (``prose=False``): thousands as ``13,282`` / ``(650)`` under a ``($k)`` header.
+    - KPI / headlines (``prose=True``): ``$13.28m`` when |k|≥1000 else ``$572k`` (negatives ``($572k)``).
+    """
+    if value is None:
+        return "—"
+    try:
+        raw = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    disp = (display_scale or "k").strip().lower()
+    if disp in {"$k", "000", "thousands"}:
+        disp = "k"
+    if disp in {"$m", "mm", "millions"}:
+        disp = "m"
+    # Always compute k-units for prose branching; table uses display_scale directly.
+    as_display = _to_scale(raw, from_scale=store_scale, to_scale=disp)
+    if not prose:
+        if disp == "k" and abs(as_display) >= 1:
+            as_display = float(
+                Decimal(str(as_display)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+        return format_fdd_number(as_display)
+
+    as_k = _to_scale(raw, from_scale=store_scale, to_scale="k")
+    neg = as_k < 0
+    mag = abs(as_k)
+    if mag >= 1000:
+        as_m = mag / 1000.0
+        body = format_fdd_number(as_m, brackets_for_negative=False)
+        if body.endswith(".00"):
+            body = body[:-3]
+        text = f"${body}m"
+    else:
+        rounded = float(Decimal(str(mag)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if mag >= 1 else mag
+        body = format_fdd_number(rounded, brackets_for_negative=False)
+        text = f"${body}k"
+    return f"({text})" if neg else text
+
+
+def _cell_is_percent(cell: ExhibitCell) -> bool:
+    scale = (cell.scale or "").strip().lower()
+    unit = (cell.unit or "").strip().lower()
+    return scale in {"%", "pp", "pct", "percent"} or unit in {"%", "pp", "pct", "percent"}
+
+
+def _cell_is_money(cell: ExhibitCell) -> bool:
+    if _cell_is_percent(cell):
+        return False
+    scale = (cell.scale or "").strip().lower()
+    currency = (cell.currency or "").strip()
+    unit = (cell.unit or "").strip().lower()
+    if currency:
+        return True
+    if scale in {"m", "k", "$m", "$k", "mm", "000", "thousands", "millions"}:
+        return True
+    if unit in {"m", "k", "usd", "gbp", "eur"}:
+        return True
+    return False
+
+
 def format_cell_display(cell: ExhibitCell) -> str:
     if cell.display:
         return cell.display
@@ -88,6 +177,29 @@ def format_cell_display(cell: ExhibitCell) -> str:
     if unit in {"%", "pp"} and num not in {"—", ""}:
         return f"{num}{unit}"
     return num
+
+
+def format_cell_display_pptx(
+    cell: ExhibitCell,
+    *,
+    store_scale: str = "M",
+    display_scale: str = "k",
+    prose: bool = True,
+) -> str:
+    """PPTX-facing cell display — converts store M → $k / $m for money cells."""
+    if _cell_is_percent(cell):
+        return format_cell_display(cell)
+    if _cell_is_money(cell):
+        cell_store = (cell.scale or store_scale or "M").strip() or "M"
+        if cell_store.lower() in {"%", "pp", "pct", "percent"}:
+            return format_cell_display(cell)
+        return format_pptx_money(
+            cell.value,
+            store_scale=cell_store,
+            display_scale=display_scale,
+            prose=prose,
+        )
+    return format_cell_display(cell)
 
 
 def display_unit_for_cell(cell: ExhibitCell | None) -> str:
@@ -280,6 +392,71 @@ def resolve_text(
         return resolved.display
 
     out = TOKEN_RE.sub(_sub, text or "")
+    return TokenResolveResult(text=out, bindings=bindings, unresolved=unresolved)
+
+
+_USD_M_RE = re.compile(r"\(?\s*USD\s*[MKmk]\s*\)?")
+_UNRESOLVED_TOKEN_RE = re.compile(r"\{\{ex:[^}]+\}\}")
+
+
+def scrub_store_unit_labels(text: str, *, display_scale: str = "k") -> str:
+    """Drop leftover ``(USD M)`` labels once PPTX figures carry $k/$m themselves."""
+    if not text:
+        return text
+    out = _USD_M_RE.sub("", text)
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\s+([,.;:])", r"\1", out)
+    return out.strip()
+
+
+def resolve_text_pptx(
+    text: str,
+    store: ExhibitStoreDoc | Mapping[str, ExhibitCell],
+    *,
+    store_scale: str = "M",
+    display_scale: str = "k",
+    replace_unresolved_with: str = "—",
+) -> TokenResolveResult:
+    """Resolve tokens for FDD Report PPTX — money in $k/$m, scrub USD M labels."""
+    cells: Mapping[str, ExhibitCell]
+    if isinstance(store, ExhibitStoreDoc):
+        cells = index_cells(store)
+    else:
+        cells = store
+
+    bindings: list[ResolvedToken] = []
+    unresolved: list[str] = []
+
+    def _sub(match: re.Match[str]) -> str:
+        exhibit_id, cell_id = match.group(1), match.group(2)
+        cell = _lookup_cell(exhibit_id, cell_id.strip(), cells)
+        if cell is None:
+            unresolved.append(match.group(0))
+            return replace_unresolved_with
+        display = format_cell_display_pptx(
+            cell,
+            store_scale=store_scale,
+            display_scale=display_scale,
+            prose=True,
+        )
+        bindings.append(
+            ResolvedToken(
+                raw=match.group(0),
+                exhibit_id=exhibit_id,
+                cell_id=cell.cell_id,
+                value=cell.value,
+                display=display,
+                fact_id=cell.fact_id,
+                status=cell.status,
+            )
+        )
+        return display
+
+    out = TOKEN_RE.sub(_sub, text or "")
+    # Belt-and-braces for any odd token shapes left behind.
+    out = _UNRESOLVED_TOKEN_RE.sub(replace_unresolved_with, out)
+    out = scrub_store_unit_labels(out, display_scale=display_scale)
+    out = client_facing_text(out)
     return TokenResolveResult(text=out, bindings=bindings, unresolved=unresolved)
 
 

@@ -431,7 +431,7 @@ _PLACEHOLDER_PERSON_RE = re.compile(
     r"job\s+title|shares?\s+outstanding|title\s+employee)\b"
 )
 # Person names only — reject sentence fragments like
-# "Compost Crew is led by a proven (CEO)".
+# "The company is led by a proven (CEO)".
 _PERSON_NAME_RE = re.compile(
     r"^[A-Z][a-z]+(?:\s+[A-Z][a-z'-]+){1,3}$"
 )

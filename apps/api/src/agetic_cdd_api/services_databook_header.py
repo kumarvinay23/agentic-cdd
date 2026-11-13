@@ -389,6 +389,13 @@ def resolve_unit_meta(
     elif cap_scale:
         scale, scale_source = cap_scale, "caption"
 
+    # Ratios are not money — drop inherited sheet currency/scale.
+    if unit == "%":
+        currency = None
+        currency_source = None
+        scale = None
+        scale_source = None
+
     money_from_non_header = (
         (currency_source in {"caption", "map"} and currency is not None)
         or (scale_source in {"caption", "map"} and scale is not None)

@@ -125,7 +125,27 @@ def _bind_documents(index: dict, role: DeepDiveRole) -> list[dict]:
             scored.append((score, doc))
     scored.sort(key=lambda item: item[0], reverse=True)
     # Cap keeps extractors focused; Market agents need thesis + commercial + competition.
-    return [doc for _, doc in scored[:6]]
+    bound = [doc for _, doc in scored[:6]]
+    if bound or role.slug not in {"customer_segmentation", "supplier_dependence"}:
+        return bound
+    return _readable_room_documents(index)
+
+
+def _readable_room_documents(index: dict) -> list[dict]:
+    """Financial and deal-strategy text when a role has no customer or supplier file."""
+    chosen: list[dict] = []
+    for doc in index.get("documents") or []:
+        if not isinstance(doc, dict):
+            continue
+        category = str(doc.get("cdl_category") or "").strip().lower()
+        if category not in {"financial", "deal_strategy"}:
+            continue
+        excerpt = str(doc.get("excerpt") or "")
+        if int(doc.get("char_count") or 0) <= 40 and len(excerpt) <= 40:
+            continue
+        chosen.append(doc)
+    chosen.sort(key=lambda doc: int(doc.get("char_count") or 0), reverse=True)
+    return chosen[:4]
 
 
 def _cache_get(cache: TextCache, filename: str) -> str | None:
@@ -416,7 +436,14 @@ def _build_extracted_output(
         "spec": spec,
         "generated_at": utc_now_iso(),
         "output_path": f"outputs/{role.slug}.json",
+        "evidence": _evidence_for_role(role.slug, blobs, target),
     }
+
+
+def _evidence_for_role(agent_key: str, blobs: list[str], company: str) -> dict[str, Any]:
+    from agetic_cdd_api.services_evidence_router import evidence_pack
+
+    return evidence_pack(agent_key, blobs, company=company)
 
 
 def _build_market_output(

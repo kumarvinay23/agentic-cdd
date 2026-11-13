@@ -320,3 +320,20 @@ def test_deal_slots_on_build() -> None:
     assert slots.get("deal_perimeter") == "standalone ops"
     assert slots.get("decision_stage") == "IC"
     assert spec.get("cap_evidence_qa")
+
+
+def test_leverage_skips_non_numeric_ebitda_tokens() -> None:
+    """Comma-only / empty amount tokens near EBITDA must not crash."""
+    heur = _heuristic_capital_structure_spec(
+        company="Umoja",
+        corpus=(
+            "Reported EBITDA , bridge pending. Net debt / EBITDA commentary follows. "
+            "Freely available cash USD 8M. Senior Term Loan A — USD 12M drawn."
+        ),
+        sources=["financials.pdf"],
+        legacy_spec={"debt_instruments": [{"name": "Senior Term Loan A", "amount_usd_m": 12.0}]},
+    )
+    leverage = heur.get("leverage_discipline") or heur.get("leverage_totals") or {}
+    assert isinstance(heur, dict)
+    assert heur.get("composer") == "heuristic_v1" or "facilities" in heur
+    assert isinstance(leverage, dict)

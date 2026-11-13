@@ -24,6 +24,7 @@ dependencies = [
     "openpyxl>=3.1",
     "python-pptx>=0.6.21",
     "reportlab>=4.0",
+    "Pillow>=10.0",
     "PyYAML>=6.0",
 ]
 
@@ -48,8 +49,9 @@ markers = [
     "retrieval_benchmark: 20-prompt FTS + passage recall benchmark matrix",
     "live_web: opt into live web research (no stub)",
     "databook_ship: P7 golden databooks + trap suite ship gate (H-1…H-7)",
-    "fdd_ship: Phase 9 FDD golden deals + trap suite ship gate",
+    "fdd_ship: Phase 9 FDD goldens/traps + Phase G PPTX structural parity",
+    "fdd_visual: optional Phase G slide→PNG visual diffs (needs FDD_VISUAL_DIFF=1 + LibreOffice)",
 ]
 [tool.setuptools.package-data]
-agetic_cdd_api = ["*.md", "**/*.md"]
+agetic_cdd_api = ["*.md", "**/*.md", "databook_sql/*.sql", "databook_sql/*.json"]
   

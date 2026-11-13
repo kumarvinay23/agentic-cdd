@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from agetic_cdd_api.app import app
 from agetic_cdd_api.deep_dive_customer import CUSTOMER_SLUGS, extract_customer_spec
 from agetic_cdd_api.services_deals import ensure_deal_folder
+from foundation_inputs import upload_foundation_inputs
 
 COMMERCIAL_CIM = (
     "04 Commercial Due Diligence Market, Sales & Customer Analysis "
@@ -91,6 +92,33 @@ def _headers(client: TestClient) -> dict[str, str]:
     )
     token = res.json()["data"]["tokens"]["accessToken"]
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_segmentation_and_supplier_use_financials_when_no_named_file() -> None:
+    from agetic_cdd_api.deep_dive_roles import role_by_slug
+    from agetic_cdd_api.services_deep_dive import _bind_documents
+
+    index = {
+        "documents": [
+            {"filename": "Lease.pdf", "cdl_category": "deal_strategy", "doc_kind": "deal_strategy", "char_count": 0},
+            {"filename": "Site P&L.pdf", "cdl_category": "financial", "doc_kind": "financial", "char_count": 5000},
+            {"filename": "Quality of Earnings.pdf", "cdl_category": "financial", "doc_kind": "financial", "char_count": 8000},
+        ]
+    }
+    segments = _bind_documents(index, role_by_slug("customer_segmentation"))
+    suppliers = _bind_documents(index, role_by_slug("supplier_dependence"))
+    assert [doc["filename"] for doc in segments] == ["Quality of Earnings.pdf", "Site P&L.pdf"]
+    assert [doc["filename"] for doc in suppliers] == ["Quality of Earnings.pdf", "Site P&L.pdf"]
+    named = _bind_documents(
+        {
+            "documents": [
+                {"filename": "04_Commercial_Due_Diligence.txt", "cdl_category": "customer", "doc_kind": "customer", "char_count": 200},
+                {"filename": "Site P&L.pdf", "cdl_category": "financial", "doc_kind": "financial", "char_count": 9000},
+            ]
+        },
+        role_by_slug("customer_segmentation"),
+    )
+    assert named[0]["filename"] == "04_Commercial_Due_Diligence.txt"
 
 
 def test_customer_segmentation_parses_segments() -> None:
@@ -306,6 +334,7 @@ def test_customer_agents_live_on_vdr() -> None:
                 files={"file": (name, BytesIO(body), "text/plain")},
             )
             assert upload.status_code == 200
+        upload_foundation_inputs(client, headers, deal_id)
 
         assert client.post(
             f"/api/v1/portfolios/{deal_id}/pipeline/run",

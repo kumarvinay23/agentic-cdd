@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from agetic_cdd_api.app import app
 from agetic_cdd_api.deep_dive_ops import OPS_SLUGS, extract_ops_spec, findings_from_ops_spec
+from foundation_inputs import upload_foundation_inputs
 
 _MANUFACTURING_CIM = (
     "Manufacturing & Supply Chain Review Sourcing, Logistics & Vendor Analysis "
@@ -176,6 +177,7 @@ def test_ops_agents_live_on_vdr() -> None:
                 files={"file": (name, BytesIO(body), "text/plain")},
             )
             assert upload.status_code == 200
+        upload_foundation_inputs(client, headers, deal_id)
 
         assert client.post(
             f"/api/v1/portfolios/{deal_id}/pipeline/run",

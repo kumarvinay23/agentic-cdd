@@ -29,13 +29,11 @@ const IMPLEMENTED_REPORTS = new Set([
   "market_deck",
   "cdd_deck",
   "fdd_report",
-  "fdd_deck",
 ]);
 
 /** Surface FDD first so Phase 0–1 stubs are easy to find in the catalog. */
 const CATALOG_ORDER = [
   "fdd_report",
-  "fdd_deck",
   "cdd_deck",
   "ic_memo",
   "market_deck",
@@ -222,7 +220,7 @@ function PdfPreview({ url, pageCount }: { readonly url: string; readonly pageCou
         </p>
       </div>
       <iframe
-        title="IC Memo PDF preview"
+        title="Report PDF preview"
         src={`${url}#toolbar=1&navpanes=0`}
         className="h-[min(78vh,920px)] w-full bg-white"
       />
@@ -578,15 +576,15 @@ function PptxSlideFrame({
                       gridTemplateColumns: `repeat(${Math.min(slide.columns.length, slide.chart ? 1 : 5)}, minmax(0, 1fr))`,
                     }}
                   >
-                    {slide.columns.map((column) => (
-                      <div key={column.heading} className="border border-[#E5E7EB] border-t-2 border-t-[#0F766E] bg-white p-2">
+                    {slide.columns.map((column, columnIndex) => (
+                      <div key={`col-${columnIndex}-${column.heading}`} className="border border-[#E5E7EB] border-t-2 border-t-[#0F766E] bg-white p-2">
                         <p className="text-[11px] font-semibold text-[#1F3864]">{column.heading}</p>
                         <ul className="mt-1 space-y-1">
-                          {column.items.map((item) => (
-                            <li key={item} className="text-[10px] leading-snug text-[#4B5563]">
+                          {Array.from(new Set(column.items)).map((item, itemIndex) => (
+                            <li key={`col-${columnIndex}-item-${itemIndex}`} className="text-[10px] leading-snug text-[#4B5563]">
                               {item}
                             </li>
-                        ))}
+                          ))}
                         </ul>
                       </div>
                     ))}
@@ -748,7 +746,10 @@ export function DealReports({
     [catalog, selected],
   );
 
-  const catalogView = useMemo(() => sortCatalog(catalog), [catalog]);
+  const catalogView = useMemo(
+    () => sortCatalog(catalog.filter((r) => !r.deprecated)),
+    [catalog],
+  );
 
   const refreshCatalog = useCallback(async () => {
     if (!accessToken) return;
@@ -778,8 +779,9 @@ export function DealReports({
       if (!accessToken) return;
       setPreviewLoading(true);
       try {
-        const isPdf = exportFmt === "pdf";
-        if (isPdf) {
+        // Explicit PDF twin preview only (legacy reports that still ship a twin).
+        // FDD Report is PPTX-only — never take the PDF preview path.
+        if (exportFmt === "pdf" && !reportType.startsWith("fdd_")) {
           setPreviewFormat("pdf");
           setPreviewBlocks([]);
           setPreviewSlides([]);
@@ -788,8 +790,10 @@ export function DealReports({
           setActiveSheet("");
           setPreviewRows([]);
           const [url, meta] = await Promise.all([
-            reportArtifactBlobUrlRequest(accessToken, dealId, reportType),
-            reportPreviewRequest(accessToken, dealId, reportType).catch(() => null),
+            reportArtifactBlobUrlRequest(accessToken, dealId, reportType, "pdf"),
+            reportPreviewRequest(accessToken, dealId, reportType, undefined, "pdf").catch(
+              () => null,
+            ),
           ]);
           setPdfPreviewUrl((prev) => {
             if (prev) URL.revokeObjectURL(prev);
@@ -939,16 +943,23 @@ export function DealReports({
     }
   }
 
-  async function onDownload() {
+  async function onDownload(format?: string) {
     if (!accessToken || !selected || selectedReport?.status !== "ready") return;
     onError(null);
     try {
-      const name = `${dealName}_${(selectedReport!.label || selected).replace(/\s+/g, "_")}.${selectedReport!.export}`;
-      await reportDownloadRequest(accessToken, dealId, selected, name);
+      const ext = format || selectedReport!.export;
+      const name = `${dealName}_${(selectedReport!.label || selected).replace(/\s+/g, "_")}.${ext}`;
+      await reportDownloadRequest(accessToken, dealId, selected, name, format);
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Download failed");
     }
   }
+
+  // FDD Report is PPTX-only (Phase F) — never offer a PDF twin download.
+  const canDownloadPdf =
+    selectedReport?.status === "ready" &&
+    !selectedReport.report_type.startsWith("fdd_") &&
+    (Boolean(selectedReport.pdf_available) || selectedReport.export === "pdf");
 
   async function onSheetChange(sheet: string) {
     if (!selected) return;
@@ -973,8 +984,8 @@ export function DealReports({
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight text-text-primary">Reports</h1>
             <p className="mt-1 max-w-2xl text-[13px] text-text-secondary">
-              Institutional deliverables from this deal — including FDD Report (Word/PDF) and FDD IC Deck.
-              Open a card, then click Generate.
+              Institutional deliverables from this deal — FDD Report is PowerPoint only
+              (no Word or PDF). Open a card, then click Generate.
             </p>
           </div>
         </div>
@@ -1057,7 +1068,9 @@ export function DealReports({
     );
   }
 
-  const detailSubtitle = `${formatKind(selectedReport).charAt(0)}${formatKind(selectedReport).slice(1).toLowerCase()} — ${selectedReport.description}`;
+  const detailSubtitle = selectedReport.report_type.startsWith("fdd_")
+    ? `PowerPoint only — ${selectedReport.description}`
+    : `${formatKind(selectedReport).charAt(0)}${formatKind(selectedReport).slice(1).toLowerCase()} — ${selectedReport.description}`;
 
   return (
     <div className="space-y-4">
@@ -1097,6 +1110,19 @@ export function DealReports({
                 <path d="M5 20h14" />
               </svg>
               {downloadLabel(selectedReport)}
+            </button>
+          ) : null}
+          {canDownloadPdf && selectedReport.export !== "pdf" ? (
+            <button
+              type="button"
+              onClick={() => void onDownload("pdf")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-primary bg-white px-3 py-2 text-[13px] font-medium text-text-primary hover:bg-[#fafafa]"
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                <path d="M14 3v5h5" />
+              </svg>
+              Download PDF
             </button>
           ) : null}
           {isImplemented ? (

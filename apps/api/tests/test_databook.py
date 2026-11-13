@@ -90,6 +90,10 @@ def test_map_family_gates() -> None:
     assert map_caption("Gross Revenue Retention (GRR)").metric_key == "grr"
     assert map_caption("Revenue Churn").metric_key == "revenue_churn"
     assert map_caption("YoY Growth").metric_key == "yoy_growth"
+    # Scenario / contract revenue is not the P&L top line.
+    assert map_caption("DC revenue 2030 ($M, modeled volume)") is None
+    assert map_caption("Commercial Gross revenue retention (GRR)").metric_key == "grr_commercial"
+    assert map_caption("Residential Gross revenue retention (GRR)").metric_key == "grr_residential"
 
     assert same_family_allowed("Revenue (INR Cr)", "revenue")
     assert not same_family_allowed("Units Sold", "revenue")
@@ -2427,7 +2431,9 @@ def test_source_ladder_prefers_audited_in_conflicts() -> None:
         ),
     ]
     issues, hold = detect_conflicts(rows)
-    assert hold == {"a", "b"}
+    # Clear ladder winner stays promotable; losers stay held for review.
+    assert hold == {"b"}
+    assert "a" not in hold
     assert len(issues) == 1
     chosen = next(c for c in issues[0]["candidates"] if c["chosen"])
     assert chosen["value"] == 100.0

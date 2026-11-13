@@ -150,6 +150,39 @@ def _filename_of(doc: dict) -> str:
     return str(doc.get("filename") or doc.get("name") or "")
 
 
+# When the room has no CIM, NDA, articles, or org chart, use the library category
+# that actually holds the evidence. A partial bind still lets the phase finish.
+_CATEGORY_FALLBACK = {
+    "F-01": ("deal_strategy", "financial"),
+    "F-02": ("deal_strategy",),
+    "F-03": ("deal_strategy", "financial"),
+    "F-04": ("legal_esg",),
+    "F-05": ("company_management", "financial"),
+    "F-06": ("company_management", "financial"),
+    "F-IP": ("operations",),
+    "F-ESG": ("legal_esg",),
+}
+
+
+def _readable(doc: dict) -> bool:
+    if int(doc.get("char_count") or 0) > 40:
+        return True
+    return len(str(doc.get("excerpt") or "")) > 40
+
+
+def _fallback_documents(docs: list[dict], role: FoundationRole) -> list[dict]:
+    readable = [doc for doc in docs if _readable(doc)]
+    categories = _CATEGORY_FALLBACK.get(role.code, ())
+    preferred = [
+        doc
+        for doc in readable
+        if doc.get("cdl_category") in categories or doc.get("doc_kind") in role.primary_kinds
+    ]
+    chosen = preferred or readable
+    chosen.sort(key=lambda doc: int(doc.get("char_count") or 0), reverse=True)
+    return chosen[:4]
+
+
 def bind_for_role(index: dict, role: FoundationRole) -> dict:
     docs = [doc for doc in (index.get("documents") or []) if isinstance(doc, dict)]
     primary = [doc for doc in docs if _kind_of(doc) in role.primary_kinds]
@@ -164,7 +197,8 @@ def bind_for_role(index: dict, role: FoundationRole) -> dict:
     elif secondary:
         coverage = "partial"
     else:
-        coverage = "missing"
+        secondary = _fallback_documents(docs, role)
+        coverage = "partial" if secondary else "missing"
     return {
         "code": role.code,
         "name": role.name,

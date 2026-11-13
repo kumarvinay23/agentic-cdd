@@ -586,6 +586,38 @@ def run_golden(
                     loaded = load_report_spec(slug, manifest.run_id)
                     if loaded is None or not loaded.nodes:
                         _fail(result, "report_spec", "assembled report_spec empty")
+                    else:
+                        spec = loaded
+                if spec is not None and g.get("expect_front_matter", True):
+                    node_ids = {n.node_id for n in spec.nodes}
+                    for required in ("sec_basis", "sec_toc", "sec_not_evidenced"):
+                        if required not in node_ids:
+                            _fail(
+                                result,
+                                "front_matter",
+                                f"report_spec missing {required}",
+                            )
+                    deck_slides = [
+                        n for n in spec.nodes if n.kind == "slide"
+                    ]
+                    max_deck = int(g.get("max_deck_slides") or 22)
+                    if len(deck_slides) > max_deck:
+                        _fail(
+                            result,
+                            "deck_slide_cap",
+                            f"deck has {len(deck_slides)} slides > {max_deck}",
+                        )
+                    if g.get("expect_findings_built", True):
+                        from agetic_cdd_api.services_fdd_store import load_findings
+
+                        findings = load_findings(slug, manifest.run_id)
+                        man2 = load_manifest(slug, manifest.run_id) or manifest
+                        if findings is None and not man2.findings_built:
+                            _fail(
+                                result,
+                                "findings",
+                                "findings ledger not built",
+                            )
 
             if g.get("expect_qa_ran", True):
                 if qa is None or not qa.checks:

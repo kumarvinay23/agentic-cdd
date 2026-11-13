@@ -1,0 +1,13 @@
+{
+  "reporting_currency": "EUR",
+  "fiscal_year_end": "06-30",
+  "latest_actual_month": "2025-06-30",
+  "sector_pack": "healthcare_clinic",
+  "deal_type": "statements",
+  "expected_statements": [
+    "PL",
+    "BS",
+    "CF"
+  ],
+  "workbook": "statements.xlsx"
+}

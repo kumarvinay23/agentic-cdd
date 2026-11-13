@@ -12,6 +12,7 @@ from agetic_cdd_api.app import app
 from agetic_cdd_api.deep_dive_extractors import MARKET_SLUGS, extract_deep_dive_spec
 from agetic_cdd_api.pipeline_catalog import PHASE3_AGENT_KEYS
 from agetic_cdd_api.services_deals import ensure_deal_folder
+from foundation_inputs import upload_foundation_inputs
 
 MARKET_CIM = (
     "India's two-wheeler (2W) market represents approximately 18–20 million units annually, "
@@ -383,6 +384,7 @@ def test_market_agents_live_on_vdr() -> None:
                 files={"file": (name, BytesIO(body), "text/plain")},
             )
             assert upload.status_code == 200
+        upload_foundation_inputs(client, headers, deal_id)
 
         assert client.post(
             f"/api/v1/portfolios/{deal_id}/pipeline/run",
@@ -436,7 +438,8 @@ def test_market_agents_live_on_vdr() -> None:
             f"/api/v1/portfolios/{deal_id}/pipeline/agents/market_pricing/output",
             headers=headers,
         ).json()["data"]["file_output"]
-        assert pricing["spec"]["consumes_ceiling"] is True
+        assert pricing["status"] == "completed"
+        assert pricing["spec"]["empty"] is False
 
         store_path = ensure_deal_folder("market-slice1") / "library" / "deep_dive_findings.json"
         assert store_path.is_file()

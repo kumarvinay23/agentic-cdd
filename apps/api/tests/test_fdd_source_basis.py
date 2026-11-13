@@ -479,7 +479,7 @@ def test_net_revenue_retention_does_not_map_as_pnl_revenue() -> None:
     hit = map_caption("Net Revenue Retention (NRR)")
     assert hit is not None
     assert hit.metric_key == "nrr"
-    assert map_caption("Commercial Net Revenue Retention").metric_key == "nrr"
+    assert map_caption("Commercial Net Revenue Retention").metric_key == "nrr_commercial"
     # Lookahead: net revenue alone still maps to revenue.
     assert map_caption("Net revenue").metric_key == "revenue"
 
@@ -490,17 +490,19 @@ def test_commercial_nrr_grr_labels() -> None:
     from agetic_cdd_api.services_fdd_bridge import facts_to_exhibit_cells
 
     assert map_caption("Commercial GRR") is not None
-    assert map_caption("Commercial GRR").metric_key == "grr"
-    assert map_caption("Commercial Gross dollar retention").metric_key == "grr"
+    assert map_caption("Commercial GRR").metric_key == "grr_commercial"
+    assert map_caption("Commercial Gross dollar retention").metric_key == "grr_commercial"
     # Unlabeled Gross dollar retention is ambiguous (commercial + residential).
     assert map_caption("Gross dollar retention") is None
-    # Residential retention must stay unmapped so it cannot overwrite commercial.
-    assert map_caption("Residential Gross revenue retention (GRR)") is None
-    assert map_caption("Residential GRR") is None
+    # Residential retention is its own series — does not share the commercial key.
+    assert map_caption("Residential Gross revenue retention (GRR)").metric_key == "grr_residential"
+    assert map_caption("Residential GRR").metric_key == "grr_residential"
     # Organics / generic packs must not block commercial retention KPIs.
     cfg = DealDatabookParams(sector_pack="generic")
     assert cfg.blocks_saas_metric("grr") is False
     assert cfg.blocks_saas_metric("nrr") is False
+    assert cfg.blocks_saas_metric("grr_commercial") is False
+    assert cfg.blocks_saas_metric("grr_residential") is False
     # Stale deal meta that still lists nrr/grr under saas_only must not gate them.
     stale = DealDatabookParams(
         sector_pack="generic",

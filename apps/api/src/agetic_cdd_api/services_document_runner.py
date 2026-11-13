@@ -31,7 +31,7 @@ from agetic_cdd_api.services_library_search import (
     search_library_chunks,
 )
 from agetic_cdd_api.services_vdr import list_vdr_docs
-from agetic_cdd_api.services_web_research import research_web
+from agetic_cdd_api.services_web_research import research_web, web_search_allowed
 
 _EventCb = Callable[[dict[str, Any]], None] | None
 
@@ -136,6 +136,14 @@ _WEB_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (
         ("web", "external", "industry report"),
         ("gx_x_market_evidence", "gx_x_competitor_table"),
+    ),
+    (
+        ("market growth", "industry growth", "industry cagr", "market cagr"),
+        ("gx_x_market_evidence",),
+    ),
+    (
+        ("market price", "industry price", "price level", "market pricing"),
+        ("gx_x_market_evidence",),
     ),
 ]
 
@@ -256,7 +264,8 @@ def select_capabilities(prompt: str, *, limit: int = _MAX_INTERNAL_CAPS) -> list
 def select_web_capabilities(prompt: str, *, limit: int = _MAX_WEB_CAPS) -> list[dict[str, Any]]:
     """Keyword map → web capabilities (DW-4)."""
     picked = _pick_cap_ids(prompt, _WEB_RULES, allowed_srcs=_WEB_SRCS, limit=limit)
-    return [capability_by_id(cid) for cid in picked if capability_by_id(cid)]  # type: ignore[misc]
+    caps = [capability_by_id(cid) for cid in picked if capability_by_id(cid)]
+    return [cap for cap in caps if web_search_allowed(prompt=prompt, capability=cap)]
 
 
 def resolve_capabilities(
@@ -279,6 +288,7 @@ def resolve_capabilities(
                 web.append(cap)
             elif src in _INTERNAL_SRCS:
                 internal.append(cap)
+        web = [cap for cap in web if web_search_allowed(prompt=prompt, capability=cap)]
         return internal[:limit_internal], web[:limit_web]
     return (
         select_capabilities(prompt, limit=limit_internal),
@@ -568,13 +578,16 @@ def _source_meta_map(sources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]
             continue
         # Titles are disambiguated by _register_source before this runs.
         cite_meta = citation_meta_for_source(src)
+        origin = src.get("origin") or "internal"
         out[title] = {
-            "origin": src.get("origin") or "internal",
+            "origin": origin,
             "url": src.get("url"),
             "domain": src.get("domain") or (
                 urlparse(str(src["url"])).netloc if src.get("url") else None
             ),
             "snippet": src.get("snippet"),
+            "tier": src.get("tier") or ("web" if origin == "web" else "data_room"),
+            "retrieved_on": src.get("retrieved_on"),
             **cite_meta,
         }
     return out
@@ -596,6 +609,20 @@ def _format_source_footer_line(n: int, title: str, meta: dict[str, Any] | None) 
     return f"**[{n}]** (data room) {title}\n"
 
 
+def _chart_blob(sources: list[dict[str, Any]]) -> str:
+    """Data-room passages come first, so a web figure cannot replace them."""
+    room: list[str] = []
+    web: list[str] = []
+    for source in sources:
+        passages = source.get("passages") or [source.get("snippet") or ""]
+        text = "\n".join(str(passage) for passage in passages)
+        if source.get("origin") == "web" or source.get("tier") == "web":
+            web.append(text)
+        else:
+            room.append(text)
+    return "\n".join([*room, *web])
+
+
 def _extract_share_chart(
     sources: list[dict[str, Any]],
     *,
@@ -604,11 +631,7 @@ def _extract_share_chart(
     """Build a simple bar chart from name/% patterns in evidence."""
     series: list[dict[str, Any]] = []
     seen: set[str] = set()
-    blob = "\n".join(
-        str(p)
-        for s in sources
-        for p in (s.get("passages") or [s.get("snippet") or ""])
-    )
+    blob = _chart_blob(sources)
     for m in _SHARE_PCT.finditer(blob):
         label = re.sub(r"\s+", " ", m.group(1)).strip()
         try:
@@ -640,11 +663,7 @@ def _extract_growth_chart(
     """Build a bar chart from growth/CAGR/YoY % patterns."""
     series: list[dict[str, Any]] = []
     seen: set[str] = set()
-    blob = "\n".join(
-        str(p)
-        for s in sources
-        for p in (s.get("passages") or [s.get("snippet") or ""])
-    )
+    blob = _chart_blob(sources)
     for m in _GROWTH_PCT.finditer(blob):
         label = re.sub(r"\s+", " ", m.group(1)).strip()
         try:
@@ -1053,6 +1072,11 @@ def iter_document_research(
     )
 
     flat_sources = flatten_message_sources(deduped, cite_map=cite_map)
+    slug = getattr(deal, "slug", None) or getattr(deal, "id", None) or ""
+    if slug:
+        from agetic_cdd_api.services_step_log import record_document_research
+
+        record_document_research(str(slug), heading=heading, tasks=tasks)
     yield {
         "type": "result",
         "result": {

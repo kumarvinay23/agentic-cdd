@@ -54,8 +54,12 @@ def deal_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_report_types_include_fdd() -> None:
     assert "fdd_report" in REPORT_TYPES
     assert "fdd_deck" in REPORT_TYPES
-    assert REPORT_TYPES["fdd_report"]["export"] == "docx"
+    assert REPORT_TYPES["fdd_report"]["export"] == "pptx"
+    assert REPORT_TYPES["fdd_report"]["format"] == "deck"
+    assert REPORT_TYPES["fdd_report"]["formats"] == ["pptx"]
     assert REPORT_TYPES["fdd_deck"]["export"] == "pptx"
+    assert REPORT_TYPES["fdd_deck"]["formats"] == ["pptx"]
+    assert REPORT_TYPES["fdd_deck"].get("deprecated") is True
 
 
 def test_token_round_trip(deal_root: Path) -> None:
@@ -169,7 +173,7 @@ def test_cell_change_updates_both_renders(deal_root: Path) -> None:
     assert "250" in report2.body and "250" in deck2.body
 
 
-def test_multi_page_pdf_and_deck(deal_root: Path) -> None:
+def test_multi_page_pptx_report_and_deck(deal_root: Path) -> None:
     slug = "multipage-deal"
     (deal_root / slug).mkdir(parents=True)
     ensure_phase0_run(slug, company="Acme", revenue_fy24=3140.0)
@@ -185,11 +189,14 @@ def test_multi_page_pdf_and_deck(deal_root: Path) -> None:
     assert report_figs["page_count"] >= 3
     assert deck_figs["page_count"] >= 3
     assert report_figs["figures"] == deck_figs["figures"]
+    assert list(report_dir.glob("*_FDD_Report.pptx"))
+    assert not list(report_dir.glob("*.docx"))
+    assert not list(report_dir.glob("*.pdf"))
 
-    from pypdf import PdfReader
+    from pptx import Presentation
 
-    pdf = list(report_dir.glob("*.pdf"))[0]
-    assert len(PdfReader(str(pdf)).pages) >= 3
+    pptx_path = list(report_dir.glob("*_FDD_Report.pptx"))[0]
+    assert len(Presentation(str(pptx_path)).slides) >= 3
 
 
 def test_run_store_persists_manifest_and_exhibits(deal_root: Path) -> None:
@@ -255,8 +262,9 @@ def test_builders_export_matching_figures(deal_root: Path) -> None:
     d = json.loads(deck_figs[0].read_text(encoding="utf-8"))
     assert r["figures"] == d["figures"]
     assert r["figures"]["ex_hist_pl.revenue_fy24"] == 3140.0
-    assert list(report_dir.glob("*.docx"))
-    assert list(report_dir.glob("*.pdf"))  # PDF twin alongside Word
+    assert list(report_dir.glob("*_FDD_Report.pptx"))
+    assert not list(report_dir.glob("*.docx"))
+    assert not list(report_dir.glob("*.pdf"))
     assert list(deck_dir.glob("*.pptx"))
     assert load_report_spec(slug, r["run_id"]) is not None
 

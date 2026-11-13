@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from agetic_cdd_api.app import app
 from agetic_cdd_api.pipeline_catalog import total_agent_count
+from foundation_inputs import upload_foundation_inputs
 
 
 def _headers(client: TestClient) -> dict[str, str]:
@@ -32,6 +33,7 @@ def _create_deal_with_doc(client: TestClient, headers: dict[str, str], *, name: 
         files={"file": ("CIM.pdf", BytesIO(b"%PDF-1.4 test"), "application/pdf")},
     )
     assert upload.status_code == 200
+    upload_foundation_inputs(client, headers, deal_id)
     return deal_id
 
 
@@ -116,6 +118,39 @@ def test_pipeline_run_next_phase_and_unknown_agent() -> None:
         second = client.post(f"/api/v1/portfolios/{deal_id}/pipeline/run", headers=headers, json={})
         assert second.status_code == 202
         assert second.json()["data"]["phase_id"] == "foundations"
+
+
+def test_report_phase_is_not_a_workflow_stub() -> None:
+    with TestClient(app) as client:
+        headers = _headers(client)
+        deal_id = _create_deal_with_doc(client, headers, name="Report Phase", slug="report-phase-skip")
+        blocked = client.post(
+            f"/api/v1/portfolios/{deal_id}/pipeline/run",
+            headers=headers,
+            json={"phase_id": "reports"},
+        )
+        assert blocked.status_code == 409
+        assert "Reports tab" in blocked.json()["detail"]
+        listed = client.get(f"/api/v1/portfolios/{deal_id}/pipeline", headers=headers)
+        reports = next(phase for phase in listed.json()["data"]["phases"] if phase["phase_id"] == "reports")
+        assert all(agent["status"] not in {"needs_repair", "failed", "running"} for agent in reports["agents"])
+
+
+def test_finished_report_completes_its_workflow_agent() -> None:
+    from agetic_cdd_api.report_store import finish_report
+
+    with TestClient(app) as client:
+        headers = _headers(client)
+        slug = "report-run-enabled"
+        deal_id = _create_deal_with_doc(client, headers, name="Report Run", slug=slug)
+        finish_report(slug, "cdd_deck", artifact_path="reports/cdd_deck/Deck.pptx")
+        finish_report(slug, "ic_memo", error="builder failed")
+        listed = client.get(f"/api/v1/portfolios/{deal_id}/pipeline", headers=headers)
+        reports = next(phase for phase in listed.json()["data"]["phases"] if phase["phase_id"] == "reports")
+        by_key = {agent["agent_key"]: agent["status"] for agent in reports["agents"]}
+        assert by_key["cdd_deck"] == "completed"
+        assert by_key["ic_memo"] == "failed"
+        assert by_key["strategy_report"] not in {"needs_repair", "completed", "failed"}
 
 
 def test_deep_dive_requires_foundation_context() -> None:

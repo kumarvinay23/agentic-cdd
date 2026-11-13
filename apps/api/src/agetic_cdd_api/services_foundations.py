@@ -169,13 +169,15 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
         "source_coverage": coverage,
         "foundation_role": bound["code"] if bound else None,
         "depends_on": [],
-        "status": "completed",
+        "status": "needs_repair" if coverage == "missing" else "completed",
         "library": "library/index.json",
         "summary": summary,
         "findings": findings,
         "generated_at": utc_now_iso(),
         "output_path": f"outputs/{agent_key}.json",
     }
+    if coverage == "missing":
+        payload["error"] = "required data-room input is missing"
     prior = prior or {}
     blobs = [_source_text(deal, doc) for doc in docs]
     role_code = bound["code"] if bound else ""
@@ -476,6 +478,12 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
             build_regulatory_compliance_spec,
             render_regulatory_compliance_markdown,
         )
+        from agetic_cdd_api.agent_module_registry import (
+            APPROVED_REGULATORY_COMPOSERS,
+            APPROVED_REGULATORY_MODULE,
+            APPROVED_VERSION,
+            RETIRED_REGULATORY_MODULE,
+        )
         from agetic_cdd_api.settings import settings
 
         f04 = payload["spec"]
@@ -498,6 +506,12 @@ def _agent_output(deal: Deal, *, agent_key: str, index: dict, prior: dict | None
             prefer_heuristic=not bool(getattr(settings, "deep_dive_llm", False)),
         )
         payload["spec"] = {**f04, **rc_spec}
+        if str(rc_spec.get("composer") or "") in APPROVED_REGULATORY_COMPOSERS:
+            payload["module_id"] = APPROVED_REGULATORY_MODULE
+            payload["module_version"] = APPROVED_VERSION
+        else:
+            payload["module_id"] = RETIRED_REGULATORY_MODULE
+            payload["status"] = "needs_repair"
         extra_sources = [
             s for s in (rc_spec.get("primary_sources") or [])
             if isinstance(s, str) and s and s not in sources
@@ -677,7 +691,7 @@ def _hidden_role_output(deal: Deal, *, role, index: dict, prior: dict[str, dict]
         findings = [f"Coverage {bound['coverage']} for {role.name}."]
     payload = {
         "stub": False,
-        "status": "completed",
+        "status": "needs_repair" if bound["coverage"] == "missing" else "completed",
         "agent_key": role.slug or role.code.lower().replace("-", "_"),
         "agentName": role.name,
         "description": role.spec_output,
@@ -698,6 +712,8 @@ def _hidden_role_output(deal: Deal, *, role, index: dict, prior: dict[str, dict]
         "generated_at": utc_now_iso(),
         "output_path": f"library/foundation_roles/{role.code}.json",
     }
+    if bound["coverage"] == "missing":
+        payload["error"] = "required data-room input is missing"
     blobs = [_source_text(deal, doc) for doc in docs]
     prior_spec = None
     for dep in ROLE_DEPENDENCIES.get(role.code, ()):

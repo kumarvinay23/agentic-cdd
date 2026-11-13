@@ -302,13 +302,14 @@ def _layout_from_shapes(bodies: list[dict[str, Any]]) -> tuple[list[dict[str, st
                 if heading:
                     items.extend(part["lines"])
             if heading and items:
+                unique = list(dict.fromkeys(items))
                 columns.append({
                     "heading": heading,
-                    "items": items[:6],
+                    "items": unique[:6],
                     "left": int(parts[0]["left"]),
                 })
                 used.add(heading)
-                used.update(items)
+                used.update(unique)
         if not columns:
             used = {line for kpi in kpis for line in (kpi["value"], kpi["label"])}
             for body in bodies:

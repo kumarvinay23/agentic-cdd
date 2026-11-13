@@ -103,6 +103,7 @@ class FddRunManifest(BaseModel):
     g4_approved: bool = False
     qoe_version: str | None = None
     commentary_built: bool = False
+    findings_built: bool = False
     qa_built: bool = False
     g5_approved: bool = False
     g6_approved: bool = False  # partner challenge (P9)
@@ -152,6 +153,9 @@ class ScopeProfile(BaseModel):
     periods: list[str] = Field(default_factory=list)  # e.g. FY22A, FY23A, FY24A
     currency: str = "USD"
     scale: str | None = "M"
+    # FDD Report PPTX display scale (Phase E). Store/exhibits stay in ``scale``;
+    # report slides convert at render. Default ``k`` matches expected pack ($k).
+    report_display_scale: str | None = "k"
     materiality_m: float | None = None  # absolute M once known
     materiality_basis: str = DEFAULT_MATERIALITY_BASIS
     materiality_pct: float = DEFAULT_MATERIALITY_PCT
@@ -159,6 +163,10 @@ class ScopeProfile(BaseModel):
         default_factory=lambda: list(DEFAULT_SECTIONS_IN_SCOPE)
     )
     notes: str | None = None
+    # When False (default), IC deck omits raw exhibit appendix slides.
+    deck_include_exhibit_appendix: bool = False
+    # Optional basis line for report chrome / Source footers (Phase E).
+    basis_of_preparation: str | None = None
     updated_at: str | None = None
     approved_at: str | None = None
     approved_by: str | None = None
@@ -574,6 +582,10 @@ class QoeWorkbookDoc(BaseModel):
     pro_forma_partly_evidenced_share: float | None = None
     materiality_m: float | None = None
     trivial_threshold: float | None = None
+    # Optional CIM / investor-workbook crosswalk (same scale as ``scale``).
+    cim_ebitda: float | None = None
+    cim_revenue: float | None = None
+    accounts_revenue: float | None = None
     checks: list[QoeCheckResult] = Field(default_factory=list)
     checks_passed: bool = False
     g4_ready: bool = False
@@ -920,6 +932,47 @@ class ReadinessReport(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class FindingSeverity(str, Enum):
+    HIGH = "high"
+    MODERATE = "moderate"
+    LOW = "low"
+    INFO = "info"
+
+
+class FindingSource(str, Enum):
+    CLAIM = "claim"
+    G3 = "g3"
+    QOE = "qoe"
+    SOURCE_BASIS_GAP = "source_basis_gap"
+    HELD_SECTION = "held_section"
+    MODEL = "model"
+
+
+class Finding(BaseModel):
+    """Structured diligence finding card (report + IC deck)."""
+
+    finding_id: str
+    section_id: str | None = None
+    severity: FindingSeverity = FindingSeverity.INFO
+    title: str
+    observation: str = ""
+    implication: str = ""
+    ask_management: str | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    source: FindingSource = FindingSource.CLAIM
+
+
+class FindingsDoc(BaseModel):
+    """Persisted findings ledger for one FDD run."""
+
+    run_id: str
+    deal_slug: str
+    updated_at: str
+    findings: list[Finding] = Field(default_factory=list)
+    counts: dict[str, int] = Field(default_factory=dict)
+    version: str = "1.0.0"
+
+
 class ReportSpecNode(BaseModel):
     """One block in the shared report_spec (drives report + deck)."""
 
@@ -941,6 +994,9 @@ class ReportSpec(BaseModel):
     updated_at: str
     title: str = "FDD Report"
     nodes: list[ReportSpecNode] = Field(default_factory=list)
+    # Phase C+: chaptered widescreen slides (01–09 storyline). When present,
+    # FDD Report PPTX renders these instead of legacy stub slide nodes.
+    slides: list["SlideSpec"] = Field(default_factory=list)
     content_hash: str | None = None
 
 
@@ -995,3 +1051,108 @@ class StubRenderResult(BaseModel):
     body: str = ""
     pages: list[StubRenderPage] = Field(default_factory=list)
     content_hash: str | None = None
+
+
+# --- Phase B: chaptered PPTX slide contract (chrome layouts) ---
+
+FddChapterId = Literal[
+    "cover",
+    "contents",
+    "intro",
+    "es",
+    "transaction",
+    "qoe",
+    "trading",
+    "cash",
+    "bs",
+    "deal",
+    "appendix",
+]
+
+SlideLayoutId = Literal[
+    "cover",
+    "toc",
+    "kpi_strip",
+    "section_table_obs",
+    "section_chart_obs",
+    "findings_rank",
+    "adj_detail",
+    "request_table",
+    "ledger_table",
+    "glossary",
+]
+
+
+class KpiTile(BaseModel):
+    """One KPI tile on an executive-summary strip."""
+
+    label: str
+    value: str
+    detail: str = ""
+
+
+class SlideTable(BaseModel):
+    """Matrix table for section / request / ledger layouts (periods as columns)."""
+
+    title: str = ""
+    headers: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
+    # Phase E: basis line under the table title (mgmt accounts / workbook / etc.).
+    basis: str = ""
+    # Optional provenance lifted onto SlideSpec.source / evidence_tier when unset.
+    source: str = ""
+    evidence_tier: str | None = None
+
+
+class TocEntry(BaseModel):
+    number: str
+    title: str
+    page: str
+
+
+class FindingRankRow(BaseModel):
+    rank: str
+    severity: str = ""
+    title: str
+    detail: str = ""
+
+
+class PptxChrome(BaseModel):
+    """Shared header/footer chrome for content slides."""
+
+    project_label: str = "FDD"
+    basis_short: str = "Draft for discussion - unaudited basis"
+    # Phase E display policy for FDD Report PPTX (store units unchanged).
+    display_scale: str = "k"  # k | M
+    currency: str = "USD"
+
+
+class SlideSpec(BaseModel):
+    """One widescreen FDD report slide with typed layout + chrome fields."""
+
+    slide_id: str
+    layout: SlideLayoutId
+    chapter: FddChapterId | str = "es"
+    banner: str = ""
+    headline: str = ""
+    kpis: list[KpiTile] = Field(default_factory=list)
+    table: SlideTable | None = None
+    chart_title: str = ""
+    observations: list[str] = Field(default_factory=list)
+    source: str = ""
+    evidence_tier: str | None = None
+    page_no: int | None = None
+    figure_ids: list[str] = Field(default_factory=list)
+    footnotes: list[str] = Field(default_factory=list)
+    # cover
+    deal_name: str = ""
+    engagement: str = "Financial due diligence"
+    entity_line: str = ""
+    basis_line: str = ""
+    date_line: str = ""
+    confidentiality: str = "Strictly private and confidential - draft, subject to change"
+    # toc / findings / adj
+    toc_entries: list[TocEntry] = Field(default_factory=list)
+    findings: list[FindingRankRow] = Field(default_factory=list)
+    adj_id: str = ""
+    adj_body: str = ""

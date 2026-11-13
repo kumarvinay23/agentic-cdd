@@ -268,6 +268,30 @@ export async function vdrUploadRequest(
   return body as ApiSuccess<{ deal: Deal; vdr: Array<{ name: string; filename: string; size?: number }> }>;
 }
 
+export type VdrPreview = {
+  format: string;
+  filename?: string;
+  sheets?: string[];
+  active_sheet?: string;
+  rows?: string[][];
+  blocks?: Array<{ type?: string; text?: string }>;
+  text?: string;
+  note?: string;
+};
+
+export async function vdrPreviewRequest(
+  accessToken: string,
+  dealId: string,
+  filename: string,
+  sheet?: string | null,
+) {
+  const query = sheet ? `?sheet=${encodeURIComponent(sheet)}` : "";
+  return apiRequest<ApiSuccess<VdrPreview>>(
+    `${ENDPOINTS.cddVdrPreview(dealId, filename)}${query}`,
+    { method: "GET", accessToken },
+  );
+}
+
 export async function vdrDownloadRequest(
   accessToken: string,
   dealId: string,
@@ -373,6 +397,14 @@ export type DatabookSummary = {
   } | null;
 };
 
+export type DatabookSourceRef = {
+  doc?: string | null;
+  page?: number | null;
+  table?: string | null;
+  row?: number | null;
+  col?: number | null;
+};
+
 export type DatabookRow = {
   row_id: string;
   caption: string;
@@ -382,6 +414,106 @@ export type DatabookRow = {
   status: string;
   source_name: string;
   assumption?: boolean;
+  statement?: string | null;
+  table_name?: string | null;
+  currency?: string | null;
+  scale?: string | null;
+  source_ref?: DatabookSourceRef | null;
+};
+
+export type DatabookDqIssue = {
+  n: number;
+  kind: string;
+  label: string;
+  detail?: string;
+};
+
+export type DatabookSeriesCell = {
+  value?: number | null;
+  currency?: string;
+  unit?: string | null;
+  source?: string;
+  line_item?: string;
+  statement?: string;
+  sheet?: string;
+  raw?: string;
+  source_row?: number | null;
+  source_col?: number | null;
+  suspect?: boolean;
+  foreign?: boolean;
+  edited?: unknown;
+  original?: unknown;
+  fact_id?: string | null;
+};
+
+export type DatabookViewFile = {
+  file: string;
+  path?: string;
+  doc_id?: string | null;
+  status?: string;
+  status_reason?: string | null;
+  doc_type?: string | null;
+  evidence_tier?: string | null;
+  extraction?: Record<string, unknown>;
+  empty?: boolean;
+  doc_facts?: number;
+};
+
+export type DatabookViewTotals = {
+  rows?: number;
+  mapped_rows?: number;
+  metrics?: number;
+  documents_parsed?: number;
+  candidates?: number;
+  building?: number;
+  checks_failed?: number;
+  suspect_rows?: number;
+  note_rows?: number;
+  model_rows?: number;
+};
+
+export type DatabookView = {
+  files: DatabookViewFile[];
+  series: Record<string, Record<string, DatabookSeriesCell>>;
+  model?: Record<string, unknown> | null;
+  totals: DatabookViewTotals;
+  reporting_currency: string;
+  actual_through?: number | null;
+  dq_cells: Record<string, DatabookDqIssue[]>;
+  status: string;
+  source?: "ontology" | "file";
+};
+
+export type DatabookLineRow = {
+  key: string;
+  statement?: string;
+  sheet?: string;
+  line_item: string;
+  period: number;
+  value?: number | null;
+  value_base?: number | null;
+  printed?: number | null;
+  printed_number?: number | null;
+  printed_raw?: string;
+  scale?: number;
+  scale_declared?: number;
+  scale_source?: string;
+  scale_confidence?: string;
+  scale_applied?: boolean;
+  kind?: string;
+  unit?: string;
+  currency?: string;
+  metric?: string;
+  subtotal?: boolean;
+  note?: string;
+  suspect?: boolean;
+  forecast?: boolean | null;
+  source?: string;
+  raw?: string;
+  token?: string;
+  block?: string;
+  dq?: DatabookDqIssue[];
+  fact_id?: string | null;
 };
 
 export type DatabookFinding = {
@@ -425,6 +557,7 @@ export type DataQualityItem =
   | {
       kind: "conflict";
       metric: string;
+      metric_key?: string;
       fiscal_year?: number | null;
       chosen?: number | null;
       candidates: DataQualityCandidate[];
@@ -476,6 +609,37 @@ export async function databookSummaryRequest(accessToken: string, dealId: string
     method: "GET",
     accessToken,
   });
+}
+
+export async function databookViewRequest(accessToken: string, dealId: string) {
+  return apiRequest<ApiSuccess<DatabookView>>(ENDPOINTS.cddDatabookView(dealId), {
+    method: "GET",
+    accessToken,
+  });
+}
+
+export async function databookLinesRequest(
+  accessToken: string,
+  dealId: string,
+  opts?: {
+    q?: string;
+    unmapped?: boolean;
+    issue?: string;
+    limit?: number;
+    offset?: number;
+  },
+) {
+  const params = new URLSearchParams();
+  if (opts?.q) params.set("q", opts.q);
+  if (opts?.unmapped) params.set("unmapped", "true");
+  if (opts?.issue) params.set("issue", opts.issue);
+  if (opts?.limit != null) params.set("limit", String(opts.limit));
+  if (opts?.offset != null) params.set("offset", String(opts.offset));
+  const q = params.toString();
+  return apiRequest<ApiSuccess<{ rows: DatabookLineRow[] }>>(
+    `${ENDPOINTS.cddDatabookLines(dealId)}${q ? `?${q}` : ""}`,
+    { method: "GET", accessToken },
+  );
 }
 
 export async function databookRescanRequest(accessToken: string, dealId: string) {
@@ -876,6 +1040,54 @@ export type PipelinePayload = {
   running_agent_name?: string | null;
   phases: PipelinePhase[];
 };
+
+export type DealProfileField = {
+  value: string | string[] | Record<string, string | boolean>;
+  confidence: number;
+  evidence: string;
+};
+
+export type DealProfile = {
+  confirmed: boolean;
+  fingerprint: string;
+  fields: Record<string, DealProfileField>;
+  pack: {
+    sector_pack: string;
+    currency: string;
+    number_format: string;
+    tax_terms: string;
+    valuation_framing: string;
+    synergy_framing: string;
+    key_terms: string[];
+  } | null;
+  choices: Record<string, string[]>;
+};
+
+export async function dealProfileRequest(accessToken: string, dealId: string) {
+  return apiRequest<ApiSuccess<DealProfile>>(ENDPOINTS.dealProfile(dealId), {
+    method: "GET",
+    accessToken,
+  });
+}
+
+export async function publishDatabookRequest(accessToken: string, dealId: string) {
+  return apiRequest<ApiSuccess<DealProfile>>(ENDPOINTS.databookPublish(dealId), {
+    method: "POST",
+    accessToken,
+  });
+}
+
+export async function confirmDealProfileRequest(
+  accessToken: string,
+  dealId: string,
+  body: Record<string, string | string[] | Record<string, string | boolean>>,
+) {
+  return apiRequest<ApiSuccess<DealProfile>>(ENDPOINTS.dealProfileConfirm(dealId), {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify(body),
+  });
+}
 
 export async function pipelineRequest(accessToken: string, dealId: string) {
   return apiRequest<ApiSuccess<PipelinePayload>>(ENDPOINTS.pipeline(dealId), {
@@ -1520,6 +1732,8 @@ export type ReportCatalogEntry = {
   label: string;
   format: string;
   export: string;
+  /** Allowed download formats for this report type (e.g. ["pptx"] for FDD). */
+  formats?: string[];
   description: string;
   status: "not_generated" | "running" | "ready" | "failed" | string;
   job_id?: string | null;
@@ -1528,6 +1742,11 @@ export type ReportCatalogEntry = {
   error?: string | null;
   storyline_count?: number;
   implemented?: boolean;
+  /** Hidden from the Reports catalog when true (API may still accept the type). */
+  deprecated?: boolean;
+  /** True when a legacy PDF twin exists alongside the primary artifact. */
+  pdf_available?: boolean;
+  pdf_artifact_path?: string | null;
 };
 
 export type ReportStorylineSection = {
@@ -1692,11 +1911,15 @@ export async function reportPreviewRequest(
   dealId: string,
   reportType: string,
   sheet?: string,
+  format?: string,
 ) {
-  return apiRequest<ReportPreviewPayload>(ENDPOINTS.reportPreview(dealId, reportType, sheet), {
-    method: "GET",
-    accessToken,
-  });
+  return apiRequest<ReportPreviewPayload>(
+    ENDPOINTS.reportPreview(dealId, reportType, sheet, format),
+    {
+      method: "GET",
+      accessToken,
+    },
+  );
 }
 
 /** Fetch report artifact as an object URL (for in-browser PDF preview). Caller must revoke. */
@@ -1704,14 +1927,18 @@ export async function reportArtifactBlobUrlRequest(
   accessToken: string,
   dealId: string,
   reportType: string,
+  format?: string,
 ): Promise<string> {
-  const res = await fetch(`${API_BASE_URL}${ENDPOINTS.reportDownload(dealId, reportType)}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/pdf,application/octet-stream",
-      Authorization: `Bearer ${accessToken}`,
+  const res = await fetch(
+    `${API_BASE_URL}${ENDPOINTS.reportDownload(dealId, reportType, format)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/pdf,application/octet-stream",
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new ApiError(messageFromBody(body, res.statusText), res.status, body);
@@ -1727,14 +1954,18 @@ export async function reportDownloadRequest(
   dealId: string,
   reportType: string,
   filename?: string,
+  format?: string,
 ) {
-  const res = await fetch(`${API_BASE_URL}${ENDPOINTS.reportDownload(dealId, reportType)}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/octet-stream",
-      Authorization: `Bearer ${accessToken}`,
+  const res = await fetch(
+    `${API_BASE_URL}${ENDPOINTS.reportDownload(dealId, reportType, format)}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/octet-stream",
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new ApiError(messageFromBody(body, res.statusText), res.status, body);
@@ -1743,7 +1974,18 @@ export async function reportDownloadRequest(
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename || `${reportType}.${res.headers.get("content-type")?.includes("sheet") ? "xlsx" : "bin"}`;
+  const ctype = res.headers.get("content-type") || "";
+  const fallbackExt = format
+    || (ctype.includes("pdf")
+      ? "pdf"
+      : ctype.includes("sheet")
+        ? "xlsx"
+        : ctype.includes("word")
+          ? "docx"
+          : ctype.includes("presentation")
+            ? "pptx"
+            : "bin");
+  link.download = filename || `${reportType}.${fallbackExt}`;
   document.body.appendChild(link);
   link.click();
   link.remove();

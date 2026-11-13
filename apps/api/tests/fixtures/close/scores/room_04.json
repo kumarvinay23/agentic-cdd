@@ -1,0 +1,43 @@
+{
+  "room": "room_04",
+  "agents": {
+    "statement_reader": {
+      "quality": 10,
+      "coverage": 10,
+      "ic_readiness": 10
+    },
+    "calculation_library": {
+      "quality": 10,
+      "coverage": 10,
+      "ic_readiness": 10
+    },
+    "period_engine": {
+      "quality": 10,
+      "coverage": 10,
+      "ic_readiness": 10
+    },
+    "rule_checker": {
+      "quality": 10,
+      "coverage": 10,
+      "ic_readiness": 10
+    },
+    "publisher": {
+      "quality": 10,
+      "coverage": 10,
+      "ic_readiness": 10
+    }
+  },
+  "reports": {
+    "cdd": {
+      "score": 10,
+      "publish": true,
+      "returned_pages": []
+    },
+    "fdd": {
+      "score": 10,
+      "publish": true,
+      "returned_pages": []
+    }
+  },
+  "agent_selected": []
+}

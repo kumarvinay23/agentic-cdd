@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from agetic_cdd_api.app import app
 from agetic_cdd_api.deep_dive_competitive import COMPETITIVE_SLUGS, extract_competitive_spec
 from agetic_cdd_api.services_deals import ensure_deal_folder
+from foundation_inputs import upload_foundation_inputs
 
 COMPETITION_CIM = (
     "Competitive Landscape Matrix Insight Snapshot: Head-to-head benchmarking of key competitors "
@@ -181,6 +182,7 @@ def test_competitive_agents_live_on_vdr() -> None:
                 files={"file": (name, BytesIO(body), "text/plain")},
             )
             assert upload.status_code == 200
+        upload_foundation_inputs(client, headers, deal_id)
 
         assert client.post(
             f"/api/v1/portfolios/{deal_id}/pipeline/run",
@@ -219,7 +221,10 @@ def test_competitive_agents_live_on_vdr() -> None:
             f"/api/v1/portfolios/{deal_id}/pipeline/agents/competitor_identification/output",
             headers=headers,
         ).json()["data"]["file_output"]
-        assert ident["spec"]["competitors"][0]["market_share_pct"] == 32.0
+        ola = next(
+            c for c in ident["spec"]["competitors"] if c.get("market_share_pct") == 32.0
+        )
+        assert ola["name"] == "Ola Electric"
 
         store_path = ensure_deal_folder("comp-slice2") / "library" / "deep_dive_findings.json"
         assert store_path.is_file()

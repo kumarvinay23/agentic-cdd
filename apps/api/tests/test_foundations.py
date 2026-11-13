@@ -52,6 +52,10 @@ def test_foundations_reads_cdl_sources() -> None:
                 "10_HR_Organizational_Due_Diligence.txt",
                 b"CEO Bhavish Aggarwal is founder. CFO tenure since 2021. Succession risk is high for the CEO.",
             ),
+            (
+                "Process Letter.txt",
+                b"Process letter with the bidding timeline.",
+            ),
         ]
         for name, body in files:
             upload = client.post(
@@ -174,3 +178,40 @@ def test_s2_skips_f06_when_f05_fails(monkeypatch) -> None:
     assert outputs["management_quality"]["status"] == "failed"
     assert outputs["management_quality"]["depends_on"] == ["F-05"]
     assert "F-05" in (outputs["management_quality"].get("error") or "")
+
+
+def test_foundation_bind_uses_readable_documents_when_named_kinds_are_absent() -> None:
+    from agetic_cdd_api.foundation_roles import ALL_FOUNDATION_ROLES, bind_for_role
+
+    index = {
+        "documents": [
+            {"filename": "Lease.pdf", "doc_kind": "deal_strategy", "cdl_category": "deal_strategy", "char_count": 0},
+            {
+                "filename": "Diligence Memo.pdf",
+                "doc_kind": "financial",
+                "cdl_category": "financial",
+                "char_count": 14000,
+            },
+            {
+                "filename": "Settlement.pdf",
+                "doc_kind": "legal_esg",
+                "cdl_category": "legal_esg",
+                "char_count": 3900,
+            },
+        ]
+    }
+    thesis = bind_for_role(index, next(role for role in ALL_FOUNDATION_ROLES if role.code == "F-01"))
+    assert thesis["coverage"] == "partial"
+    assert "Diligence Memo.pdf" in thesis["secondary"]
+    assert thesis["primary"] == []
+    company = bind_for_role(index, next(role for role in ALL_FOUNDATION_ROLES if role.code == "F-05"))
+    assert company["coverage"] == "partial"
+    assert "Diligence Memo.pdf" in company["secondary"]
+    named = bind_for_role(
+        {"documents": [{"filename": "CIM.pdf", "doc_kind": "cim", "cdl_category": "deal_strategy", "char_count": 20}]},
+        next(role for role in ALL_FOUNDATION_ROLES if role.code == "F-01"),
+    )
+    assert named["coverage"] == "full"
+    assert named["primary"] == ["CIM.pdf"]
+    empty = bind_for_role({"documents": []}, next(role for role in ALL_FOUNDATION_ROLES if role.code == "F-03"))
+    assert empty["coverage"] == "missing"

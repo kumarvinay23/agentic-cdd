@@ -12,7 +12,7 @@ STAGE_B_SLUGS: frozenset[str] = frozenset(
 )
 
 _SUBJECT_PEER_RE = re.compile(
-    r"(?i)Ola Electric\s*\(Subject\)\s+\S+\s+([\d.]+)\s+"
+    r"(?i)([A-Z][\w .&'-]{1,80}?)\s*\(Subject\)\s+\S+\s+([\d.]+)\s+"
     r"(?:N/M|N/A|\d+(?:\.\d+)?x)\s+"
     r"(?:\(neg\.\s*EBITDA\)\s+)?"
     r"([\d.]+)x\s+"
@@ -25,12 +25,12 @@ _MEDIAN_COMPS_RE = re.compile(
 )
 _IPO_EV_RE = re.compile(r"(?i)IPO Implied EV(?:\s*\([^)]+\))?\s+[^\d~]*~?\s*([\d.]+)\s*B")
 _COMP_EV_RANGE_RE = re.compile(
-    r"(?i)EV\s*/\s*Revenue\s+USD\s+~590M\s+Revenue\s+"
+    r"(?i)EV\s*/\s*Revenue\s+USD\s+~?[\d,.]+\s*M\s+Revenue\s+"
     r"([\d.]+)x\s+([\d.]+)x\s+([\d.]+)B\s+([\d.]+)B"
 )
 _PRECEDENT_MEDIAN_RE = re.compile(r"(?i)Median\s+([\d.]+)x\s+\+?\d+%")
 _PRECEDENT_APPLIED_RE = re.compile(
-    r"(?i)Applied Range\s*\(Ola Electric\)\s+([\d.]+)x\s*[–-]\s*([\d.]+)x"
+    r"(?i)Applied Range\s*\([^)]+\)\s+([\d.]+)x\s*[–-]\s*([\d.]+)x"
 )
 _PRECEDENT_EV_RANGE_RE = re.compile(
     r"(?i)Implied EV Range\s*\(FY2024E Rev\)\s+USD\s+([\d.]+)B\s*[–-]\s*USD\s+([\d.]+)B"
@@ -113,11 +113,11 @@ def _parse_trading_comps(text: str) -> dict[str, Any]:
     if subject:
         peers.append(
             {
-                "name": "Ola Electric (Subject)",
-                "market_cap_usd_b": _safe_float(subject.group(1)),
-                "ev_revenue_x": _safe_float(subject.group(2)),
-                "revenue_growth_pct": _safe_float(subject.group(3)),
-                "gross_margin_pct": _safe_float(subject.group(4)),
+                "name": re.sub(r"\s+", " ", subject.group(1)).strip() + " (Subject)",
+                "market_cap_usd_b": _safe_float(subject.group(2)),
+                "ev_revenue_x": _safe_float(subject.group(3)),
+                "revenue_growth_pct": _safe_float(subject.group(4)),
+                "gross_margin_pct": _safe_float(subject.group(5)),
                 "is_subject": True,
             }
         )

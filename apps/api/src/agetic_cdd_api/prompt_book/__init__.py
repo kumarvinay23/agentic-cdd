@@ -404,6 +404,18 @@ def prompt_vars_from_deal(deal: Any) -> dict[str, str | None]:
     products = _meta_get(meta, "products_and_services", "products", "services")
     customers = _meta_get(meta, "customer_types", "customers")
 
+    from agetic_cdd_api.services_deal_profile import confirmed_values
+
+    profile = confirmed_values(deal)
+    if profile.get("country"):
+        geography = str(profile["country"])
+    if profile.get("sector"):
+        sector = str(profile["sector"])
+    if profile.get("deal_type"):
+        transaction = str(profile["deal_type"])
+    if profile.get("business_model") and not products:
+        products = str(profile["business_model"])
+
     return {
         "sector": sector if isinstance(sector, str) else None,
         "geography": geography if isinstance(geography, str) else None,
@@ -413,6 +425,8 @@ def prompt_vars_from_deal(deal: Any) -> dict[str, str | None]:
         "customer_types": customers,
         "deal_perimeter": perimeter,
         "transaction_type": transaction,
+        "currency": str(profile.get("currency") or "") or None,
+        "business_model": str(profile.get("business_model") or "") or None,
         "as_of_date": as_of,
         "review_periods": review,
         "decision_stage": stage,

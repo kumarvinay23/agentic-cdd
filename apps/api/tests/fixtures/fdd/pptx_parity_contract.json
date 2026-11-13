@@ -1,0 +1,86 @@
+{
+  "contract_id": "fdd_pptx_parity_v1",
+  "reference": "Project_Crew_FDD_1 (2).pptx",
+  "notes": "Structural golden for Phase G — chapter/banner/chrome presence, not pixel match.",
+  "slide_size": {
+    "width_emu": 12192000,
+    "height_emu": 6858000,
+    "tolerance_emu": 20000
+  },
+  "min_slides": 12,
+  "required_banners": [
+    "CONTENTS",
+    "INTRODUCTION",
+    "EXECUTIVE SUMMARY",
+    "TRANSACTION AND BUSINESS",
+    "QUALITY OF EARNINGS",
+    "TRADING",
+    "CASH FLOW",
+    "BALANCE SHEET, DEBT AND LEASES",
+    "DEAL CONSIDERATIONS",
+    "APPENDICES"
+  ],
+  "required_chapters": [
+    "cover",
+    "contents",
+    "intro",
+    "es",
+    "transaction",
+    "qoe",
+    "trading",
+    "cash",
+    "bs",
+    "deal",
+    "appendix"
+  ],
+  "chapter_order": [
+    "intro",
+    "es",
+    "transaction",
+    "qoe",
+    "trading",
+    "cash",
+    "bs",
+    "deal",
+    "appendix"
+  ],
+  "core_chapters_require_table": [
+    "es",
+    "qoe",
+    "trading",
+    "cash",
+    "bs",
+    "deal",
+    "appendix"
+  ],
+  "required_layouts": [
+    "cover",
+    "toc",
+    "kpi_strip",
+    "section_table_obs",
+    "findings_rank"
+  ],
+  "chrome": {
+    "content_slides_require_source": true,
+    "content_slides_require_evidence": true,
+    "content_slides_require_page_no": true,
+    "min_content_slides_with_observations": 3,
+    "min_content_slides_with_tables": 5
+  },
+  "artifact": {
+    "report_type": "fdd_report",
+    "allowed_extensions": [".pptx"],
+    "forbidden_extensions": [".docx", ".pdf", ".doc"]
+  },
+  "visual_diff": {
+    "optional": true,
+    "env_flag": "FDD_VISUAL_DIFF",
+    "reference_env": "FDD_VISUAL_REF_PPTX",
+    "notes": "Optional Phase G pixel compare. Off unless FDD_VISUAL_DIFF=1; needs LibreOffice + PyMuPDF/pdftoppm.",
+    "dpi": 110,
+    "slides": [1, 2],
+    "max_mean_abs_diff": 12.0,
+    "pixel_tol": 24,
+    "max_pct_pixels_over_tol": 8.0
+  }
+}

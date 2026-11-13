@@ -25,7 +25,6 @@ COMPETITIVE_SLUGS: frozenset[str] = frozenset(
 # Multi-word name hints used only when those tokens appear in the source text.
 # Never injected as peers when absent from the VDR.
 _NAME_HINTS = (
-    "Ola Electric",
     "Ather Energy",
     "TVS iQube",
     "Bajaj Chetak",
@@ -222,7 +221,10 @@ def _split_competitor_names(raw: str) -> list[str]:
         return []
 
     # Collect hint matches in document order; longer spans win on overlap.
+    # Two-word capitalized spans are read from the header itself.
     hits: list[tuple[int, int, str]] = []
+    for match in re.finditer(r"\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b", text):
+        hits.append((match.start(), match.end(), match.group(1)))
     for name in _NAME_HINTS:
         for match in re.finditer(re.escape(name), text, flags=re.I):
             hits.append((match.start(), match.end(), name))

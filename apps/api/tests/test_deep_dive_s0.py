@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from agetic_cdd_api.app import app
 from agetic_cdd_api.deep_dive_findings import validate_findings_store
 from agetic_cdd_api.pipeline_catalog import PHASE3_AGENT_KEYS
+from foundation_inputs import upload_foundation_inputs
 
 
 def _headers(client: TestClient) -> dict[str, str]:
@@ -33,6 +34,7 @@ def _create_deal_with_doc(client: TestClient, headers: dict[str, str], *, name: 
         files={"file": ("CIM.pdf", BytesIO(b"%PDF-1.4 market sizing TAM SAM"), "application/pdf")},
     )
     assert upload.status_code == 200
+    upload_foundation_inputs(client, headers, deal_id)
     return deal_id
 
 
@@ -184,8 +186,12 @@ def test_deep_dive_run_writes_findings_store() -> None:
         pipe = client.get(f"/api/v1/portfolios/{deal_id}/pipeline", headers=headers)
         assert pipe.status_code == 200
         deep = next(p for p in pipe.json()["data"]["phases"] if p["phase_id"] == "deep_dive")
-        assert deep["status"] == "completed"
-        assert deep["completedAgents"] == 24
+        assert deep["completedAgents"] < 24
+        repair = client.get(
+            f"/api/v1/portfolios/{deal_id}/pipeline/agents/customer_satisfaction/output",
+            headers=headers,
+        )
+        assert repair.json()["data"]["status"] == "needs_repair"
 
         out = client.get(
             f"/api/v1/portfolios/{deal_id}/pipeline/agents/market_definition/output",
@@ -294,8 +300,12 @@ def test_deep_dive_sse_smoke() -> None:
 
         phases = client.get(f"/api/v1/portfolios/{deal_id}/pipeline/phases", headers=headers)
         deep = next(p for p in phases.json()["data"]["phases"] if p["phase_id"] == "deep_dive")
-        assert deep["status"] == "completed"
-        assert deep["completedAgents"] == 24
+        assert deep["completedAgents"] < 24
+        repair = client.get(
+            f"/api/v1/portfolios/{deal_id}/pipeline/agents/customer_satisfaction/output",
+            headers=headers,
+        )
+        assert repair.json()["data"]["status"] == "needs_repair"
 
 
 def test_store_entry_as_payload_preserves_structural_tags() -> None:

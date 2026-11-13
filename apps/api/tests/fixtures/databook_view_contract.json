@@ -1,0 +1,74 @@
+{
+  "files": [
+    {
+      "file": "Monthly Financials.xlsx",
+      "path": "Financial Information/Monthly Financials.xlsx",
+      "doc_id": "doc-1",
+      "status": "READ",
+      "status_reason": null,
+      "doc_type": "FIN_MGMT_ACCOUNTS",
+      "evidence_tier": "B",
+      "extraction": { "method": "structural" },
+      "empty": false,
+      "doc_facts": 2
+    }
+  ],
+  "series": {
+    "revenue": {
+      "2023": {
+        "value": 100.0,
+        "currency": "USD",
+        "source": "Monthly Financials.xlsx",
+        "line_item": "Revenue",
+        "statement": "schedule",
+        "raw": "Monthly P&L · Revenue",
+        "suspect": false,
+        "foreign": false,
+        "edited": null,
+        "original": null,
+        "fact_id": "fact-rev-2023"
+      }
+    },
+    "ebitda": {
+      "2023": {
+        "value": 20.0,
+        "currency": "USD",
+        "source": "Monthly Financials.xlsx",
+        "line_item": "EBITDA",
+        "statement": "schedule",
+        "raw": "Monthly P&L · EBITDA",
+        "suspect": false,
+        "foreign": false,
+        "edited": null,
+        "original": null,
+        "fact_id": "fact-ebitda-2023"
+      }
+    }
+  },
+  "model": null,
+  "totals": {
+    "rows": 3,
+    "mapped_rows": 2,
+    "metrics": 2,
+    "documents_parsed": 1,
+    "candidates": 1,
+    "building": 0,
+    "checks_failed": 0,
+    "suspect_rows": 0,
+    "note_rows": 0,
+    "model_rows": 0
+  },
+  "reporting_currency": "USD",
+  "actual_through": 2025,
+  "dq_cells": {
+    "revenue|2023": [
+      {
+        "n": 1399,
+        "kind": "conflict",
+        "label": "Sources disagree",
+        "detail": "Two sources state different revenue for 2023"
+      }
+    ]
+  },
+  "status": "ready"
+}

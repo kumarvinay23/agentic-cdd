@@ -45,37 +45,42 @@ def _qualify_retention_caption(
     source_name: str = "",
     table_name: str = "",
 ) -> str:
-    """Prefix Commercial when the sheet context is commercial and the line is bare retention.
+    """Prefix Commercial or Residential when the sheet context is segmented.
 
-    Residential lines stay untouched (and remain unmapped by CoA). Avoids releasing
-    residential 0.84x GRR under a Commercial label when the Commercial Summary sheet
-    only prints unlabeled 'Gross dollar retention'.
-
-    Sheet/table name wins over workbook filename — a file named
-    ``…Residential_and_Commercial…`` must not force a Commercial prefix onto a
-    Residential Summary row.
+    Bare retention lines on a segment sheet become ``Commercial …`` /
+    ``Residential …`` so CoA maps them to distinct metric keys. Sheet/table
+    name wins over workbook filename.
     """
     cap = (caption or "").strip()
     if not cap or not _RETENTION_LINE_RE.search(cap):
         return cap
-    if "residential" in cap.lower():
+    if "residential" in cap.lower() or "commercial" in cap.lower():
         return cap
-    if "commercial" in cap.lower():
-        return cap
-    # Prefer the sheet/table label over the workbook filename for segment.
     sheet_blob = f"{table_name}".lower()
-    if re.search(r"(?i)\bresidential\b", sheet_blob):
-        return cap
+    if re.search(r"(?i)residential\s+summary|residential\s+segment|\bresidential\b", sheet_blob):
+        return f"Residential {cap}"
     if re.search(r"(?i)commercial\s+summary|commercial\s+segment|\bcommercial\b", sheet_blob):
         return f"Commercial {cap}"
     file_blob = f"{source_name}".lower()
     if re.search(r"(?i)\bresidential\b", file_blob) and not re.search(
         r"(?i)\bcommercial\b", file_blob
     ):
-        return cap
-    if re.search(r"(?i)commercial\s+summary|commercial\s+segment|\bcommercial\b", file_blob):
+        return f"Residential {cap}"
+    if re.search(r"(?i)\bcommercial\b", file_blob) and not re.search(
+        r"(?i)\bresidential\b", file_blob
+    ):
         return f"Commercial {cap}"
     return cap
+
+
+def _caption_embedded_year(caption: str) -> int | None:
+    """Last year token in a caption, when present (e.g. ``DC revenue 2030``)."""
+    years = [
+        int(m.group(1))
+        for m in re.finditer(r"\b(19\d{2}|20\d{2})\b", caption or "")
+        if 1990 <= int(m.group(1)) <= 2099
+    ]
+    return years[-1] if years else None
 
 
 # Fiscal-year bounds only (avoid treating codes / large amounts as years).
@@ -824,6 +829,15 @@ def rows_from_table(
                     continue
                 metric_key = hit.metric_key if hit else None
                 if is_year_as_value(metric_key, year, value):
+                    continue
+                # Caption names its own year (scenario / contract input). Do not
+                # park that figure under a different year-column header.
+                caption_year = _caption_embedded_year(caption)
+                if (
+                    caption_year is not None
+                    and year is not None
+                    and int(caption_year) != int(year)
+                ):
                     continue
                 value, scaled = _maybe_scale_to_millions(
                     metric_key,

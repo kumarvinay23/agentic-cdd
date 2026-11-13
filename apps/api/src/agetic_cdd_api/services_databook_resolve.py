@@ -38,10 +38,7 @@ def _proof_rank(level: ProofLevel | None) -> int:
 
 
 def _retention_segment_rank(row: ExtractedRow, metric_key: str) -> int:
-    """Higher = prefer for auto-promote (commercial over residential).
-
-    Ranking is caption-driven only — never match fixed deal GRR/NRR ratios.
-    """
+    """Segment keys no longer compete; keep caption rank for bare grr/nrr only."""
     if metric_key not in {"grr", "nrr"}:
         return 0
     cap = (row.caption or "").lower()
@@ -471,7 +468,21 @@ def detect_conflicts(
             s: source_ladder.get(s, 50) for s in sorted(scopes)
         }
         issues.append(issue)
+        # Clear ladder winner may promote with its source basis; losers stay held.
+        winner_ladder = max(
+            (source_ladder.get(s, 50) for s in winner.sources),
+            default=50,
+        )
+        other_ladders = [
+            max((source_ladder.get(s, 50) for s in c.sources), default=50)
+            for c in candidates
+            if c is not winner
+        ]
+        clear_ladder = bool(other_ladders) and winner_ladder > max(other_ladders)
+        winner_ids = set(winner.row_ids or [])
         for m in group:
+            if clear_ladder and m.row_id in winner_ids:
+                continue
             hold_ids.add(m.row_id)
 
     return _dedupe_issues(issues), hold_ids
@@ -520,6 +531,31 @@ def apply_statuses_and_promote(
     # Collect promotable rows by metric+year
     promo_members: dict[tuple[str, int], list[ExtractedRow]] = defaultdict(list)
     eligible_ids = {r.row_id for members in eligible_by_key.values() for r in members}
+    # Clear ladder winners leave one unheld survivor per key — promote with basis.
+    sole_survivors: set[str] = set()
+    survivors_by_key: dict[tuple[str, int], list[ExtractedRow]] = defaultdict(list)
+    for row in rows:
+        if (
+            row.status == RowStatus.DROPPED
+            or row.row_id in combined_hold
+            or row.row_id not in eligible_ids
+            or not row.metric_key
+            or row.fiscal_year is None
+        ):
+            continue
+        survivors_by_key[(row.metric_key, int(row.fiscal_year))].append(row)
+    for key, members in survivors_by_key.items():
+        # Only clear-ladder / conflict survivors — not every unique candidate.
+        held_peers = [
+            r for r in eligible_by_key.get(key, []) if r.row_id in combined_hold
+        ]
+        if not held_peers:
+            continue
+        if len({_value_bucket(m.value) for m in members}) == 1 and len(
+            {m.source_name for m in members}
+        ) == 1:
+            sole_survivors.update(m.row_id for m in members)
+
     for row in rows:
         if row.status == RowStatus.DROPPED or row.row_id in combined_hold:
             continue
@@ -530,17 +566,18 @@ def apply_statuses_and_promote(
             row.metric_key in _ADDITIVE_WITHIN_DOC
             and len({m.source_name for m in eligible_by_key.get(key, [])}) <= 1
         )
+        sole = row.row_id in sole_survivors
         if (
             row.metric_key
             and row.fiscal_year is not None
-            and not row.assumption
-            and not row.derived  # S4-6: derived metrics are not auto-promoted as printed facts
-            and meets_min_proof(row.proof_level, minimum)
+            and (not row.assumption or sole)
+            and (not row.derived or sole)  # S4-6: derived stay out unless sole ladder winner
+            and (meets_min_proof(row.proof_level, minimum) or sole)
             and same_family_allowed(row.caption, row.metric_key)
             and not is_year_as_value(row.metric_key, row.fiscal_year, row.value)
             and not is_implausible_money_magnitude(row.metric_key, row.value)
             and not params.blocks_saas_metric(row.metric_key)
-            and (multi_ok or len(groups.get((row.metric_key, row.fiscal_year), set())) == 1)
+            and (multi_ok or len(groups.get((row.metric_key, row.fiscal_year), set())) == 1 or sole)
         ):
             promo_members[(row.metric_key, row.fiscal_year)].append(row)
 

@@ -1,4 +1,4 @@
-"""FDD UX polish — G2 gate, bracket negatives, DOCX, labelled deck chart series."""
+"""FDD UX polish — G2 gate, bracket negatives, PPTX report, labelled chart series."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from agetic_cdd_api.fdd_schemas import (
     ExhibitCell,
     FigureType,
 )
-from agetic_cdd_api.report_fdd import _chart_series_from_exhibit, _write_fdd_docx
+from agetic_cdd_api.report_fdd import _chart_series_from_exhibit
 from agetic_cdd_api.services_fdd_bridge import GateBlockedError
 from agetic_cdd_api.services_fdd_claims import acknowledge_g2, evaluate_g2
 from agetic_cdd_api.services_fdd_render import ensure_phase0_run
@@ -284,27 +284,28 @@ def test_exhibit_body_strips_duplicate_fy_in_label() -> None:
     assert "Cost of sales (FY2025" in body
 
 
-def test_docx_and_pdf_twin_written(deal_root: Path) -> None:
+def test_pptx_only_written_for_fdd_report(deal_root: Path) -> None:
     from agetic_cdd_api.report_fdd import FddReportBuilder
 
-    slug = "docx-deal"
+    slug = "pptx-deal"
     (deal_root / slug).mkdir(parents=True)
     ensure_phase0_run(slug, company="Acme", revenue_fy24=100.0)
     events = list(FddReportBuilder(slug).generate())
     assert any(e.get("stage") == "done" for e in events)
     out = deal_root / slug / "reports" / "fdd_report"
-    assert list(out.glob("*_FDD_Report.docx"))
-    assert list(out.glob("*_FDD_Report.pdf"))
+    assert list(out.glob("*_FDD_Report.pptx"))
+    assert not list(out.glob("*_FDD_Report.docx"))
+    assert not list(out.glob("*_FDD_Report.pdf"))
 
 
-def test_write_fdd_docx_smoke(tmp_path: Path) -> None:
+def test_write_fdd_pptx_smoke(tmp_path: Path) -> None:
     from agetic_cdd_api.fdd_schemas import StubRenderPage
+    from agetic_cdd_api.report_fdd import _write_fdd_pptx
 
-    path = tmp_path / "out.docx"
-    _write_fdd_docx(
+    path = tmp_path / "out.pptx"
+    _write_fdd_pptx(
         path=path,
         title="FDD Report — Acme",
-        company="Acme",
         pages=[
             StubRenderPage(title="Cover", body="Financial Due Diligence", kind="cover"),
             StubRenderPage(
@@ -314,6 +315,7 @@ def test_write_fdd_docx_smoke(tmp_path: Path) -> None:
             ),
         ],
         figures={"ex.a": 1.0},
+        product_label="FDD Report",
     )
     assert path.is_file()
     assert path.stat().st_size > 1000

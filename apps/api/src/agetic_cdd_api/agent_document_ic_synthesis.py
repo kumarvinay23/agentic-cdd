@@ -174,8 +174,9 @@ def _collect_agents(
             store_agents = findings_store.get("agents")
             if isinstance(store_agents, dict) and isinstance(store_agents.get(slug), dict):
                 payload = store_agents[slug]
-        if isinstance(payload, dict) and (payload.get("spec") or payload.get("findings")):
-            agents[slug] = payload
+        kept = _validated_upstream(payload)
+        if kept:
+            agents[slug] = kept
 
     roles = foundation.get("roles") if isinstance(foundation, dict) else None
     if isinstance(roles, dict):
@@ -184,13 +185,25 @@ def _collect_agents(
                 continue
             entry = roles.get(code)
             if isinstance(entry, dict) and isinstance(entry.get("spec"), dict):
-                agents[slug] = {
-                    "agent_key": slug,
-                    "spec": entry["spec"],
-                    "findings": entry.get("findings") or [],
-                    "summary": entry.get("summary") or "",
-                }
+                kept = _validated_upstream(
+                    {
+                        "agent_key": slug,
+                        "spec": entry["spec"],
+                        "findings": entry.get("findings") or [],
+                        "status": str(entry.get("status") or ""),
+                    }
+                )
+                if kept:
+                    agents[slug] = kept
     return agents
+
+
+def _validated_upstream(payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    from agetic_cdd_api.agent_contracts import as_validated_findings
+
+    if not isinstance(payload, dict) or not (payload.get("spec") or payload.get("findings")):
+        return None
+    return as_validated_findings(payload)
 
 
 def _business_lines(agents: dict[str, dict[str, Any]], company: str) -> list[str]:

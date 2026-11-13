@@ -21,48 +21,64 @@ from typing import Any, Iterator
 
 from agetic_cdd_api.services_deals import ensure_deal_folder
 
-REPORT_TYPES: dict[str, dict[str, str]] = {
+# FDD Report (and deprecated IC deck alias) are PPTX-only — never Word/PDF twins.
+FDD_PPTX_ONLY_TYPES = frozenset({"fdd_report", "fdd_deck"})
+
+
+def is_fdd_pptx_only(report_type: str) -> bool:
+    return report_type in FDD_PPTX_ONLY_TYPES
+
+
+REPORT_TYPES: dict[str, dict[str, Any]] = {
     "cdd_deck": {
         "label": "CDD Deck",
         "format": "deck",
         "export": "pptx",
+        "formats": ["pptx"],
         "description": "Full commercial due-diligence deck — provenance-tracked widescreen slides from the VDR + web research across market, competition, customers, operations, financials and IC decision.",
     },
     "ic_memo": {
         "label": "IC Memo",
         "format": "document",
         "export": "pdf",
+        "formats": ["pdf"],
         "description": "Investment Committee memorandum — valuation range, risk assessment, go/no-go recommendation.",
     },
     "market_deck": {
         "label": "Market Intel Deck",
         "format": "deck",
         "export": "pptx",
+        "formats": ["pptx"],
         "description": "Market intelligence deck — market definition, sizing, growth, pricing, positioning matrices, market maps and competitive battlecards.",
     },
     "strategy_report": {
         "label": "Strategy Report",
         "format": "document",
         "export": "docx",
+        "formats": ["docx"],
         "description": "Consulting-grade strategic due-diligence report — deal framing, company & management, strategy, legal/IP/ESG, with thesis, risks and verdicts.",
     },
     "ops_dashboard": {
         "label": "Operations Dashboard",
         "format": "dashboard",
         "export": "xlsx",
+        "formats": ["xlsx"],
         "description": "Operating KPI dashboard — executive scorecard, customer, operational & risk, and financial analysis with RAG status and trends.",
     },
     "fdd_report": {
         "label": "FDD Report",
-        "format": "document",
-        "export": "docx",
-        "description": "Financial due-diligence report — Word + PDF from one report_spec; figures from approved databook only.",
+        "format": "deck",
+        "export": "pptx",
+        "formats": ["pptx"],
+        "description": "Financial due-diligence report — PowerPoint only (no Word/PDF). One report_spec; figures from approved databook only.",
     },
     "fdd_deck": {
         "label": "FDD IC Deck",
         "format": "deck",
         "export": "pptx",
-        "description": "FDD IC deck — same report_spec figures as the FDD report; labelled chart axes on multi-year exhibits.",
+        "formats": ["pptx"],
+        "deprecated": True,
+        "description": "Deprecated — use FDD Report (PowerPoint). API alias that emits the same PPTX deliverable.",
     },
 }
 
@@ -166,6 +182,13 @@ def list_reports(deal_slug: str) -> list[dict[str, Any]]:
         result = []
         for rt, info in REPORT_TYPES.items():
             entry = all_meta.get(rt, {})
+            # FDD is PPTX-only: never advertise a PDF twin even if stale meta remains.
+            if is_fdd_pptx_only(rt):
+                pdf_path = None
+                pdf_available = False
+            else:
+                pdf_path = entry.get("pdf_artifact_path")
+                pdf_available = bool(pdf_path)
             result.append({
                 "report_type": rt,
                 **info,
@@ -177,6 +200,8 @@ def list_reports(deal_slug: str) -> list[dict[str, Any]]:
                 "stale_databook": bool(entry.get("stale_databook")),
                 "stale_release_id": entry.get("stale_release_id"),
                 "stale_reason": entry.get("stale_reason"),
+                "pdf_available": pdf_available,
+                "pdf_artifact_path": pdf_path,
             })
         return result
 
@@ -210,6 +235,7 @@ def finish_report(
     storyline: list[dict] | None = None,
     sources: dict | None = None,
     artifact_path: str | None = None,
+    pdf_artifact_path: str | None = None,
     error: str | None = None,
 ) -> None:
     """Mark a report as ready (or failed)."""
@@ -247,8 +273,24 @@ def finish_report(
                     entry["artifact_bytes"] = nbytes
             except OSError:
                 pass
+        # Phase F: FDD Report never keeps a PDF/DOCX twin path in meta.
+        if is_fdd_pptx_only(report_type):
+            entry.pop("pdf_artifact_path", None)
+        elif pdf_artifact_path:
+            entry["pdf_artifact_path"] = pdf_artifact_path
+        elif not error:
+            # Clear stale twin pointer when a build does not emit PDF.
+            entry.pop("pdf_artifact_path", None)
         all_meta[report_type] = entry
         _write_body(deal_slug, all_meta)
+    from agetic_cdd_api.services_pipeline_run import publish_report_workflow
+
+    publish_report_workflow(
+        deal_slug,
+        report_type,
+        artifact_path=artifact_path,
+        error=error,
+    )
 
 
 def update_storyline(deal_slug: str, report_type: str, storyline: list[dict]) -> None:
