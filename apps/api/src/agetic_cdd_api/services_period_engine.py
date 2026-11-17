@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import re
 from collections import defaultdict
 from typing import Any
@@ -18,6 +19,8 @@ from typing import Any
 from agetic_cdd_api.services_fact_repository import Fact, dkey, get_fact, save_fact
 from agetic_cdd_api.services_ontology import Ontology, load_ontology
 from agetic_cdd_api.services_statement_reader import fiscal_year
+
+logger = logging.getLogger(__name__)
 
 TERM = re.compile(r"(policy:\w+\s+)?([a-z]+(?:\.[a-z0-9_]+)+)(\[[^\]]+\])?(\?)?")
 
@@ -36,7 +39,10 @@ def run_calculations(facts, onto: Ontology, policy, period_types):
         def emit(cid, dims, val, src, formula, calc_id):
             c = onto.concepts[cid]; s0 = src[0] if src else None
             tier = max((x.evidence_tier for x in src), default="B")       # a derived fact is only as strong as its weakest input
-            f = Fact(cid, val, c["unit_type"], pt, s0.period_start if s0 else None, pe, s0.months_covered if s0 else None, "ACTUAL", dims, None, tier, [], status="DERIVED",
+            months = _months_for_period(pt, src)
+            if months is None and pt in {"FY", "YTD"}:
+                return None
+            f = Fact(cid, val, c["unit_type"], pt, s0.period_start if s0 else None, pe, months, "ACTUAL", dims, None, tier, [], status="DERIVED",
                      currency=next((x.currency for x in src if x.currency), None) if c["unit_type"] == "CURRENCY" else None, derived_from=[x.fact_id for x in src],
                      formula=f"{calc_id}: {formula}", mapping=dict(calculation=calc_id))
             have[(cid, dkey(dims))] = f; out.append(f); return f
@@ -112,10 +118,19 @@ def derive_periods(facts, onto: Ontology, latest_actual: dt.date, fye_month: int
         ytd_n = (latest_actual.month - fye_month - 1) % 12 + 1          # months from fiscal-year start to the latest actual month
         for y in sorted({fy(e) for e in ends}):
             sel = [e for e in ends if fy(e) == y and e <= la]
-            if len(sel) == 12: mk("FY", sel, sel[0][:8] + "01")
-            elif sel and sel[-1] == la and len(sel) == ytd_n: mk("YTD", sel, sel[0][:8] + "01")
+            if len(sel) == 12:
+                mk("FY", sel, sel[0][:8] + "01")
+            elif (
+                sel
+                and sel[-1] == la
+                and len(sel) == ytd_n
+                and 1 <= len(sel) <= 11
+            ):
+                # YTD must be a partial year (1–11 months); full year is FY above.
+                mk("YTD", sel, sel[0][:8] + "01")
         prior = [e for e in ends if fy(e) == fiscal_year(latest_actual, fye_month) - 1][:ytd_n]
-        if ytd_n < 12 and len(prior) == ytd_n: mk("YTD", prior, prior[0][:8] + "01")
+        if 1 <= ytd_n <= 11 and len(prior) == ytd_n:
+            mk("YTD", prior, prior[0][:8] + "01")
         last12 = [e for e in ends if e <= la][-12:]
         if len(last12) == 12 and last12[-1] == la: mk("LTM", last12, last12[0][:8] + "01")
     return out
@@ -178,6 +193,21 @@ def _day(value):
     return value
 
 
+def _months_for_period(period_type: str, src: list) -> int | None:
+    """Pick a contract-valid months_covered for derived FY / YTD / other periods."""
+    if period_type == "FY":
+        return 12
+    if period_type == "YTD":
+        for fact in src:
+            months = getattr(fact, "months_covered", None)
+            if isinstance(months, int) and 1 <= months <= 11:
+                return months
+        return None
+    if src:
+        return getattr(src[0], "months_covered", None)
+    return None
+
+
 def _save(fact, deal_id: str):
     if get_fact(fact.fact_id):
         return get_fact(fact.fact_id)
@@ -186,8 +216,20 @@ def _save(fact, deal_id: str):
 
         save_fact(resolve_fact(_fact_row(fact, deal_id)))
     except ValueError as exc:
-        if "fact_key_selected" not in str(exc):
-            raise
+        message = str(exc)
+        # Duplicate selected keys and invalid period stamps must not abort ingest.
+        if "fact_key_selected" in message:
+            return get_fact(fact.fact_id)
+        if "months_covered" in message or "YTD" in message or "R-PER-02" in message:
+            logger.warning(
+                "period engine skipped fact %s (%s %s): %s",
+                getattr(fact, "fact_id", None),
+                getattr(fact, "period_type", None),
+                getattr(fact, "months_covered", None),
+                message,
+            )
+            return None
+        raise
     return get_fact(fact.fact_id)
 
 

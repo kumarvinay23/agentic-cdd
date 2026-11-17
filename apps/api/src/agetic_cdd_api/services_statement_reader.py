@@ -291,11 +291,18 @@ def read_statement_grid(
             row_currency = effective_currency if c["unit_type"] == "CURRENCY" else None
             if c["unit_type"] == "CURRENCY" and not row_currency:
                 continue
+            # Contract: FY is exactly 12 months; YTD is a partial year (1–11).
+            if n == 12:
+                period_type = "FY"
+            elif 1 <= n <= 11:
+                period_type = "YTD"
+            else:
+                continue
             loc = _loc(locs, doc_id, ws_v.title, f"{col}{it['rn']}", it["lab"], str(yr), v, [f"column headed {yr}; covers {n} months"] + (["sign flipped as for the row"] if it["flip"] else []))
             av = (-float(v) if it["flip"] else float(v)) * (scale if c["unit_type"] == "CURRENCY" else 1)
-            facts.append(Fact(cid, av, c["unit_type"], "FY" if n == 12 else "YTD", ms[0].replace(day=1).isoformat(), ms[-1].isoformat(), n, fact_basis,
+            facts.append(Fact(cid, av, c["unit_type"], period_type, ms[0].replace(day=1).isoformat(), ms[-1].isoformat(), n, fact_basis,
                               dict(it["dims"]), doc_id, "B", [loc], status="COMPARATIVE", currency=row_currency, reason_code="DUPLICATE",
-                              reason_detail=f"source annual column headed {yr} covers {n} months; the {'FY' if n == 12 else 'YTD'} fact is derived from months",
+                              reason_detail=f"source annual column headed {yr} covers {n} months; the {period_type} fact is derived from months",
                               mapping=dict(row_kind="ANNUAL_COLUMN", row=it["rn"], currency_source=currency_source)))
     # ---- R-SRC-01 and the composition of every SUM subtotal
     for it in items:
@@ -327,6 +334,8 @@ _SERIES_CONCEPTS = {
     "fin.bs.total_assets",
     "fin.bs.equity",
 }
+# Public alias for Gate 2 / Financial history consumers.
+SERIES_CONCEPT_IDS = frozenset(_SERIES_CONCEPTS)
 _EXCEL = {".xlsx", ".xlsm"}
 _GAP = 14
 _PLAN_BASIS = {"BUDGET", "FORECAST", "MGMT_CASE"}
@@ -493,24 +502,69 @@ def read_room(deal, currency: str, fye_month: int = 12, scale: int = 1) -> dict[
         found, locs, items = _file_facts(root / row["file_name"], row, onto, currency, scale, fye_month, deal_id)
         if found is None:
             continue
-        stored.extend(store_lines(found, locs, deal_id, doc_type=row.get("doc_type")))
+        stored.extend(
+            store_lines(
+                found,
+                locs,
+                deal_id,
+                doc_type=row.get("doc_type"),
+                file_name=row.get("file_name"),
+            )
+        )
         read_facts.extend(found)
         read_items.extend(items)
     from agetic_cdd_api.services_mapper import mappings_for
     from agetic_cdd_api.services_rule_checker import check_rules
+    from agetic_cdd_api.services_series_canonical import canonicalize_financial_history
+
+    # Gate 3: one canonical SELECTED/DERIVED cell per Financial history metric×year.
+    series_canonical = canonicalize_financial_history(deal_id)
+    if stored and series_canonical.get("demoted"):
+        from agetic_cdd_api.services_fact_repository import facts_for
+
+        by_id = {
+            str(fact.get("fact_id") or ""): fact
+            for fact in facts_for(deal_id)
+            if fact.get("fact_id")
+        }
+        stored = [by_id.get(str(fact.get("fact_id") or ""), fact) for fact in stored]
+
+    # Gate 4: stamp eight labels onto material series and refresh the release.
+    series_labels: dict[str, Any] = {}
+    try:
+        from agetic_cdd_api.services_series_labels import sync_material_series_labels
+
+        series_labels = sync_material_series_labels(deal)
+    except Exception:
+        series_labels = {"synced": 0, "error": "series_label_sync_failed"}
 
     checked = check_rules(read_facts, deal_id) if read_facts else {"flags": [], "publish_set": [], "blocked_tabs": []}
-    return {
+    result = {
         "facts": stored,
         "rows": rows,
         "mappings": mappings_for(deal_id),
         "periods": _periods(deal_id, read_facts, read_items),
         "flags": checked["flags"],
         "publish_set": checked["publish_set"],
+        "series_canonical": series_canonical,
+        "series_labels": series_labels,
     }
+    try:
+        from agetic_cdd_api.services_series_ingest import assess_statement_series_ingest
+
+        result["statement_ingest"] = assess_statement_series_ingest(deal, result).as_dict()
+    except Exception:
+        pass
+    return result
 
 
-def store_lines(facts, locs, deal_id: str, doc_type: str | None = None) -> list[dict[str, Any]]:
+def store_lines(
+    facts,
+    locs,
+    deal_id: str,
+    doc_type: str | None = None,
+    file_name: str | None = None,
+) -> list[dict[str, Any]]:
     """Store chosen lines, held errors, and series-mapped source subtotals."""
     stored = []
     for fact in facts:
@@ -521,7 +575,9 @@ def store_lines(facts, locs, deal_id: str, doc_type: str | None = None) -> list[
             continue
         from agetic_cdd_api.services_resolver import resolve_fact
 
-        prepared = _row_from_fact(fact, deal_id, doc_type=doc_type)
+        prepared = _row_from_fact(
+            fact, deal_id, doc_type=doc_type, file_name=file_name, loc=loc
+        )
         row = resolve_fact(prepared) if prepared.get("status") in _CHOSEN else prepared
         try:
             save_fact(row)
@@ -546,38 +602,78 @@ def _file_facts(path, row, onto, currency, scale, fye_month, deal_id):
     logs: list[dict[str, Any]] = []
     items: list[dict[str, Any]] = []
     if is_non_statement_document(row.get("doc_type")):
+        _note_skip(deal_id, row, "non-statement document type")
         return None, locs, []
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         # Workbook cells fill Financial history; PDF table OCR stays deferred for large rooms.
+        _note_skip(deal_id, row, "pdf statement OCR deferred")
         return None, locs, []
     if suffix not in _EXCEL:
+        _note_skip(deal_id, row, "format is not an Excel workbook")
         return None, locs, []
-    if _xlsx_skip_reason(path, row):
+    skip = xlsx_skip_reason(path, row)
+    if skip:
+        _note_skip(deal_id, row, skip)
         return None, locs, []
     basis = basis_for_document(row.get("doc_type"), row.get("basis_default"))
     try:
         found = read_excel(
             path, row["doc_id"], onto, currency, locs, scale, fye_month, logs, items, basis=basis
         )
-    except Exception:
+    except Exception as exc:
+        _note_skip(deal_id, row, f"workbook read failed: {exc}")
         return None, locs, []
     _record(logs, deal_id, row["doc_id"])
     return found, locs, items
 
 
-def _xlsx_skip_reason(path, row: dict[str, Any]) -> str | None:
-    """Skip comps / ops workbooks and oversized models that are not statement-shaped."""
+def _note_skip(deal_id: str, row: dict[str, Any], reason: str) -> None:
+    """Record why a register file did not feed Financial history."""
+    try:
+        from agetic_cdd_api.services_document_register import note_unread
+
+        note_unread(deal_id, str(row.get("file_name") or ""), reason)
+    except Exception:
+        return
+
+
+def is_fin_typed_workbook(row: dict[str, Any] | None) -> bool:
+    """True when the register typed the file as a financial statement pack (FIN_*).
+
+    Gate 5: these packs must be read even when the filename is opaque
+    (e.g. ``Umoja_Pack_v3.xlsx``), so Gates 2–4 can fill Financial history.
+    """
+    doc_type = str((row or {}).get("doc_type") or "").strip()
+    return doc_type.startswith("FIN_")
+
+
+def xlsx_skip_reason(path, row: dict[str, Any]) -> str | None:
+    """Skip comps / ops workbooks and oversized models that are not statement-shaped.
+
+    Gate 5: ``FIN_*``-typed workbooks are never skipped for an opaque filename
+    (or size budget keyed off that filename). Non-FIN packs still need a
+    statement-shaped name.
+    """
     name = str(row.get("file_name") or path.name)
-    if not _STATEMENT_XLSX_NAME.search(name):
+    fin_typed = is_fin_typed_workbook(row)
+    if not fin_typed and not _STATEMENT_XLSX_NAME.search(name):
         return "workbook file name is not statement-shaped"
     try:
         size = path.stat().st_size
     except OSError:
         return "workbook is unreadable"
-    if size > _MAX_XLSX_BYTES and not re.search(r"(?i)(qoe|quality\s+of\s+earnings|financials?|nwc|databook|data\s*book)", name):
+    if size > _MAX_XLSX_BYTES and not fin_typed and not re.search(
+        r"(?i)(qoe|quality\s+of\s+earnings|financials?|nwc|databook|data\s*book)",
+        name,
+    ):
         return "workbook exceeds statement size budget"
     return None
+
+
+def _xlsx_skip_reason(path, row: dict[str, Any]) -> str | None:
+    """Backward-compatible alias for :func:`xlsx_skip_reason`."""
+    return xlsx_skip_reason(path, row)
 
 
 def _record(logs, deal_id: str, doc_id: str) -> None:
@@ -619,7 +715,23 @@ def _source(fact, locs):
     return locs.get(fact.source_location_ids[0])
 
 
-def _row_from_fact(fact, deal_id: str, doc_type: str | None = None) -> dict[str, Any]:
+def _row_from_fact(
+    fact,
+    deal_id: str,
+    doc_type: str | None = None,
+    file_name: str | None = None,
+    loc: Any = None,
+) -> dict[str, Any]:
+    mapping = dict(fact.mapping or {})
+    if loc is not None:
+        if getattr(loc, "sheet_or_page", None):
+            mapping.setdefault("sheet_or_page", loc.sheet_or_page)
+        if getattr(loc, "cell_range", None):
+            mapping.setdefault("cell_range", loc.cell_range)
+        if getattr(loc, "row_label_as_read", None):
+            mapping.setdefault("row_label_as_read", loc.row_label_as_read)
+    if file_name:
+        mapping.setdefault("file_name", str(file_name))
     row = {
         "fact_id": fact.fact_id,
         "deal_id": deal_id,
@@ -643,10 +755,12 @@ def _row_from_fact(fact, deal_id: str, doc_type: str | None = None) -> dict[str,
         "reason_detail": fact.reason_detail,
         "derived_from": list(fact.derived_from or []),
         "formula": fact.formula,
-        "mapping": dict(fact.mapping or {}),
+        "mapping": mapping,
     }
     if doc_type:
         row["doc_type"] = str(doc_type)
+    if file_name:
+        row["file_name"] = str(file_name)
     return row
 
 

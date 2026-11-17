@@ -107,11 +107,17 @@ def audit_exceptions(
             _code, title = _module(key)
             blocked_titles.append(title)
     if blocked_titles:
+        verdict_slide = (
+            "S099_module_verdicts"
+            if "S099_module_verdicts" in slides
+            or any(str(key).startswith("S099_module_verdicts") for key in slides)
+            else "S101_exceptions"
+        )
         add(
             "HIGH",
             f"{len(blocked_titles)} modules are marked blocked.",
             "Findings from a blocked module are not relied on.",
-            "S099_module_verdicts",
+            verdict_slide,
             "E1-NOT-PROVIDED",
         )
 

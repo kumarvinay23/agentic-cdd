@@ -42,7 +42,14 @@ MATERIAL_METRIC_KEYS = frozenset(
 
 _LABELS = {
     "revenue": "Revenue",
+    "cogs": "Cost of Sales",
+    "gross_profit": "Gross Profit",
     "ebitda": "EBITDA",
+    "ebit": "EBIT",
+    "net_income": "Net Income",
+    "cash": "Cash",
+    "total_assets": "Total Assets",
+    "equity": "Equity",
     "gross_margin": "Gross Margin",
     "ebitda_margin": "EBITDA Margin",
     "nrr": "NRR",
@@ -127,7 +134,22 @@ def load_current_release_metrics_for_slug(deal_slug: str) -> DatabookRelease | N
 
 
 def humanize_metric_key(metric_key: str) -> str:
-    return _LABELS.get(metric_key, metric_key.replace("_", " ").title())
+    key = (metric_key or "").strip()
+    if not key:
+        return ""
+    if key in _LABELS:
+        return _LABELS[key]
+    # Strip unit/year suffixes agents invent (revenue_fy2024_usd_m → Revenue).
+    cleaned = re.sub(
+        r"(?i)(_fy\d{2,4})?(_(usd|inr|gbp|eur))_?(m|k|cr)?$",
+        "",
+        key,
+    )
+    cleaned = re.sub(r"(?i)_(usd|inr|gbp|eur)_?(m|k|cr)$", "", cleaned)
+    cleaned = cleaned.strip("_") or key
+    if cleaned in _LABELS:
+        return _LABELS[cleaned]
+    return cleaned.replace("_", " ").title()
 
 
 def filter_material_promoted(

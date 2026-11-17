@@ -314,11 +314,12 @@ def _apply_concentration_from_extract(
         pack.top_contract_label = top_label
 
     # Ratio-style captions discovered by wording, not fixed customer names.
+    # Match top-N first so "Top 5 % of municipal" (88.1%) never lands on Account 01.
     ratio_specs = [
-        (r"(?i)contract\s*%\s*of\s*municipal|%\s*of\s*municipal", "dc_share_of_muni"),
         (r"(?i)top[- ]?5.*%\s*of\s*municipal", "top5_muni_share"),
         (r"(?i)top[- ]?10.*%\s*of\s*revenue", "top10_commercial_share"),
         (r"(?i)top[- ]?20.*%\s*of\s*revenue", "top20_commercial_share"),
+        (r"(?i)contract\s*%\s*of\s*municipal|%\s*of\s*municipal", "dc_share_of_muni"),
     ]
     caps_present = {
         str(getattr(r, "caption", "") or "").strip()
@@ -328,6 +329,9 @@ def _apply_concentration_from_extract(
     for pattern, attr in ratio_specs:
         hit = next((c for c in caps_present if re.search(pattern, c)), None)
         if not hit:
+            continue
+        # Broad municipal-% pattern must not reuse a Top-N caption.
+        if attr == "dc_share_of_muni" and re.search(r"(?i)top[- ]?\d", hit):
             continue
         amt, _ = _extract_caption_amount(
             rows,
@@ -606,12 +610,9 @@ def concentration_rows(pack: TradingPack, *, year: int = 2025) -> list[tuple[str
                     "pct",
                 )
             )
-    if pack.dc_share_of_muni is not None:
-        share = float(pack.dc_share_of_muni)
-        if share <= 1.5:
-            share *= 100.0
-        rows.append((f"{contract} share of municipal billings", share, "pct"))
-    elif pack.dc_billings is not None and muni is not None and abs(float(muni)) > 1e-12:
+    # Prefer billings ÷ municipal when both exist (Account 01 $3.08m / $4.87m = 63.2%).
+    # Extract dc_share_of_muni is fallback only — it was polluted by Top-5 88.1%.
+    if pack.dc_billings is not None and muni is not None and abs(float(muni)) > 1e-12:
         rows.append(
             (
                 f"{contract} share of municipal billings",
@@ -619,6 +620,11 @@ def concentration_rows(pack: TradingPack, *, year: int = 2025) -> list[tuple[str
                 "pct",
             )
         )
+    elif pack.dc_share_of_muni is not None:
+        share = float(pack.dc_share_of_muni)
+        if share <= 1.5:
+            share *= 100.0
+        rows.append((f"{contract} share of municipal billings", share, "pct"))
     if pack.top5_muni_share is not None:
         share = float(pack.top5_muni_share)
         if share <= 1.5:

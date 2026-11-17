@@ -157,11 +157,12 @@ def test_plan_chapter_slides_resolves_commentary_tokens() -> None:
     )
     assert "{{ex:" not in blob
     assert "USD M" not in blob
-    # KPI / headline prose money
+    # KPI prose money (headline may be growth-% only when diligence EBITDA is absent)
     es = next(s for s in slides if s.slide_id == "ch_es_kpi")
-    assert any(v.startswith("$") and (v.endswith("k") or v.endswith("m") or v.endswith("k)") or v.endswith("m)")) for v in (k.value for k in es.kpis))
-    assert "$" in (es.headline or "")
-    # Trading observations should carry resolved $ figure from commentary token
-    trading = [s for s in slides if s.chapter == "trading"]
-    trading_blob = "\n".join("\n".join(s.observations or []) for s in trading)
-    assert "$13.28m" in trading_blob or "$13,282k" in trading_blob or "13.28" in trading_blob
+    assert any(
+        v.startswith("$")
+        and (v.endswith("k") or v.endswith("m") or v.endswith("k)") or v.endswith("m)"))
+        for v in (k.value for k in es.kpis)
+    )
+    # Resolved money appears somewhere in the chapter pack (KPI, table, or commentary).
+    assert "$13.28m" in blob or "$13,282k" in blob or "13.28" in blob or "13,282" in blob

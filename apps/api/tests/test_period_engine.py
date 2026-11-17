@@ -4,8 +4,9 @@ import datetime as dt
 
 from openpyxl import Workbook
 
+from agetic_cdd_api.services_fact_repository import Fact
 from agetic_cdd_api.services_ontology import load_ontology
-from agetic_cdd_api.services_period_engine import run_period_engine
+from agetic_cdd_api.services_period_engine import _save, derive_periods, run_period_engine
 from agetic_cdd_api.services_statement_reader import read_statement_grid
 
 _POLICY = {
@@ -52,6 +53,64 @@ def test_source_totals_match_or_are_reconciled_and_periods_follow_the_year_end()
     assert recon["explanation"]
     assert recon["selected_fact_id"]
     assert recon["comparative_fact_id"]
+
+
+def test_invalid_ytd_months_covered_does_not_abort_save() -> None:
+    """Contract refuses YTD with 12 months; period engine must soft-skip, not crash ingest."""
+    bad = Fact(
+        "fin.pl.revenue",
+        100.0,
+        "CURRENCY",
+        "YTD",
+        "2025-01-01",
+        "2025-12-31",
+        12,
+        "ACTUAL",
+        {},
+        "doc-bad-ytd",
+        "B",
+        [],
+        status="DERIVED",
+        currency="USD",
+        derived_from=["f-src"],
+        formula="bad ytd",
+        fact_id="fact-bad-ytd-12",
+    )
+    assert _save(bad, "period-soft-skip") is None
+
+
+def test_full_year_latest_actual_does_not_emit_ytd() -> None:
+    """When latest actual is fiscal year-end, emit FY — never YTD with 12 months."""
+    months = []
+    for month, day in enumerate((31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31), start=1):
+        end = dt.date(2025, month, day).isoformat()
+        months.append(
+            Fact(
+                "fin.pl.revenue",
+                10.0,
+                "CURRENCY",
+                "FM",
+                f"2025-{month:02d}-01",
+                end,
+                1,
+                "ACTUAL",
+                {},
+                "doc-fy",
+                "B",
+                [],
+                status="SELECTED",
+                currency="USD",
+                fact_id=f"fact-fm-{month}",
+            )
+        )
+    derived = derive_periods(
+        months,
+        load_ontology(),
+        latest_actual=dt.date(2025, 12, 31),
+        fye_month=12,
+    )
+    assert any(f.period_type == "FY" and f.months_covered == 12 for f in derived)
+    assert not any(f.period_type == "YTD" for f in derived)
 
 
 def _statement():

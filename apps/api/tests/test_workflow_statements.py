@@ -29,12 +29,18 @@ def test_data_ingestion_reads_the_confirmed_room(tmp_path, monkeypatch) -> None:
         "agetic_cdd_api.services_library.phase1_agent_output",
         lambda deal, agent_key, index: {"status": "completed"},
     )
+
+    def _fake_read(deal):
+        seen["deal_id"] = deal.id
+        return {"facts": [], "rows": []}
+
     monkeypatch.setattr(
         "agetic_cdd_api.services_statement_reader.read_confirmed_room",
-        lambda deal: seen.setdefault("deal_id", deal.id),
+        _fake_read,
     )
-    ingest_phase1(None, deal=SimpleNamespace(id=_DEAL, slug=_DEAL))
+    outputs = ingest_phase1(None, deal=SimpleNamespace(id=_DEAL, slug=_DEAL))
     assert seen["deal_id"] == _DEAL
+    assert all(payload.get("statement_ingest", {}).get("ok") for payload in outputs.values())
 
 
 def test_confirm_writes_the_deal_and_the_room_read_stores_cells(tmp_path, monkeypatch) -> None:

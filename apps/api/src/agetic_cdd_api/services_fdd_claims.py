@@ -163,6 +163,31 @@ def _coerce_float(value: Any) -> float | None:
     return None
 
 
+def _claim_number(value: float) -> float:
+    """Stable claim amounts — avoid float noise like 41335.810000000005."""
+    if abs(value) >= 100:
+        return round(value, 2)
+    if abs(value) >= 1:
+        return round(value, 4)
+    return round(value, 6)
+
+
+def _claim_value_text(value: float, *, unit: str | None = None) -> str:
+    num = _claim_number(value)
+    if abs(num - round(num)) < 1e-9:
+        body = f"{int(round(num))}"
+    else:
+        body = f"{num:.4f}".rstrip("0").rstrip(".")
+    return f"{body}{(' ' + unit) if unit else ''}"
+
+
+def _is_absurd_growth(metric: str | None, value: float) -> bool:
+    key = (metric or "").lower()
+    if "yoy" not in key and "growth" not in key:
+        return False
+    return abs(value) > 500.0
+
+
 def _claim_id(agent: str, metric: str | None, year: int | None, kind: str) -> str:
     """Unique claim id (UUID — no hash truncation / PYTHONHASHSEED issues)."""
     _ = (agent, metric, year, kind)  # reserved for future deterministic ids
@@ -229,7 +254,10 @@ def extract_financial_from_pl_lines(
             value = _coerce_float(v)
             if value is None:
                 continue
-            text = f"{item or metric} FY{year} = {value}" + (f" {unit}" if unit else "")
+            value = _claim_number(value)
+            if _is_absurd_growth(metric, value):
+                continue
+            text = f"{item or metric} FY{year} = {_claim_value_text(value, unit=unit)}"
             out.append(
                 ClaimsLedgerEntry(
                     claim_id=_claim_id(agent_key, metric, year, "fin"),
@@ -254,17 +282,20 @@ def extract_financial_from_performance_metrics(
         value = _coerce_float(raw)
         if value is None:
             continue
+        value = _claim_number(value)
         m = _PERF_METRIC_RE.match(str(key))
         if not m:
             continue
         metric_raw = _strip_metric_unit_suffixes(m.group("metric"))
         metric = _resolve_metric_key(metric_raw, metric_raw)
+        if _is_absurd_growth(metric or metric_raw, value):
+            continue
         year = int(m.group("year"))
         out.append(
             ClaimsLedgerEntry(
                 claim_id=_claim_id(agent_key, metric, year, "fin"),
                 source_agent=agent_key,
-                text=f"{key} = {value}",
+                text=f"{key} = {_claim_value_text(value)}",
                 kind="financial",
                 metric_key=metric,
                 fiscal_year=year,
@@ -534,6 +565,14 @@ def evaluate_financial_claim(
                 "databook_value": fact.value,
             }
         )
+    def _scale_mismatch(claimed: float, book: float) -> bool:
+        """Reject sticky-scale false contradictions (0.57 vs 98097, 13.41 vs 9436)."""
+        a, b = abs(float(claimed)), abs(float(book))
+        if a < 1e-12 or b < 1e-12:
+            return max(a, b) >= 1000.0
+        lo, hi = (a, b) if a <= b else (b, a)
+        return hi >= 1000.0 and hi / max(lo, 1e-12) >= 50.0
+
     # Doubtful/draft with a released value: still test the figure and surface gaps
     # (e.g. ledger 13.412 vs workbook 13.282) instead of a blank "unverifiable".
     if fact.status in {CellStatus.DOUBTFUL, CellStatus.DRAFT}:
@@ -550,6 +589,15 @@ def evaluate_financial_claim(
                 update={
                     "test_result": "agrees",
                     "failed": False,
+                    "databook_fact_id": fact.fact_id,
+                    "databook_value": fact.value,
+                }
+            )
+        if _scale_mismatch(float(claim.claimed_value), float(fact.value)):
+            return claim.model_copy(
+                update={
+                    "test_result": "unverifiable",
+                    "failed": True,
                     "databook_fact_id": fact.fact_id,
                     "databook_value": fact.value,
                 }
@@ -575,6 +623,15 @@ def evaluate_financial_claim(
             update={
                 "test_result": "agrees",
                 "failed": False,
+                "databook_fact_id": fact.fact_id,
+                "databook_value": fact.value,
+            }
+        )
+    if _scale_mismatch(float(claim.claimed_value), float(fact.value)):
+        return claim.model_copy(
+            update={
+                "test_result": "unverifiable",
+                "failed": True,
                 "databook_fact_id": fact.fact_id,
                 "databook_value": fact.value,
             }
@@ -667,18 +724,82 @@ def _append_claim_requests(
         (_input_key_str(i.input_key), i.title) for i in items
     }
     added = False
+    def _sticky_rfi(claimed: float | None, book: float | None, text: str | None) -> bool:
+        """Skip RFIs that only restate sticky-scale dust (0.039 / 9436 / 98097)."""
+        blob = str(text or "")
+        if re.search(r"\b(9436|98097|56182)\b", blob):
+            return True
+        # Missing databook cell rendered as 0.000 vs a real pack figure.
+        if re.search(r"(?i)\bdatabook\s+0(?:\.0+)?\b", blob):
+            return True
+
+        def _dust(v: float | None) -> bool:
+            return v is not None and 1e-6 < abs(float(v)) < 0.05
+
+        if _dust(claimed) or _dust(book):
+            return True
+        if claimed is not None and book is None and abs(float(claimed)) >= 1000.0:
+            # Outlook/raw grain with no databook peer (EBITDA FY2025 = 98097).
+            return True
+        if claimed is not None and book is not None:
+            c, b = abs(float(claimed)), abs(float(book))
+            # Empty/missing book cell (0) vs material claimed — not a real gap.
+            if b < 1e-9 and c >= 0.1:
+                return True
+            if c < 1e-9 and b >= 1000.0:
+                return True
+            lo, hi = (c, b) if c <= b else (b, c)
+            if hi >= 1000.0 and lo > 0.05 and hi / max(lo, 1e-12) >= 50.0:
+                return True
+        return False
+
+    # Drop sticky leftovers already persisted on the run's request list.
+    kept_existing: list[Any] = []
+    for item in items:
+        if _sticky_rfi(
+            getattr(item, "claimed_value", None)
+            if getattr(item, "claimed_value", None) is not None
+            else None,
+            getattr(item, "databook_value", None)
+            if getattr(item, "databook_value", None) is not None
+            else None,
+            " ".join(
+                str(x)
+                for x in (
+                    getattr(item, "title", None),
+                    getattr(item, "detail", None),
+                    getattr(item, "figure_impact", None),
+                )
+                if x
+            ),
+        ):
+            added = True  # force rewrite without sticky rows
+            continue
+        kept_existing.append(item)
+    items = kept_existing
+    seen = {(_input_key_str(i.input_key), i.title) for i in items}
+
     for claim in claims:
         if claim.kind != "financial" or claim.test_result not in {
             "contradicted",
             "unverifiable",
         }:
             continue
-        metric = (claim.metric_key or "figure").replace("_", " ")
-        fy = f"FY{claim.fiscal_year}" if claim.fiscal_year else "FY?"
         claimed = claim.claimed_value
         book = claim.databook_value
+        # Scale-mismatch / sticky grains: do not open "98097" / "9436" RFIs.
+        if _sticky_rfi(
+            float(claimed) if claimed is not None else None,
+            float(book) if book is not None else None,
+            claim.text,
+        ):
+            continue
+        from agetic_cdd_api.services_databook_consume import humanize_metric_key
+
+        metric = humanize_metric_key(claim.metric_key or "figure") or "figure"
+        fy = f"FY{claim.fiscal_year}" if claim.fiscal_year else "FY?"
         claimed_src = _claim_source_label(claim)
-        book_src = "investor workbook"
+        book_src = "databook"
         if claimed is not None and book is not None:
             gap = abs(float(claimed) - float(book))
             title = (
@@ -692,27 +813,26 @@ def _append_claim_requests(
                 f"({claim.test_result})"
             )
         else:
-            title = (
-                f"Resolve claim {claim.metric_key or '?'} "
-                f"FY{claim.fiscal_year or '?'} ({claim.test_result})"
-            )
+            title = f"Resolve claim {claim.metric_key or '?'} FY{claim.fiscal_year or '?'} ({claim.test_result})"
         dedupe = (_input_key_str(InputKey.DATABOOK), title)
         if dedupe in seen:
             continue
         seen.add(dedupe)
         suggested = _filenames_from_claim(claim)
+        # Never put raw agent figure prose in the client-facing Why column.
+        detail = (
+            f"Reconcile {metric} for {fy} against the approved databook."
+            if claim.test_result == "contradicted"
+            else f"Support {metric} for {fy} with a schedule."
+        )
         items.append(
             RequestListItem(
                 request_id=f"req_{uuid.uuid4().hex[:10]}",
                 input_key=InputKey.DATABOOK,
                 title=title,
-                detail=claim.text,
+                detail=detail,
                 owner="deal_lead",
-                figure_impact=(
-                    f"{claimed_src} vs {book_src} — "
-                    f"claimed={claim.claimed_value} databook={claim.databook_value}"
-                ),
-                # Canonical gap prose lives on SEC-K only (other sections point there).
+                figure_impact=detail,
                 blocking_sections=["SEC-K"],
                 status="pending",
                 claim_id=claim.claim_id,

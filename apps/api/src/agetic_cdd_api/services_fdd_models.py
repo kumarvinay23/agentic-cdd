@@ -44,11 +44,11 @@ from agetic_cdd_api.services_fdd_store import (
     load_scope_profile,
     save_manifest,
 )
-from agetic_cdd_api.services_fdd_tokens import metric_cell_id
+from agetic_cdd_api.services_fdd_tokens import coerce_fdd_money_store, metric_cell_id
 
 logger = logging.getLogger(__name__)
 
-MODELS_VERSION = "0.5.8"
+MODELS_VERSION = "0.5.9"
 
 TRADING_EXHIBIT_ID = "ex_m1_trading"
 MARGIN_EXHIBIT_ID = "ex_m2_margin"
@@ -453,6 +453,61 @@ def _source_pref(ln: _Line) -> int:
     return 0
 
 
+def _money_line_or_none(
+    *,
+    metric_key: str,
+    fiscal_year: int,
+    value: float,
+    fact_id: str,
+    currency: str | None,
+    scale: str | None,
+    status: CellStatus,
+    label: str | None,
+    sources: list[str] | None,
+    unit: str | None = None,
+) -> _Line | None:
+    """Build a model input line; drop ambiguous mid-range raw-USD grains."""
+    mk = (metric_key or "").strip().lower()
+    if mk.endswith("_margin") or mk.endswith("_pct") or mk.endswith("_rate") or scale == "%":
+        return _Line(
+            metric_key=metric_key,
+            fiscal_year=fiscal_year,
+            value=float(value),
+            fact_id=fact_id,
+            currency=currency,
+            scale=scale,
+            status=status,
+            label=label,
+            sources=sources,
+        )
+    coerced, scale_out, keep = coerce_fdd_money_store(
+        value,
+        scale=scale,
+        unit=unit or currency,
+        metric_key=metric_key,
+    )
+    if not keep or coerced is None:
+        logger.warning(
+            "Skipping %s FY%s value=%s scale=%s — ambiguous money grain",
+            metric_key,
+            fiscal_year,
+            value,
+            scale,
+        )
+        return None
+    return _Line(
+        metric_key=metric_key,
+        fiscal_year=fiscal_year,
+        value=float(coerced),
+        fact_id=fact_id,
+        currency=currency,
+        scale=scale_out or scale or "M",
+        status=status,
+        label=label,
+        sources=sources,
+    )
+
+
 def _lines_from_facts(facts: Iterable[FddFact]) -> list[_Line]:
     out: list[_Line] = []
     for f in facts:
@@ -461,19 +516,20 @@ def _lines_from_facts(facts: Iterable[FddFact]) -> list[_Line]:
         src = list(f.sources or [])
         if f.labels and f.labels.source:
             src.append(f.labels.source)
-        out.append(
-            _Line(
-                metric_key=f.metric_key,
-                fiscal_year=int(f.fiscal_year),
-                value=float(f.value),
-                fact_id=f.fact_id,
-                currency=f.currency,
-                scale=f.scale,
-                status=f.status,
-                label=(f.labels.line if f.labels else None) or f.metric_key,
-                sources=src,
-            )
+        line = _money_line_or_none(
+            metric_key=f.metric_key,
+            fiscal_year=int(f.fiscal_year),
+            value=float(f.value),
+            fact_id=f.fact_id,
+            currency=f.currency,
+            scale=f.scale,
+            status=f.status,
+            label=(f.labels.line if f.labels else None) or f.metric_key,
+            sources=src,
+            unit=f.unit,
         )
+        if line is not None:
+            out.append(line)
         # Expand alternatives so workbook>ledger collapse still works when the
         # fact primary was not yet re-based at bridge time.
         for alt in f.alternatives or []:
@@ -489,19 +545,20 @@ def _lines_from_facts(facts: Iterable[FddFact]) -> list[_Line]:
             if not asrc:
                 # Empty-source peers cannot participate in same-basis alignment.
                 continue
-            out.append(
-                _Line(
-                    metric_key=f.metric_key,
-                    fiscal_year=int(f.fiscal_year),
-                    value=float(alt_v),
-                    fact_id=f"{f.fact_id}:alt",
-                    currency=f.currency,
-                    scale=f.scale,
-                    status=f.status,
-                    label=(f.labels.line if f.labels else None) or f.metric_key,
-                    sources=asrc,
-                )
+            alt_line = _money_line_or_none(
+                metric_key=f.metric_key,
+                fiscal_year=int(f.fiscal_year),
+                value=float(alt_v),
+                fact_id=f"{f.fact_id}:alt",
+                currency=f.currency,
+                scale=f.scale,
+                status=f.status,
+                label=(f.labels.line if f.labels else None) or f.metric_key,
+                sources=asrc,
+                unit=f.unit,
             )
+            if alt_line is not None:
+                out.append(alt_line)
     return out
 
 
@@ -532,18 +589,20 @@ def _lines_from_store(store: ExhibitStoreDoc) -> list[_Line]:
                     c.cell_id,
                 )
                 continue
-            out.append(
-                _Line(
-                    metric_key=c.metric_key,
-                    fiscal_year=year,
-                    value=float(c.value),
-                    fact_id=c.fact_id,
-                    currency=c.currency,
-                    scale=c.scale,
-                    status=c.status,
-                    label=c.label,
-                )
+            line = _money_line_or_none(
+                metric_key=c.metric_key,
+                fiscal_year=year,
+                value=float(c.value),
+                fact_id=c.fact_id,
+                currency=c.currency,
+                scale=c.scale,
+                status=c.status,
+                label=c.label,
+                sources=None,
+                unit=c.unit,
             )
+            if line is not None:
+                out.append(line)
     return out
 
 
@@ -736,6 +795,8 @@ def _bucket_sum(
             return None, []
     if not additive:
         # Prefer same-basis source when aligning; otherwise workbook over ledger.
+        # Among peers, prefer SME-plausible store millions (|v|<1000) so a sticky-
+        # scale raw USD grain cannot beat a coherent $13.41m workbook figure.
         kept.sort(
             key=lambda ln: (
                 (
@@ -744,7 +805,18 @@ def _bucket_sum(
                     and _source_overlap(ln.sources, align_sources)
                     else 0
                 ),
+                0 if abs(float(ln.value)) < 1000.0 else 1,
                 -_source_pref(ln) if not align_sources else 0,
+                # Prefer printed Cash / cash_and_equivalents over checking+bank summands.
+                0
+                if _norm(ln.metric_key)
+                in {
+                    "cash",
+                    "cash_and_equivalents",
+                    "cash_and_cash_equivalents",
+                    "freely_available_cash",
+                }
+                else 1,
                 0 if _norm(ln.metric_key) in bucket else 1,
                 len(_norm(ln.metric_key)),
                 _norm(ln.metric_key),
@@ -822,8 +894,6 @@ def build_trading_exhibit(
     series: dict[str, dict[int, tuple[float, list[_Line]]]] = {
         key: {} for _, key, _ in _TRADING_REPORTED
     }
-    cur = currency
-    scl = scale
 
     for y in ys:
         for bucket, canon, label in _TRADING_REPORTED:
@@ -834,9 +904,10 @@ def build_trading_exhibit(
             total, hit = _bucket_sum(lines, bucket, y, additive=False)
             if total is None:
                 continue
-            for ln in hit:
-                cur = cur or ln.currency
-                scl = scl or ln.scale
+            # Per-cell currency/scale only — never inherit M from another metric/year
+            # (sticky scale turned Compost raw USD 9436 into $9,436m).
+            cell_cur = next((ln.currency for ln in hit if ln.currency), currency)
+            cell_scl = next((ln.scale for ln in hit if ln.scale), scale) or "M"
             series[canon][y] = (total, hit)
             cells.append(
                 _cell(
@@ -847,8 +918,8 @@ def build_trading_exhibit(
                     fact_id=_model_component_fact_id("m1", canon, y)
                     if len(hit) != 1
                     else hit[0].fact_id,
-                    currency=cur,
-                    scale=scl,
+                    currency=cell_cur,
+                    scale=cell_scl,
                     fiscal_year=y,
                     metric_key=canon,
                     status=_worst_status(ln.status for ln in hit),
@@ -1125,9 +1196,11 @@ def build_nwc_exhibit(
         else:
             liab_total += total
             have_liab = True
+        cell_cur = next((ln.currency for ln in hit if ln.currency), cur)
+        cell_scl = next((ln.scale for ln in hit if ln.scale), scl) or "M"
+        cur = cur or cell_cur
+        scl = scl or cell_scl
         for ln in hit:
-            cur = cur or ln.currency
-            scl = scl or ln.scale
             statuses.append(ln.status)
         component_key = _norm(label)
         cells.append(
@@ -1137,8 +1210,8 @@ def build_nwc_exhibit(
                 label=f"{label} FY{y}",
                 value=total,
                 fact_id=_model_component_fact_id("m5", component_key, y),
-                currency=cur,
-                scale=scl,
+                currency=cell_cur,
+                scale=cell_scl,
                 fiscal_year=y,
                 metric_key=component_key,
                 status=_worst_status(ln.status for ln in hit),
@@ -1153,9 +1226,11 @@ def build_nwc_exhibit(
         if cl_tot is not None:
             liab_total = float(cl_tot)
             have_liab = True
+            cell_cur = next((ln.currency for ln in cl_hit if ln.currency), cur)
+            cell_scl = next((ln.scale for ln in cl_hit if ln.scale), scl) or "M"
+            cur = cur or cell_cur
+            scl = scl or cell_scl
             for ln in cl_hit:
-                cur = cur or ln.currency
-                scl = scl or ln.scale
                 statuses.append(ln.status)
             cells.append(
                 _cell(
@@ -1164,8 +1239,8 @@ def build_nwc_exhibit(
                     label=f"Current liabilities FY{y}",
                     value=cl_tot,
                     fact_id=_model_component_fact_id("m5", "current_liabilities", y),
-                    currency=cur,
-                    scale=scl,
+                    currency=cell_cur,
+                    scale=cell_scl,
                     fiscal_year=y,
                     metric_key="current_liabilities",
                     status=_worst_status(ln.status for ln in cl_hit),
@@ -1230,7 +1305,9 @@ def build_net_debt_exhibit(
     scl = scale
     statuses: list[CellStatus] = []
 
-    cash, cash_hit = _bucket_sum(lines, _CASH, y)
+    # Exclusive cash pick — summing checking+savings+undeposited double-counts the
+    # pack Cash line (Compost $2.67m) into a broader bank total (~$3.27m).
+    cash, cash_hit = _bucket_sum(lines, _CASH, y, additive=False)
     # Prefer printed gross debt; else sum loan facilities; else LT-liability total.
     # Never add LT totals on top of SBA/term loans (double-counts State & Fed).
     debt, debt_hit = _bucket_sum(lines, _GROSS_DEBT_PRINTED, y, additive=False)
@@ -1255,9 +1332,11 @@ def build_net_debt_exhibit(
         nonlocal cur, scl
         if total is None:
             return
+        cell_cur = next((ln.currency for ln in hit if ln.currency), cur)
+        cell_scl = next((ln.scale for ln in hit if ln.scale), scl) or "M"
+        cur = cur or cell_cur
+        scl = scl or cell_scl
         for ln in hit:
-            cur = cur or ln.currency
-            scl = scl or ln.scale
             statuses.append(ln.status)
         cells.append(
             _cell(
@@ -1266,8 +1345,8 @@ def build_net_debt_exhibit(
                 label=label,
                 value=total,
                 fact_id=_model_component_fact_id("m6", metric_key, y),
-                currency=cur,
-                scale=scl,
+                currency=cell_cur,
+                scale=cell_scl,
                 fiscal_year=y,
                 metric_key=metric_key,
                 status=_worst_status(ln.status for ln in hit),
@@ -1454,9 +1533,10 @@ def build_margin_exhibit(
         unit_scale: str | None = None,
     ) -> None:
         nonlocal cur, scl
-        for ln in hit:
-            cur = cur or ln.currency
-            scl = scl or ln.scale
+        cell_cur = next((ln.currency for ln in hit if ln.currency), cur)
+        cell_scl = next((ln.scale for ln in hit if ln.scale), scl) or "M"
+        cur = cur or cell_cur
+        scl = scl or cell_scl
         cells.append(
             _cell(
                 exhibit_id=MARGIN_EXHIBIT_ID,
@@ -1464,8 +1544,8 @@ def build_margin_exhibit(
                 label=label,
                 value=value,
                 fact_id=_model_component_fact_id("m2", metric_key, y),
-                currency=None if unit_scale in {"%", "pp"} else cur,
-                scale=unit_scale if unit_scale is not None else scl,
+                currency=None if unit_scale in {"%", "pp"} else cell_cur,
+                scale=unit_scale if unit_scale is not None else cell_scl,
                 fiscal_year=y,
                 metric_key=metric_key,
                 status=_worst_status(ln.status for ln in hit) if hit else CellStatus.DRAFT,
@@ -1860,9 +1940,10 @@ def build_costs_exhibit(
         unit_scale: str | None = None,
     ) -> None:
         nonlocal cur, scl
-        for ln in hit:
-            cur = cur or ln.currency
-            scl = scl or ln.scale
+        cell_cur = next((ln.currency for ln in hit if ln.currency), cur)
+        cell_scl = next((ln.scale for ln in hit if ln.scale), scl) or "M"
+        cur = cur or cell_cur
+        scl = scl or cell_scl
         cells.append(
             _cell(
                 exhibit_id=COSTS_EXHIBIT_ID,
@@ -1870,8 +1951,8 @@ def build_costs_exhibit(
                 label=label,
                 value=value,
                 fact_id=_model_component_fact_id("m3", metric_key, y),
-                currency=None if unit_scale in {"%", "pp", "FTE"} else cur,
-                scale=unit_scale if unit_scale is not None else scl,
+                currency=None if unit_scale in {"%", "pp", "FTE"} else cell_cur,
+                scale=unit_scale if unit_scale is not None else cell_scl,
                 fiscal_year=y,
                 metric_key=metric_key,
                 status=_worst_status(ln.status for ln in hit) if hit else CellStatus.DRAFT,
@@ -2161,9 +2242,11 @@ def build_cash_conversion_exhibit(
         unit_scale: str | None = None,
     ) -> None:
         nonlocal cur, scl
+        cell_cur = next((ln.currency for ln in hit if ln.currency), cur)
+        cell_scl = next((ln.scale for ln in hit if ln.scale), scl) or "M"
+        cur = cur or cell_cur
+        scl = scl or cell_scl
         for ln in hit:
-            cur = cur or ln.currency
-            scl = scl or ln.scale
             statuses.append(ln.status)
         cells.append(
             _cell(
@@ -2172,8 +2255,8 @@ def build_cash_conversion_exhibit(
                 label=label,
                 value=value,
                 fact_id=_model_component_fact_id("m7", metric_key, y),
-                currency=None if unit_scale in {"%", "pp"} else cur,
-                scale=unit_scale if unit_scale is not None else scl,
+                currency=None if unit_scale in {"%", "pp"} else cell_cur,
+                scale=unit_scale if unit_scale is not None else cell_scl,
                 fiscal_year=y,
                 metric_key=metric_key,
                 status=_worst_status(ln.status for ln in hit) if hit else CellStatus.DRAFT,

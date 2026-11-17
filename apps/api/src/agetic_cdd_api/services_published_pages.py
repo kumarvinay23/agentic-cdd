@@ -8,6 +8,7 @@ chosen value.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from agetic_cdd_api.services_findings import compare
@@ -16,6 +17,24 @@ _RENT = "lease.rent"
 _DEBT = ("debt.", "borrowings")
 _REVENUE = {"fin.pl.revenue", "fin.pl.revenue_gross"}
 _COST = "fin.pl.cost"
+_YEAR = re.compile(r"^(20\d{2})(?:-\d{2}-\d{2})?$")
+
+
+def _year_label(period: Any) -> str | None:
+    text = str(period or "").strip()
+    match = _YEAR.match(text)
+    return match.group(1) if match else None
+
+
+def _millions(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    # Same convention as CDD deck: raw USD → millions for display math.
+    if abs(number) >= 100_000:
+        return number / 1_000_000
+    return number
 
 
 def pages_for_deal(deal_key: str) -> list[dict[str, Any]]:
@@ -70,31 +89,41 @@ def pages_from_tabs(tabs: dict[str, list]) -> list[dict[str, Any]]:
 
 
 def comparisons_from_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Revenue comparisons the CDD page plan already draws, taken from fact ids."""
-    by_period: dict[str, dict[str, Any]] = {}
+    """Revenue comparisons the CDD page plan already draws, taken from fact ids.
+
+    One point per calendar year, amounts in millions — period-end stamps and raw
+    USD must not become ``+160216 million`` on the growth page.
+    """
+    by_year: dict[str, dict[str, Any]] = {}
     for page in pages:
         if page.get("renders") != "revenue_and_costs":
             continue
         for figure in page["figures"]:
             if figure["concept_id"] != "fin.pl.revenue" or figure.get("dimensions"):
                 continue
-            period = str(figure.get("period_end") or "")
-            if not period or period in by_period:
+            year = _year_label(figure.get("period_end"))
+            amount = _millions(figure.get("value"))
+            if not year or amount is None:
                 continue
-            by_period[period] = figure
-    series = [by_period[period] for period in sorted(by_period)]
+            prior = by_year.get(year)
+            # Keep the latest period_end within the year when several stamps exist.
+            if prior is None or str(figure.get("period_end") or "") >= str(prior.get("period_end") or ""):
+                by_year[year] = {**figure, "value": amount, "year": year}
+    series = [by_year[year] for year in sorted(by_year)]
     rows = []
     for earlier, later in zip(series, series[1:]):
-        if not earlier["value"] or earlier.get("period_end") == later.get("period_end"):
+        earlier_amt = float(earlier["value"])
+        later_amt = float(later["value"])
+        if not earlier_amt or earlier["year"] == later["year"]:
             continue
-        delta = round(float(later["value"]) - float(earlier["value"]), 2)
+        delta = round(later_amt - earlier_amt, 2)
         rows.append({
-            "earlier": earlier.get("period_end"),
-            "later": later.get("period_end"),
-            "earlier_amount": float(earlier["value"]),
-            "later_amount": float(later["value"]),
+            "earlier": earlier["year"],
+            "later": later["year"],
+            "earlier_amount": earlier_amt,
+            "later_amount": later_amt,
             "delta": delta,
-            "pct": round(delta / abs(float(earlier["value"])) * 100, 1),
+            "pct": round(delta / abs(earlier_amt) * 100, 1),
             "delta_id": later["fact_id"],
             "pct_id": later["fact_id"],
             "earlier_id": earlier["fact_id"],

@@ -8,6 +8,8 @@ Phase E: PPTX display scale ($k), LTM/YTD columns, basis labels, evidence tiers.
 
 from __future__ import annotations
 
+import json
+import math
 import re
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -166,6 +168,38 @@ def _is_filler_obs(line: str) -> bool:
     return False
 
 
+def _clean_claim_text(text: Any, claimed_value: Any = None) -> str:
+    """Round float noise in claim prose for the ledger (41335.810000000005 → 41335.81)."""
+    raw = " ".join(str(text or "").split())
+    if not raw and isinstance(claimed_value, (int, float)):
+        return f"{float(claimed_value):.4f}".rstrip("0").rstrip(".")
+    # Humanize raw agent keys: revenue_fy2024_usd_m = 11.869 → Revenue = 11.869
+    m_key = re.match(
+        r"(?i)^([a-z][a-z0-9_]*(?:_fy\d{2,4})?(?:_(?:usd|inr|gbp|eur)_?(?:m|k|cr)?))\s*=\s*(.+)$",
+        raw,
+    )
+    if m_key and "_" in m_key.group(1):
+        from agetic_cdd_api.services_databook_consume import humanize_metric_key
+
+        lab = humanize_metric_key(m_key.group(1)) or m_key.group(1)
+        raw = f"{lab} = {m_key.group(2).strip()}"
+    raw = re.sub(r"(?i)\b(usd|inr|gbp|eur)\s*[mkbcr]?\b", "", raw)
+    # Drop orphan unit tails left after currency strip: "2.5136 | M" / "2.5136 M".
+    raw = re.sub(r"(?i)(?:\s*\|\s*|\s+)[mkbcr]\s*$", "", raw)
+    raw = re.sub(r"\s+", " ", raw).strip(" =|")
+    def _round_match(match: re.Match[str]) -> str:
+        try:
+            num = float(match.group(0))
+        except ValueError:
+            return match.group(0)
+        if abs(num - round(num)) < 1e-9:
+            return str(int(round(num)))
+        if abs(num) >= 100:
+            return f"{num:.2f}".rstrip("0").rstrip(".")
+        return f"{num:.4f}".rstrip("0").rstrip(".")
+    return re.sub(r"-?\d+\.\d{5,}", _round_match, raw)
+
+
 def _clean_draft_obs(lines: list[str] | None) -> list[str]:
     out: list[str] = []
     for line in lines or []:
@@ -177,11 +211,34 @@ def _clean_draft_obs(lines: list[str] | None) -> list[str]:
     return out
 
 
+_SECTION_AFFECTS = {
+    "SEC-A": "Scope & perimeter",
+    "SEC-B": "Historical trading",
+    "SEC-C": "Revenue & margin",
+    "SEC-D": "Costs & people",
+    "SEC-E": "Quality of earnings",
+    "SEC-F": "Balance sheet / NAV",
+    "SEC-G": "Net working capital",
+    "SEC-H": "Net debt",
+    "SEC-I": "Cash flow / capex",
+    "SEC-J": "Forecast",
+    "SEC-K": "Key findings",
+    "SEC-ES": "Executive summary",
+}
+
+
 def _humanize_request_title(raw: Any) -> str:
     """Turn claim-scaffold request titles into reader-facing asks."""
     title = str(raw or "").strip()
     if not title:
         return "Information request"
+    # Strip embedded sticky/raw figure tails: "EBITDA FY2025 = 98097.67 USD M"
+    title = re.sub(
+        r"(?i)\s*=\s*-?\d[\d,]*(?:\.\d+)?(?:\s*(?:usd|inr|gbp|eur)?\s*[mkbcr%]*)?\s*$",
+        "",
+        title,
+    )
+    title = re.sub(r"\b(9436|98097|56182)(?:\.\d+)?\b", "", title)
     low = title.lower()
     if low.startswith("resolve claim"):
         title = re.sub(r"(?i)^resolve claim\s+", "Reconcile ", title)
@@ -198,7 +255,29 @@ def _humanize_request_title(raw: Any) -> str:
                 metric,
             )
             title = f"Support {metric} outlook for FY{m.group(2)}"
+    title = title.replace("_", " ")
+    title = re.sub(r"\s+", " ", title).strip()
     return title[:90]
+
+
+def _humanize_request_affects(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return "General"
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    out: list[str] = []
+    for p in parts:
+        if p in _SECTION_AFFECTS:
+            out.append(_SECTION_AFFECTS[p])
+            continue
+        from agetic_cdd_api.services_databook_consume import humanize_metric_key
+
+        out.append(humanize_metric_key(p) or p.replace("_", " "))
+    return ", ".join(out)[:40] or "General"
+
+
+def _request_text_is_sticky(blob: str) -> bool:
+    return bool(re.search(r"\b(9436|98097|56182)\b", blob or ""))
 
 
 def _obs_from_drafts(
@@ -528,19 +607,301 @@ def _discover_ytd_ltm_cells(
     return ytd_cell, ltm_cell
 
 
+def _cell_status_rank(cell: Any | None) -> int:
+    """Higher is safer to print — proven beats draft/doubtful."""
+    if cell is None:
+        return -1
+    raw = getattr(cell, "status", None)
+    status = str(getattr(raw, "value", raw) or "").strip().lower()
+    return {"proven": 4, "confirmed": 4, "draft": 2, "doubtful": 1, "missing": 0}.get(status, 2)
+
+
+def _cell_is_doubtful(cell: Any | None) -> bool:
+    if cell is None:
+        return False
+    raw = getattr(cell, "status", None)
+    status = str(getattr(raw, "value", raw) or "").strip().lower()
+    return status in {"doubtful", "draft", "missing"}
+
+
+def _revenue_value_is_usable(value: Any) -> bool:
+    """Closed-year revenue used for pricing must be finite, positive store-$M.
+
+    Reject sticky mid-range leftovers that survived coerce as tiny millions
+    (e.g. 39,000 units → 0.039M → KPI prints ``39`` under a $k header).
+    """
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return False
+    if not math.isfinite(num):
+        return False
+    # Store millions for SME packs: ignore dust and absurd mega figures.
+    if abs(num) < 0.1 or abs(num) >= 1000.0:
+        return False
+    return num > 1e-12
+
+
+def _overlay_series_revenue_rows(
+    table: SlideTable | None,
+    series_rev: dict[int, float],
+    *,
+    revenue_labels: tuple[str, ...] = ("revenue", "revenue (cost basis)"),
+    yoy: float | None = None,
+) -> SlideTable | None:
+    """Fill blank/zero FY revenue cells from the CDD/fact series spine."""
+    if table is None or not series_rev:
+        return table
+    hdrs = list(table.headers or [])
+    fy_idx = {
+        y: next(
+            (
+                i
+                for i, h in enumerate(hdrs)
+                if str(h).upper() in {f"FY{y % 100:02d}", f"FY{y}"}
+            ),
+            None,
+        )
+        for y in series_rev
+    }
+    new_rows: list[list[str]] = []
+    for r in table.rows:
+        row = list(r)
+        lab = str(row[0]).lower() if row else ""
+        if lab in revenue_labels:
+            for y, idx in fy_idx.items():
+                val = series_rev.get(y)
+                if idx is None or val is None or idx >= len(row):
+                    continue
+                current = str(row[idx]).strip()
+                if current in {"", "—", "0", "$0k", "$0", "0.0", "(0)"}:
+                    row[idx] = _fmt_num(val, money=True)
+        if lab in {"revenue yoy %", "revenue yoy"}:
+            for y, idx in fy_idx.items():
+                if idx is None or idx >= len(row):
+                    continue
+                current = str(row[idx]).strip()
+                if y == 2025 and yoy is not None and current in {
+                    "",
+                    "—",
+                    "0",
+                    "0.0",
+                    "-100.0%",
+                }:
+                    row[idx] = _fmt_num(yoy, pct=True)
+                elif current == "-100.0%":
+                    row[idx] = "—"
+        new_rows.append(row)
+    return table.model_copy(update={"rows": new_rows})
+
+
+def _money_is_effectively_zero(value: Any) -> bool:
+    try:
+        return abs(float(value)) < 1e-12
+    except (TypeError, ValueError):
+        return False
+
+
+def _yoy_pct_from_millions(earlier: Any, later: Any) -> float | None:
+    """YoY % on CDD-rounded millions (2 dp amounts → 1 dp pct) so FDD matches CDD."""
+    try:
+        e = round(float(earlier), 2)
+        l = round(float(later), 2)
+    except (TypeError, ValueError):
+        return None
+    if abs(e) < 1e-12:
+        return None
+    return round((l - e) / abs(e) * 100.0, 1)
+
+
+_ZERO_MONEY_DISPLAY = {"", "—", "0", "$0k", "$0", "0.0", "(0)", "$0.0k", "$0.00k"}
+
+
+def _blank_hard_zero_money_cells(
+    table: SlideTable | None,
+    *,
+    row_labels: tuple[str, ...] | None = None,
+    label_substrings: tuple[str, ...] = ("net debt", "cash", "ebitda"),
+) -> SlideTable | None:
+    """Replace hard-zero money displays with — (missing ≠ a priced $0 result)."""
+    if table is None:
+        return None
+    new_rows: list[list[str]] = []
+    for r in table.rows:
+        row = list(r)
+        lab = str(row[0]).lower() if row else ""
+        match = False
+        if row_labels is not None:
+            match = lab in {x.lower() for x in row_labels}
+        else:
+            match = any(tok in lab for tok in label_substrings) and "margin" not in lab
+        if match:
+            for i in range(1, len(row)):
+                if str(row[i]).strip() in _ZERO_MONEY_DISPLAY:
+                    row[i] = "—"
+        new_rows.append(row)
+    return table.model_copy(update={"rows": new_rows})
+
+
+def _cdd_evidence_revenue_by_year(deal_slug: str) -> dict[int, float]:
+    """Calendar-year actual revenue in millions from the CDD VDR evidence spine.
+
+    Same path CDD S009 uses (``_vdr_revenue_points`` on
+    ``reports/cdd_deck/_cdd_skill_work/evidence.json``).
+    """
+    slug = str(deal_slug or "").strip()
+    if not slug:
+        return {}
+    try:
+        from agetic_cdd_api.report_cdd_evidence import _vdr_revenue_points
+        from agetic_cdd_api.services_deals import ensure_deal_folder
+
+        path = (
+            ensure_deal_folder(slug)
+            / "reports"
+            / "cdd_deck"
+            / "_cdd_skill_work"
+            / "evidence.json"
+        )
+        if not path.is_file():
+            return {}
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    facts = raw.get("facts") if isinstance(raw, dict) else None
+    if not isinstance(facts, list):
+        return {}
+    out: dict[int, float] = {}
+    try:
+        points = _vdr_revenue_points(facts)
+    except Exception:
+        return {}
+    for label, value, _fid, status in points:
+        if str(status).lower() != "actual":
+            continue
+        lab = str(label or "").strip()
+        if not re.fullmatch(r"20\d{2}", lab):
+            continue
+        if not _revenue_value_is_usable(value):
+            continue
+        out[int(lab)] = float(value)
+    return out
+
+
+def _series_revenue_by_year(store: ExhibitStoreDoc) -> dict[int, float]:
+    """Revenue by FY in store millions — fact-table winners, else CDD VDR spine.
+
+    Exhibit cells for Umoja-like deals can be doubtful zeros while CDD already
+    holds the accounts extract ($3.6M / $4.4M). Prefer proven FDD facts when
+    present; fill gaps from the CDD evidence book so ES/trading are not blanked
+    forever behind R01.
+    """
+    deal_slug = str(getattr(store, "deal_slug", None) or "").strip()
+    run_id = str(getattr(store, "run_id", None) or "").strip()
+    best: dict[int, tuple[int, float]] = {}
+    if deal_slug and run_id:
+        try:
+            from agetic_cdd_api.services_fdd_store import load_fact_table
+
+            doc = load_fact_table(deal_slug, run_id)
+        except Exception:
+            doc = None
+        if doc is not None:
+            for fact in list(getattr(doc, "facts", None) or []):
+                if str(getattr(fact, "metric_key", "") or "").lower() != "revenue":
+                    continue
+                year = getattr(fact, "fiscal_year", None)
+                value = getattr(fact, "value", None)
+                if year is None or value is None or not _revenue_value_is_usable(value):
+                    continue
+                status = str(
+                    getattr(
+                        getattr(fact, "status", None),
+                        "value",
+                        getattr(fact, "status", ""),
+                    )
+                    or ""
+                ).lower()
+                # Only proven/selected series may override a doubtful exhibit spine.
+                rank = {"proven": 4, "confirmed": 4, "selected": 4, "derived": 3}.get(
+                    status, 0
+                )
+                if rank < 3:
+                    continue
+                prev = best.get(int(year))
+                if prev is None or rank > prev[0] or (
+                    rank == prev[0] and abs(float(value)) > abs(prev[1])
+                ):
+                    best[int(year)] = (rank, float(value))
+    out = {y: val for y, (_rank, val) in best.items()}
+    if not deal_slug:
+        return out
+    cdd = _cdd_evidence_revenue_by_year(deal_slug)
+    if not cdd:
+        return out
+    if not out:
+        return cdd
+    for year, value in cdd.items():
+        out.setdefault(year, value)
+    return out
+
+
+def _pick_best_metric_cell(
+    store: ExhibitStoreDoc,
+    exhibit_ids: tuple[str, ...] | str,
+    metric_key: str,
+    *,
+    year: int | None = 2025,
+    ytd: bool = False,
+    ltm: bool = False,
+) -> Any | None:
+    """Prefer proven/positive revenue across exhibits; skip doubtful zeros/negatives."""
+    ids = (exhibit_ids,) if isinstance(exhibit_ids, str) else exhibit_ids
+    candidates: list[Any] = []
+    for eid in ids:
+        cells = _cells_for_metric(store, eid, metric_key)
+        cell = _pick_period_cell({}, metric_key, year=year, ytd=ytd, ltm=ltm, all_cells=cells)
+        if cell is not None and getattr(cell, "value", None) is not None:
+            candidates.append(cell)
+    if not candidates:
+        return None
+    key = (metric_key or "").lower()
+    if key == "revenue":
+        # Prefer non-doubtful positive revenue; never fall back to zero/negative.
+        usable = [
+            c
+            for c in candidates
+            if _revenue_value_is_usable(c.value) and not _cell_is_doubtful(c)
+        ]
+        if not usable:
+            usable = [c for c in candidates if _revenue_value_is_usable(c.value)]
+        if not usable:
+            return None
+        pool = usable
+    else:
+        pool = candidates
+    # Prefer SME-plausible store millions (|v|<1000) before larger abs — sticky
+    # raw grains must not beat a coherent $13.41m workbook cell.
+    pool.sort(
+        key=lambda c: (
+            -_cell_status_rank(c),
+            0 if abs(float(c.value or 0.0)) < 1000.0 else 1,
+            -abs(float(c.value or 0.0))
+            if abs(float(c.value or 0.0)) < 1000.0
+            else abs(float(c.value or 0.0)),
+        )
+    )
+    return pool[0]
+
+
 def _metric(
     store: ExhibitStoreDoc,
     exhibit_ids: tuple[str, ...] | str,
     metric_key: str,
     year: int | None = 2025,
 ) -> Any | None:
-    ids = (exhibit_ids,) if isinstance(exhibit_ids, str) else exhibit_ids
-    for eid in ids:
-        cmap = _cell_map(store, eid)
-        cell = _pick_period_cell(cmap, metric_key, year=year)
-        if cell is not None:
-            return cell.value
-    return None
+    cell = _pick_best_metric_cell(store, exhibit_ids, metric_key, year=year)
+    return None if cell is None else cell.value
 
 
 def _metric_cell(
@@ -549,13 +910,7 @@ def _metric_cell(
     metric_key: str,
     year: int | None = 2025,
 ) -> Any | None:
-    ids = (exhibit_ids,) if isinstance(exhibit_ids, str) else exhibit_ids
-    for eid in ids:
-        cmap = _cell_map(store, eid)
-        cell = _pick_period_cell(cmap, metric_key, year=year)
-        if cell is not None:
-            return cell
-    return None
+    return _pick_best_metric_cell(store, exhibit_ids, metric_key, year=year)
 
 
 def _evidence_tier_from_cell(cell: Any | None) -> str | None:
@@ -657,10 +1012,11 @@ def _period_table(
     if not any(metric_cells.values()):
         return None
 
-    # Combined FY map (primary first wins via reverse update order).
+    # Combined FY map: earlier exhibit_ids win (M1 before databook fill-ins).
     cmap: dict[tuple[str, int | None], Any] = {}
-    for eid in reversed(exhibit_ids):
-        cmap.update(_cell_map(store, eid))
+    for eid in exhibit_ids:
+        for key, cell in _cell_map(store, eid).items():
+            cmap.setdefault(key, cell)
 
     resolved_years = (
         years
@@ -687,10 +1043,19 @@ def _period_table(
     if has_ltm:
         headers.append(_period_column_header(ltm_sample, kind="ltm"))
 
-    def _fmt_kind(val: Any, kind: str) -> str:
+    def _fmt_kind(val: Any, kind: str, cell: Any | None = None) -> str:
         if kind == "pct":
             return _fmt_num(val, pct=True, ctx=ctx)
         if kind == "money":
+            if cell is not None and getattr(cell, "value", None) is not None:
+                from agetic_cdd_api.services_fdd_tokens import format_cell_display_pptx
+
+                return format_cell_display_pptx(
+                    cell,
+                    store_scale=getattr(cell, "scale", None) or ctx.store_scale or "M",
+                    display_scale=ctx.display_scale or "k",
+                    prose=False,
+                )
             return _fmt_num(val, money=True, ctx=ctx)
         return _fmt_num(val, ctx=ctx)
 
@@ -701,9 +1066,23 @@ def _period_table(
         cells = metric_cells.get(metric_key) or []
         row = [label]
         any_val = False
+        def _resolve_cell(*, year: int | None = None, ytd: bool = False, ltm: bool = False):
+            cell = _pick_best_metric_cell(
+                store, exhibit_ids, metric_key, year=year, ytd=ytd, ltm=ltm
+            )
+            if cell is None:
+                cell = _pick_period_cell(
+                    cmap, metric_key, year=year, ytd=ytd, ltm=ltm, all_cells=cells
+                )
+            val = cell.value if cell is not None else None
+            if metric_key == "revenue" and cell is not None:
+                # Never print doubtful / zero / negative revenue as a pricing spine.
+                if _cell_is_doubtful(cell) or not _revenue_value_is_usable(val):
+                    return None, None
+            return cell, val
+
         for y in resolved_years:
-            cell = _pick_period_cell(cmap, metric_key, year=y, all_cells=cells)
-            val = cell.value if cell is not None else None
+            cell, val = _resolve_cell(year=y)
             if cell is not None:
                 used_cells.append(cell)
                 tier = _evidence_tier_from_cell(cell)
@@ -711,10 +1090,9 @@ def _period_table(
                     tiers.append(tier)
             if val is not None:
                 any_val = True
-            row.append(_fmt_kind(val, kind))
+            row.append(_fmt_kind(val, kind, cell))
         if has_ytd:
-            cell = _pick_period_cell(cmap, metric_key, ytd=True, all_cells=cells)
-            val = cell.value if cell is not None else None
+            cell, val = _resolve_cell(ytd=True)
             if cell is not None:
                 used_cells.append(cell)
                 tier = _evidence_tier_from_cell(cell)
@@ -722,10 +1100,9 @@ def _period_table(
                     tiers.append(tier)
             if val is not None:
                 any_val = True
-            row.append(_fmt_kind(val, kind))
+            row.append(_fmt_kind(val, kind, cell))
         if has_ltm:
-            cell = _pick_period_cell(cmap, metric_key, ltm=True, all_cells=cells)
-            val = cell.value if cell is not None else None
+            cell, val = _resolve_cell(ltm=True)
             if cell is not None:
                 used_cells.append(cell)
                 tier = _evidence_tier_from_cell(cell)
@@ -733,11 +1110,43 @@ def _period_table(
                     tiers.append(tier)
             if val is not None:
                 any_val = True
-            row.append(_fmt_kind(val, kind))
-        if any_val:
+            row.append(_fmt_kind(val, kind, cell))
+        # Keep a blank Revenue row when every cell was suppressed — callers soften to "—".
+        if any_val or metric_key == "revenue":
             rows.append(row)
     if not rows:
         return None
+
+    # Blank margin % when revenue is missing, ~0, negative, or doubtful — avoids
+    # 54% EBITDA margins next to $0 / negative revenue.
+    rev_by_year: dict[int, tuple[float | None, bool]] = {}
+    for y in resolved_years:
+        cell = _pick_best_metric_cell(store, exhibit_ids, "revenue", year=y)
+        if cell is None:
+            cell = _pick_period_cell(
+                cmap, "revenue", year=y, all_cells=metric_cells.get("revenue") or []
+            )
+        if cell is not None and getattr(cell, "value", None) is not None:
+            try:
+                rev_by_year[y] = (float(cell.value), _cell_is_doubtful(cell))
+            except (TypeError, ValueError):
+                rev_by_year[y] = (None, True)
+        else:
+            rev_by_year[y] = (None, True)
+    if rev_by_year:
+        label_to_kind = {lab: kind for _mk, lab, kind in metrics}
+        for row in rows:
+            lab = str(row[0])
+            kind = label_to_kind.get(lab)
+            if kind != "pct" or "margin" not in lab.lower():
+                continue
+            for i, y in enumerate(resolved_years):
+                col = i + 1
+                if col >= len(row):
+                    continue
+                rev, doubtful = rev_by_year.get(y, (None, True))
+                if rev is None or abs(float(rev)) < 1e-9 or float(rev) < 0 or doubtful:
+                    row[col] = "—"
 
     moneyish = any(k == "money" for _mk, _lab, k in metrics)
     final_title = title
@@ -952,7 +1361,12 @@ def plan_intro(
     )
     periods = ""
     if scope is not None and getattr(scope, "periods", None):
-        periods = ", ".join(str(p) for p in list(scope.periods)[:10])
+        seen_periods: list[str] = []
+        for raw in list(scope.periods):
+            label = str(raw).strip()
+            if label and label not in seen_periods:
+                seen_periods.append(label)
+        periods = ", ".join(seen_periods[:10])
     currency = getattr(scope, "currency", None) or getattr(qoe, "currency", None) or "USD"
     deal_type = getattr(scope, "deal_type", None) or "—"
     period_label = periods or "FY23–FY25, YTD Jul-26, LTM Jul-26"
@@ -1149,6 +1563,8 @@ def plan_es(
 
     secs = _CHAPTER_SEC_SOURCES["es"]
     draft_obs = _obs_from_drafts(commentary, secs, limit=4)
+    trading_held = _any_held(commentary, _CHAPTER_SEC_SOURCES.get("trading", ()))
+    cash_held = _any_held(commentary, _CHAPTER_SEC_SOURCES.get("cash", ()))
 
     es_exhibits = (
         "ex_m1_trading",
@@ -1163,14 +1579,32 @@ def plan_es(
         "ex_m8_bs",
         "ex_qoe_bridge",
     )
-    rev25 = _metric(store, ("ex_m1_trading", "ex_db_metrics", "ex_db_is"), "revenue", 2025)
-    rev24 = _metric(store, ("ex_m1_trading", "ex_db_metrics", "ex_db_is"), "revenue", 2024)
-    rev_ltm = _metric_period(
-        store, ("ex_m1_trading", "ex_db_metrics", "ex_db_is"), "revenue", ltm=True
+    rev_exhibits = ("ex_m1_trading", "ex_db_metrics", "ex_db_is")
+    rev25_cell = _pick_best_metric_cell(store, rev_exhibits, "revenue", year=2025)
+    rev24_cell = _pick_best_metric_cell(store, rev_exhibits, "revenue", year=2024)
+    rev25 = None if rev25_cell is None else rev25_cell.value
+    rev24 = None if rev24_cell is None else rev24_cell.value
+    rev_ltm_cell = _pick_best_metric_cell(store, rev_exhibits, "revenue", ltm=True)
+    rev_ytd_cell = _pick_best_metric_cell(store, rev_exhibits, "revenue", ytd=True)
+    rev_ltm = None if rev_ltm_cell is None else rev_ltm_cell.value
+    rev_ytd = None if rev_ytd_cell is None else rev_ytd_cell.value
+    revenue_doubtful = any(
+        _cell_is_doubtful(c) for c in (rev25_cell, rev24_cell) if c is not None
+    ) or (
+        (rev25 is not None and not _revenue_value_is_usable(rev25))
+        or (rev24 is not None and not _revenue_value_is_usable(rev24))
     )
-    rev_ytd = _metric_period(
-        store, ("ex_m1_trading", "ex_db_metrics", "ex_db_is"), "revenue", ytd=True
-    )
+    if rev25 is not None and (
+        not _revenue_value_is_usable(rev25) or _cell_is_doubtful(rev25_cell)
+    ):
+        rev25 = None
+    if rev24 is not None and (
+        not _revenue_value_is_usable(rev24) or _cell_is_doubtful(rev24_cell)
+    ):
+        rev24 = None
+    # No usable closed-year revenue left → treat as doubtful for KPI/table softening.
+    if rev25 is None and rev24 is None:
+        revenue_doubtful = True
     ebitda25 = _metric(store, ("ex_m1_trading", "ex_qoe_bridge", "ex_db_is"), "ebitda", 2025)
     if ebitda25 is None:
         ebitda25 = _metric(store, "ex_qoe_bridge", "reported_ebitda", None)
@@ -1203,6 +1637,14 @@ def plan_es(
                 divs = _bs_pack.dividends_payable.get("Jul-26")
             elif divs is None:
                 divs = _bs_pack.dividends_payable.get(2025)
+            # Pack Cash line beats M6 summed bank total (Compost $2.67m vs $3.27m).
+            pack_cash = _bs_pack.cash.get(2025)
+            if pack_cash is not None and abs(float(pack_cash)) >= 0.1:
+                cash = pack_cash
+                debt_series = _bs_pack.financial_debt or _bs_pack.loans_payable or {}
+                pack_debt = debt_series.get(2025)
+                if pack_debt is not None:
+                    net_debt = float(pack_debt) - float(pack_cash)
             if rev_ltm is None and _bs_pack.ltm_revenue is not None:
                 rev_ltm = _bs_pack.ltm_revenue
             if ebitda_ltm is None and _bs_pack.ltm_ebitda is not None:
@@ -1213,12 +1655,13 @@ def plan_es(
 
     dil_ebitda = getattr(qoe, "adjusted_ebitda_diligence", None) if qoe else None
     mgmt_ebitda = getattr(qoe, "adjusted_ebitda_management", None) if qoe else None
+    # Trading pack keeps pre-strip management EBITDA separately from diligence strip.
+    mgmt_ebitda_pack = None
     cim_ebitda = getattr(qoe, "cim_ebitda", None) if qoe else None
     sens_low = getattr(qoe, "sensitivity_low", None) if qoe else None
     sens_high = getattr(qoe, "sensitivity_high", None) if qoe else None
-    if dil_ebitda is None:
-        dil_ebitda = ebitda25
-    # LTM diligence defaults to LTM reported when QoE is FY-only.
+    # Do not relabel reported FY EBITDA as diligence when QoE has not produced a figure.
+    # LTM still uses the trailing reported pack when no separate diligence LTM exists.
     dil_ltm = ebitda_ltm if ebitda_ltm is not None else None
     mgmt_ltm = getattr(_bs_pack, "ltm_ebitda_management", None) if _bs_pack else None
 
@@ -1248,14 +1691,31 @@ def plan_es(
                         or (pack.fy.get("Revenue") or {}).get(y)
                         for y in (2023, 2024, 2025)
                     }.items()
-                    if v is not None
+                    if v is not None and _revenue_value_is_usable(v) and abs(float(v)) > 1e-12
                 }
-                if 2025 in acct_rev:
+                # Prefer accounts pack when exhibit is blank OR sticky-scale dust.
+                if 2025 in acct_rev and (
+                    rev25 is None or not _revenue_value_is_usable(rev25)
+                ):
                     rev25 = acct_rev[2025]
-                if 2024 in acct_rev:
+                    revenue_doubtful = False
+                if 2024 in acct_rev and (
+                    rev24 is None or not _revenue_value_is_usable(rev24)
+                ):
                     rev24 = acct_rev[2024]
-                if rev_yoy is None and rev24 and rev25 and abs(float(rev24)) > 1e-12:
-                    rev_yoy = 100.0 * (float(rev25) / float(rev24) - 1.0)
+                    if rev25 is not None:
+                        revenue_doubtful = False
+                if rev24 and rev25:
+                    # Always recompute off rounded millions so FDD matches CDD (22.2% not 22.3%).
+                    rev_yoy = _yoy_pct_from_millions(rev24, rev25)
+                mgmt_ebitda_pack = (pack.fy.get("EBITDA (management)") or {}).get(2025)
+                if mgmt_ebitda is None and mgmt_ebitda_pack is not None:
+                    mgmt_ebitda = mgmt_ebitda_pack
+                # Diligence strip lives in pack.fy["EBITDA"]; do not treat as "reported".
+                dil_from_pack = (pack.fy.get("EBITDA") or {}).get(2025)
+                if dil_ebitda is None and dil_from_pack is not None and mgmt_ebitda_pack is not None:
+                    if abs(float(dil_from_pack) - float(mgmt_ebitda_pack)) > 1e-6:
+                        dil_ebitda = dil_from_pack
                 for lab, val, kind in concentration_rows(pack, year=2025):
                     lab_l = lab.lower()
                     if (
@@ -1268,6 +1728,37 @@ def plan_es(
                         dc_billings = val
         except Exception:
             pass
+
+    # Fact-table / CDD VDR spine when exhibit revenue is empty/doubtful.
+    exhibits_lacked_revenue = revenue_doubtful or rev25 is None or rev24 is None
+    used_cdd_revenue_spine = False
+    series_rev = _series_revenue_by_year(store)
+    if series_rev:
+        cdd_only = _cdd_evidence_revenue_by_year(deal_slug) if deal_slug else {}
+        if rev25 is None and 2025 in series_rev:
+            rev25 = series_rev[2025]
+            revenue_doubtful = False
+            if 2025 in cdd_only and abs(float(series_rev[2025]) - float(cdd_only[2025])) < 1e-9:
+                used_cdd_revenue_spine = True
+        if rev24 is None and 2024 in series_rev:
+            rev24 = series_rev[2024]
+            if rev25 is not None:
+                revenue_doubtful = False
+            if 2024 in cdd_only and abs(float(series_rev[2024]) - float(cdd_only[2024])) < 1e-9:
+                used_cdd_revenue_spine = True
+        if rev24 and rev25:
+            rev_yoy = _yoy_pct_from_millions(rev24, rev25)
+        for y, val in series_rev.items():
+            if y not in acct_rev and _revenue_value_is_usable(val):
+                acct_rev[y] = float(val)
+        if exhibits_lacked_revenue and (rev25 is not None or rev24 is not None):
+            # Prefer clearing doubtful once a usable spine exists (CDD or fact table).
+            if rev25 is not None and rev24 is not None:
+                revenue_doubtful = False
+
+    # Final YoY always from rounded millions (ignore exhibit revenue_yoy artefacts).
+    if rev24 is not None and rev25 is not None:
+        rev_yoy = _yoy_pct_from_millions(rev24, rev25)
 
     # Diligence margins from diligence EBITDA / accounts revenue (not management %).
     dil_m25 = None
@@ -1317,6 +1808,14 @@ def plan_es(
         ),
         kind="ytd",
     )
+
+    # Soften hard $0k cash / prior-year EBITDA tiles — zero is usually "missing", not a result.
+    if cash is not None and _money_is_effectively_zero(cash):
+        cash = None
+    if net_debt is not None and _money_is_effectively_zero(net_debt):
+        net_debt = None
+    if ebitda24 is not None and _money_is_effectively_zero(ebitda24):
+        ebitda24 = None
 
     kpis: list[KpiTile] = []
     if rev_ltm is not None:
@@ -1404,8 +1903,12 @@ def plan_es(
     kpis.append(
         KpiTile(
             label="Cash, FY25",
-            value=_fmt_num(cash, money=True, prose=True),
-            detail=f"Net debt {_fmt_num(net_debt, money=True, prose=True)}" if net_debt is not None else "",
+            value=_fmt_num(cash, money=True, prose=True) if cash is not None else "—",
+            detail=(
+                f"Net debt {_fmt_num(net_debt, money=True, prose=True)}"
+                if net_debt is not None
+                else ("Not evidenced in exhibits" if cash is None else "")
+            ),
         )
     )
     kpis.append(
@@ -1416,6 +1919,43 @@ def plan_es(
         )
     )
     kpis = kpis[:6]
+    soften_trading_kpis = trading_held or revenue_doubtful
+    if soften_trading_kpis:
+        # Do not print hard trading KPIs while held or when revenue basis is doubtful.
+        detail = (
+            "Trading held — evidence incomplete"
+            if trading_held
+            else "Doubtful revenue — confirm source basis"
+        )
+        softened: list[KpiTile] = []
+        for tile in kpis:
+            label_l = str(tile.label or "").lower()
+            if any(
+                token in label_l
+                for token in ("revenue", "gross margin", "ebitda, fy24", "ebitda margin")
+            ):
+                softened.append(
+                    tile.model_copy(update={"value": "—", "detail": detail})
+                )
+            else:
+                softened.append(tile)
+        kpis = softened
+    if cash_held:
+        softened_cash: list[KpiTile] = []
+        for tile in kpis:
+            label_l = str(tile.label or "").lower()
+            if "cash" in label_l or "dividend" in label_l:
+                softened_cash.append(
+                    tile.model_copy(
+                        update={
+                            "value": "—",
+                            "detail": "Cash chapter held — evidence incomplete",
+                        }
+                    )
+                )
+            else:
+                softened_cash.append(tile)
+        kpis = softened_cash
 
     key_table = _period_table(
         store,
@@ -1470,7 +2010,7 @@ def plan_es(
                 ],
             ],
         )
-    # Prefer accounts revenue in the FY columns when exhibits carried CIM basis.
+    # Prefer accounts revenue in FY columns only when usable (non-negative, non-zero).
     if key_table is not None and acct_rev:
         hdrs = list(key_table.headers or [])
         fy_idx = {
@@ -1491,9 +2031,35 @@ def plan_es(
                 for y, idx in fy_idx.items():
                     val = acct_rev.get(y)
                     if idx is not None and val is not None and idx < len(row):
-                        row[idx] = _fmt_num(val, money=True)
+                        current = str(row[idx]).strip()
+                        # Replace blanks AND implausible sticky leftovers ("39").
+                        replace = current in {
+                            "",
+                            "—",
+                            "0",
+                            "$0k",
+                            "$0",
+                            "0.0",
+                            "(0)",
+                        }
+                        if not replace:
+                            try:
+                                # Cell already formatted in $k; pack val is store $M.
+                                shown_m = float(
+                                    current.replace("$", "")
+                                    .replace(",", "")
+                                    .replace("k", "")
+                                    .replace("(", "-")
+                                    .replace(")", "")
+                                ) / 1000.0
+                                replace = not _revenue_value_is_usable(shown_m)
+                            except (TypeError, ValueError):
+                                replace = True
+                        if replace:
+                            row[idx] = _fmt_num(val, money=True)
             new_rows.append(row)
         key_table = key_table.model_copy(update={"rows": new_rows})
+
     # Inject / correct LTM column from trading/cash pack (mgmt vs diligence).
     if key_table is not None and (rev_ltm is not None or dil_ltm is not None):
         hdrs = list(key_table.headers or [])
@@ -1544,12 +2110,41 @@ def plan_es(
                     row[ltm_col] = cell
             new_rows.append(row)
         key_table = key_table.model_copy(update={"headers": hdrs, "rows": new_rows})
+    # Reported = management/accounts (≈572); Diligence = bad-debt-stripped (≈561).
+    # Never put the diligence strip into the Reported cell.
+    reported_ebitda_fy25 = (
+        mgmt_ebitda
+        if mgmt_ebitda is not None
+        else (mgmt_ebitda_pack if mgmt_ebitda_pack is not None else ebitda25)
+    )
     key_table = _overlay_es_ebitda_rows(
         key_table,
         dil_ebitda=dil_ebitda,
-        mgmt_ebitda=mgmt_ebitda,
-        reported_fy25=ebitda25 if ebitda25 is not None else dil_ebitda,
+        mgmt_ebitda=mgmt_ebitda if mgmt_ebitda is not None else mgmt_ebitda_pack,
+        reported_fy25=reported_ebitda_fy25,
     )
+    # Keep Reported margin on the same numerator as Reported EBITDA.
+    if (
+        key_table is not None
+        and reported_ebitda_fy25 is not None
+        and rev25 is not None
+        and abs(float(rev25)) > 1e-12
+    ):
+        reported_m = 100.0 * float(reported_ebitda_fy25) / float(rev25)
+        hdrs_m = list(key_table.headers or [])
+        fy25_m = next(
+            (i for i, h in enumerate(hdrs_m) if str(h).upper() in {"FY25", "FY2025"}),
+            None,
+        )
+        if fy25_m is not None:
+            rows_m = [list(r) for r in key_table.rows]
+            for r in rows_m:
+                if "reported ebitda margin" in str(r[0]).lower():
+                    while len(r) <= fy25_m:
+                        r.append("—")
+                    r[fy25_m] = _fmt_num(reported_m, pct=True)
+                    break
+            key_table = key_table.model_copy(update={"rows": rows_m})
     # After overlay, fill Diligence EBITDA LTM + diligence margin FY25/LTM.
     if key_table is not None:
         hdrs = list(key_table.headers or [])
@@ -1625,12 +2220,144 @@ def plan_es(
             f"Dividends payable {_fmt_num(divs, money=True, prose=True)} sit on the balance sheet — "
             "treat as debt-like pending legal review."
         )
-    obs.extend(draft_obs)
+    # Drop draft IC headlines that price accounts-reported EBITDA when diligence differs.
+    filtered_draft: list[str] = []
+    for line in draft_obs:
+        low = str(line).lower()
+        if (
+            dil_ebitda is not None
+            and ebitda25 is not None
+            and abs(float(dil_ebitda) - float(ebitda25)) > 1e-6
+            and "ic headline" in low
+            and "ebitda" in low
+        ):
+            continue
+        filtered_draft.append(line)
+    obs.extend(filtered_draft)
+    if (
+        dil_ebitda is not None
+        and ebitda25 is not None
+        and abs(float(dil_ebitda) - float(ebitda25)) > 1e-6
+    ):
+        obs.insert(
+            0,
+            f"Accounts reported EBITDA {_fmt_num(ebitda25, money=True, prose=True)} vs diligence "
+            f"{_fmt_num(dil_ebitda, money=True, prose=True)} — keep both labelled until QoE is G4-approved.",
+        )
+    if trading_held:
+        obs.insert(0, "Trading chapter is held — do not price from revenue / margin KPIs on this page.")
+    elif revenue_doubtful:
+        obs.insert(0, "Revenue basis is doubtful — confirm preferred source before pricing.")
+    elif used_cdd_revenue_spine:
+        obs.insert(
+            0,
+            "Revenue spine from CDD accounts extract — FDD exhibit revenue was doubtful / incomplete.",
+        )
+    if cash_held:
+        obs.insert(0, "Cash chapter is held — cash / dividend tiles stay open.")
     if not obs:
         obs = ["Executive summary drafted from approved exhibits and findings."]
 
+    # Blank reported margin cells when FY revenue is ~0 (same guard as _period_table).
+    if key_table is not None:
+        hdrs = list(key_table.headers or [])
+        fy_cols = {
+            y: next(
+                (
+                    i
+                    for i, h in enumerate(hdrs)
+                    if str(h).upper() in {f"FY{y % 100:02d}", f"FY{y}"}
+                ),
+                None,
+            )
+            for y in (2023, 2024, 2025)
+        }
+        rev_row = next(
+            (list(r) for r in key_table.rows if str(r[0]).lower() == "revenue"),
+            None,
+        )
+        new_rows = []
+        for r in key_table.rows:
+            row = list(r)
+            if "margin" in str(row[0]).lower() and rev_row is not None:
+                for y, idx in fy_cols.items():
+                    if idx is None or idx >= len(row) or idx >= len(rev_row):
+                        continue
+                    cell = str(rev_row[idx]).strip()
+                    if cell in {"", "—", "0", "$0k", "$0", "0.0"}:
+                        row[idx] = "—"
+            new_rows.append(row)
+        key_table = key_table.model_copy(update={"rows": new_rows})
+    # Soften revenue/margin after all overlays so LTM inject cannot reintroduce a $0 spine.
+    if key_table is not None and soften_trading_kpis:
+        new_rows = []
+        for r in key_table.rows:
+            row = list(r)
+            lab = str(row[0]).lower() if row else ""
+            if lab == "revenue" or "margin" in lab:
+                for i in range(1, len(row)):
+                    row[i] = "—"
+            new_rows.append(row)
+        key_table = key_table.model_copy(update={"rows": new_rows})
+    # Blank hard-zero cash / NWC / net debt / EBITDA cells — usually "missing", not a priced result.
+    if key_table is not None:
+        key_table = _blank_hard_zero_money_cells(
+            key_table,
+            label_substrings=("nwc", "net debt", "cash", "ebitda"),
+        )
+
+    def _overlay_key_fy25(
+        label_match: str, value: Any, *, money: bool = False, pct: bool = False
+    ) -> None:
+        """Patch one FY25 key-figures cell after soften / blank passes."""
+        nonlocal key_table
+        if key_table is None or value is None or soften_trading_kpis:
+            return
+        hdrs = list(key_table.headers or [])
+        fy25_i = next(
+            (i for i, h in enumerate(hdrs) if str(h).upper() in {"FY25", "FY2025"}),
+            None,
+        )
+        if fy25_i is None:
+            return
+        rows = [list(r) for r in key_table.rows]
+        for r in rows:
+            lab = str(r[0]).lower()
+            if label_match == "gross margin" and lab != "gross margin":
+                continue
+            if label_match == "net debt" and "net debt" not in lab:
+                continue
+            if label_match not in lab and label_match not in {"gross margin", "net debt"}:
+                continue
+            while len(r) <= fy25_i:
+                r.append("—")
+            # Do not re-introduce a hard-zero net debt as a priced result.
+            if money and _money_is_effectively_zero(value):
+                r[fy25_i] = "—"
+            else:
+                r[fy25_i] = _fmt_num(value, money=money, pct=pct)
+            break
+        key_table = key_table.model_copy(update={"rows": rows})
+
+    # Restore GM / pack net cash after soften blanks (Compost: 30.4% / ($648k)).
+    gm_overlay = gm25
+    if gm_overlay is None and acct_rev.get(2025) is not None and deal_slug:
+        try:
+            from agetic_cdd_api.services_fdd_trading import build_trading_pack as _btp
+
+            _tp = _btp(deal_slug)
+            if _tp is not None:
+                gp25 = (_tp.fy.get("Gross Profit") or {}).get(2025)
+                rev_a = acct_rev.get(2025)
+                if gp25 is not None and rev_a is not None and abs(float(rev_a)) > 1e-12:
+                    gm_overlay = 100.0 * float(gp25) / float(rev_a)
+        except Exception:
+            pass
+    _overlay_key_fy25("gross margin", gm_overlay, pct=True)
+    _overlay_key_fy25("net debt", net_debt, money=True)
+
     headline = obs[0][:180]
-    if dil_ebitda is not None:
+    if dil_ebitda is not None and not trading_held:
         half = ""
         if ebitda24 is not None and abs(float(ebitda24)) > 1e-12:
             ratio = float(dil_ebitda) / float(ebitda24)
@@ -1709,9 +2436,10 @@ def plan_es(
                 prot,
             ]
         )
-    counts = dict(getattr(findings, "counts", None) or {})
-    high_n = int(counts.get("high", 0) or 0)
-    med_n = int(counts.get("moderate", 0) or 0)
+    # Count High/Moderate from the same ranked list shown on the slide so the
+    # headline matches the table and the deal protections map.
+    high_n = sum(1 for r in ranked if str(r.severity).lower() == "high")
+    med_n = sum(1 for r in ranked if str(r.severity).lower() in {"moderate", "medium"})
     if ranked and dc_share_pct is not None and dil_ebitda is not None and ebitda24 is not None:
         findings_headline = (
             f"{_fmt_num(dc_share_pct, pct=True)} of revenue rides on {top_contract_label} "
@@ -1774,12 +2502,10 @@ def plan_es(
             ["Downside", _fmt_num(sens_low, money=True)],
             ["Upside", _fmt_num(sens_high, money=True)],
         ]
-        # Project Crew "within $X" is CIM vs diligence (not max of all three views).
+        # "Within $X" needs an evidenced CIM; otherwise do not name CIM in the headline.
         within = None
         if cim_ebitda is not None and dil_ebitda is not None:
             within = abs(float(cim_ebitda) - float(dil_ebitda))
-        elif mgmt_ebitda is not None and dil_ebitda is not None:
-            within = abs(float(mgmt_ebitda) - float(dil_ebitda))
         if within is not None and sens_low is not None and sens_high is not None:
             case_headline = (
                 f"Management, CIM and diligence EBITDA for FY25 sit within "
@@ -1787,6 +2513,26 @@ def plan_es(
                 f"the range runs {_fmt_num(sens_low, money=True, prose=True)} "
                 f"to {_fmt_num(sens_high, money=True, prose=True)}"
             )
+        elif (
+            mgmt_ebitda is not None
+            and dil_ebitda is not None
+            and sens_low is not None
+            and sens_high is not None
+        ):
+            gap = abs(float(mgmt_ebitda) - float(dil_ebitda))
+            if gap < 1e-9:
+                case_headline = (
+                    f"Management and diligence EBITDA are both "
+                    f"{_fmt_num(dil_ebitda, money=True, prose=True)} in FY25; "
+                    f"CIM is not evidenced"
+                )
+            else:
+                case_headline = (
+                    f"Management and diligence differ by "
+                    f"{_fmt_num(gap, money=True, prose=True)}; CIM is not evidenced; "
+                    f"sensitivity range {_fmt_num(sens_low, money=True, prose=True)} "
+                    f"to {_fmt_num(sens_high, money=True, prose=True)}"
+                )
         elif sens_low is not None and sens_high is not None:
             case_headline = (
                 f"FY25 EBITDA cases run {_fmt_num(sens_low, money=True, prose=True)} "
@@ -1834,7 +2580,9 @@ def plan_es(
         )
 
     asks = []
-    for f in _high_mod_findings(findings)[:8]:
+    for f in _high_mod_findings(findings):
+        if _is_revenue_basis_claim(f):
+            continue
         ask = getattr(f, "ask_management", None) or getattr(f, "title", None)
         if ask:
             asks.append(
@@ -1847,6 +2595,8 @@ def plan_es(
                     str(ask)[:70],
                 ]
             )
+        if len(asks) >= 8:
+            break
     if not asks:
         asks = [["—", "No deal asks yet", "Complete findings / request list"]]
     price_on = dil_ltm if dil_ltm is not None else dil_ebitda
@@ -1999,10 +2749,31 @@ def plan_transaction(
 
     # Business overview — stream mix from trading pack when available.
     pack = build_trading_pack(deal_slug) if deal_slug else None
-    rev25 = _metric(store, ("ex_m1_trading", "ex_db_is"), "revenue", 2025)
+    rev25_cell = _pick_best_metric_cell(
+        store, ("ex_m1_trading", "ex_db_metrics", "ex_db_is"), "revenue", year=2025
+    )
+    rev25 = None if rev25_cell is None else rev25_cell.value
+    if rev25 is not None and (
+        not _revenue_value_is_usable(rev25) or _cell_is_doubtful(rev25_cell)
+    ):
+        rev25 = None
     rev_yoy = _metric(store, "ex_m1_trading", "revenue_yoy", 2025)
-    if pack is not None and pack.revenue_fy.get(2025) is not None:
-        rev25 = pack.revenue_fy.get(2025)
+    pack_rev25 = pack.revenue_fy.get(2025) if pack is not None else None
+    if rev25 is None and pack_rev25 is not None and _revenue_value_is_usable(pack_rev25):
+        rev25 = pack_rev25
+    series_rev = _series_revenue_by_year(store)
+    if rev25 is None and 2025 in series_rev:
+        rev25 = series_rev[2025]
+    rev24 = series_rev.get(2024)
+    if rev24 is None:
+        rev24_cell = _pick_best_metric_cell(
+            store, ("ex_m1_trading", "ex_db_metrics", "ex_db_is"), "revenue", year=2024
+        )
+        if rev24_cell is not None and _revenue_value_is_usable(rev24_cell.value):
+            rev24 = rev24_cell.value
+    if rev24 is not None and rev25 is not None:
+        rev_yoy = _yoy_pct_from_millions(rev24, rev25)
+    revenue_doubtful = rev25 is None
     stream_rows: list[list[str]] = []
     if pack is not None and pack.has_streams:
         years = list(pack.years)
@@ -2051,8 +2822,8 @@ def plan_transaction(
                 if dc is not None or muni25 is not None
                 else ""
             )
-            if rev25 is not None
-            else "Revenue and stream mix"
+            if rev25 is not None and not revenue_doubtful
+            else "Revenue and stream mix held — confirm preferred source before pricing"
         )
         slides.append(
             SlideSpec(
@@ -2081,6 +2852,76 @@ def plan_transaction(
             ],
             title="Revenue and earnings by year",
         )
+        if rev_table is not None and revenue_doubtful:
+            blanked = []
+            for r in rev_table.rows:
+                row = list(r)
+                lab = str(row[0]).lower() if row else ""
+                if lab == "revenue" or "margin" in lab or "yoy" in lab:
+                    for i in range(1, len(row)):
+                        row[i] = "—"
+                blanked.append(row)
+            rev_table = rev_table.model_copy(update={"rows": blanked})
+        elif rev_table is not None and series_rev:
+            # Overlay CDD/fact revenue into blank FY cells left by doubtful exhibits.
+            hdrs = list(rev_table.headers or [])
+            fy_idx = {
+                y: next(
+                    (
+                        i
+                        for i, h in enumerate(hdrs)
+                        if str(h).upper() in {f"FY{y % 100:02d}", f"FY{y}"}
+                    ),
+                    None,
+                )
+                for y in series_rev
+            }
+            new_rows = []
+            for r in rev_table.rows:
+                row = list(r)
+                lab = str(row[0]).lower() if row else ""
+                if lab == "revenue":
+                    for y, idx in fy_idx.items():
+                        val = series_rev.get(y)
+                        if idx is None or val is None or idx >= len(row):
+                            continue
+                        current = str(row[idx]).strip()
+                        if current in {"", "—", "0", "$0k", "$0", "0.0", "(0)"}:
+                            row[idx] = _fmt_num(val, money=True)
+                if lab in {"revenue yoy %", "revenue yoy"}:
+                    for y, idx in fy_idx.items():
+                        if idx is None or idx >= len(row):
+                            continue
+                        current = str(row[idx]).strip()
+                        if y == 2025 and rev_yoy is not None and current in {
+                            "",
+                            "—",
+                            "0",
+                            "0.0",
+                            "-100.0%",
+                        }:
+                            row[idx] = _fmt_num(rev_yoy, pct=True)
+                        elif current == "-100.0%":
+                            # Zero-base exhibit artefact — blank once CDD spine is in use.
+                            row[idx] = "—"
+                new_rows.append(row)
+            rev_table = rev_table.model_copy(update={"rows": new_rows})
+        if rev_table is not None:
+            rev_table = _blank_hard_zero_money_cells(
+                rev_table, label_substrings=("ebitda", "revenue")
+            )
+        tx_obs = (
+            [
+                "Revenue spine from CDD accounts extract — exhibit revenue was doubtful / incomplete.",
+                *(requests[:2] if requests else []),
+            ]
+            if rev25 is not None and not revenue_doubtful and series_rev
+            else _held_obs(
+                chapter_title="Revenue by stream",
+                requests=requests
+                or ["Provide municipal / DC / commercial / residential split"],
+            )
+        )
         slides.append(
             SlideSpec(
                 slide_id="ch_tx_business",
@@ -2089,8 +2930,9 @@ def plan_transaction(
                 banner="TRANSACTION AND BUSINESS",
                 headline=(
                     f"Revenue reached {_fmt_num(rev25, money=True, prose=True)} in FY25"
-                    if rev25 is not None
-                    else "Business overview — stream mix held pending schedules"
+                    + (f", up {_fmt_num(rev_yoy, pct=True)}" if rev_yoy is not None else "")
+                    if rev25 is not None and not revenue_doubtful
+                    else "Business overview — revenue spine held pending preferred source"
                 )[:180],
                 table=rev_table
                 or SlideTable(
@@ -2098,11 +2940,7 @@ def plan_transaction(
                     headers=["Item", "Status"],
                     rows=[["Revenue by stream", "Pending mix schedule"]],
                 ),
-                observations=_held_obs(
-                    chapter_title="Revenue by stream",
-                    requests=requests
-                    or ["Provide municipal / DC / commercial / residential split"],
-                ),
+                observations=tx_obs[:6],
                 source=_SOURCE_DEFAULT,
                 evidence_tier="B/C",
                 figure_ids=["ex_m1_trading"] if rev_table else [],
@@ -2179,14 +3017,26 @@ def plan_qoe(
     dil = getattr(qoe, "adjusted_ebitda_diligence", None) if qoe else None
     mgmt = getattr(qoe, "adjusted_ebitda_management", None) if qoe else None
 
+    # Accounts reported EBITDA (ES key-figures spine) — may differ from QoE opening.
+    accounts_reported = _metric(
+        store, ("ex_m1_trading", "ex_db_is", "ex_db_metrics"), "ebitda", 2025
+    )
     if bridge_periods:
         bp = bridge_periods[0]
         period_label = getattr(bp, "period", None) or period_label
         reported = getattr(bp, "reported_ebitda", None)
         for step in list(getattr(bp, "steps", None) or []):
+            step_label = str(getattr(step, "label", None) or getattr(step, "step_id", "") or "")
+            # Legacy bridges labelled the diligence baseline as "Reported EBITDA".
+            if step_label.strip().lower() == "reported ebitda" and (
+                accounts_reported is None
+                or reported is None
+                or abs(float(reported) - float(accounts_reported)) > 1e-6
+            ):
+                step_label = "Diligence reported EBITDA"
             bridge_rows.append(
                 [
-                    getattr(step, "label", None) or getattr(step, "step_id", ""),
+                    step_label,
                     _fmt_num(getattr(step, "amount", None), money=True),
                     _fmt_num(getattr(step, "running_total", None), money=True),
                 ]
@@ -2266,13 +3116,30 @@ def plan_qoe(
         reported = _metric(store, "ex_qoe_bridge", "reported_ebitda", None)
         if reported is None:
             reported = _metric(store, "ex_m1_trading", "ebitda", 2025)
+        opening_label = "Reported EBITDA"
+        if (
+            accounts_reported is not None
+            and reported is not None
+            and abs(float(reported) - float(accounts_reported)) > 1e-6
+        ):
+            opening_label = "Diligence reported EBITDA"
         bridge_rows = [
-            ["Reported EBITDA", _fmt_num(reported, money=True), ""],
+            [opening_label, _fmt_num(reported, money=True), ""],
             ["Adjustments", "—", "Register empty / pending"],
             ["Diligence EBITDA", _fmt_num(reported, money=True), "Unadjusted"],
         ]
 
     obs = list(draft_obs)
+    if (
+        accounts_reported is not None
+        and reported is not None
+        and abs(float(reported) - float(accounts_reported)) > 1e-6
+    ):
+        obs.insert(
+            0,
+            f"Accounts reported EBITDA {_fmt_num(accounts_reported, money=True, prose=True)} "
+            f"vs QoE opening {_fmt_num(reported, money=True, prose=True)} — keep both labelled.",
+        )
     if dil is not None and mgmt is not None and abs(float(dil) - float(mgmt)) > 1e-9:
         obs.insert(
             0,
@@ -2858,8 +3725,16 @@ def plan_trading(
     obs = _clean_draft_obs(list(draft_obs))
     gm25 = None
     em25 = None
+    series_rev = _series_revenue_by_year(store)
+    series_yoy = None
+    if series_rev.get(2024) is not None and series_rev.get(2025) is not None:
+        series_yoy = _yoy_pct_from_millions(series_rev[2024], series_rev[2025])
     if pack is not None:
         rev25 = pack.revenue_fy.get(2025) or (pack.fy.get("Revenue") or {}).get(2025)
+        if rev25 is not None and not _revenue_value_is_usable(rev25):
+            rev25 = None
+        if rev25 is None and 2025 in series_rev:
+            rev25 = series_rev[2025]
         gp25 = (pack.fy.get("Gross profit") or {}).get(2025)
         eb25 = (pack.fy.get("EBITDA") or {}).get(2025)
         sga25 = _sga_ex_dep(pack, 2025)
@@ -2884,18 +3759,68 @@ def plan_trading(
             obs.append(f"Gross margin moved {_fmt_num(gm_d)} pp year on year.")
         if em_d is not None:
             obs.append(f"EBITDA margin moved {_fmt_num(em_d)} pp year on year.")
+    commentary_held = _any_held(commentary, secs)
     if not obs:
-        obs = _held_obs(chapter_title="Trading", requests=requests)
+        if series_rev:
+            obs = [
+                "Revenue spine from CDD accounts extract — trading exhibits incomplete.",
+                *(requests[:2] if requests else []),
+            ]
+        else:
+            obs = _held_obs(chapter_title="Trading", requests=requests)
+
+    trading_held = commentary_held or (
+        any("held — evidence incomplete" in str(line).lower() for line in obs)
+        and not series_rev
+    )
+    if trading_held and margin is not None and not series_rev:
+        # Keep headers but blank money/margin cells — do not print a hard $0 spine.
+        blanked = []
+        for r in margin.rows:
+            row = list(r)
+            for i in range(1, len(row)):
+                row[i] = "—"
+            blanked.append(row)
+        margin = margin.model_copy(update={"rows": blanked})
+    elif margin is not None and series_rev:
+        margin = _overlay_series_revenue_rows(
+            margin,
+            series_rev,
+            revenue_labels=("revenue",),
+            yoy=series_yoy,
+        )
+        if series_rev and not any(
+            "cdd accounts extract" in str(line).lower() for line in obs
+        ):
+            obs.insert(
+                0,
+                "Revenue spine from CDD accounts extract — trading exhibits incomplete.",
+            )
+    if margin is not None:
+        margin = _blank_hard_zero_money_cells(
+            margin, label_substrings=("ebitda", "revenue")
+        )
 
     if gm25 is None:
         gm25 = _metric(store, ("ex_m2_margin", "ex_m1_trading"), "gross_margin", 2025)
     if em25 is None:
         em25 = _metric(store, ("ex_m2_margin", "ex_m1_trading"), "ebitda_margin", 2025)
-    headline = (
-        f"Gross margin {_fmt_num(gm25, pct=True)} with EBITDA margin {_fmt_num(em25, pct=True)} in FY25"
-        if gm25 is not None
-        else (obs[0] if obs else "Historical trading")
-    )
+    if trading_held:
+        headline = obs[0] if obs else "Trading is held — evidence incomplete for this run."
+        gm25 = None
+        em25 = None
+    elif series_rev.get(2025) is not None and gm25 is None and em25 is None:
+        headline = (
+            f"Revenue {_fmt_num(series_rev[2025], money=True, prose=True)} in FY25"
+            + (f", up {_fmt_num(series_yoy, pct=True)}" if series_yoy is not None else "")
+            + " on the CDD accounts spine"
+        )
+    else:
+        headline = (
+            f"Gross margin {_fmt_num(gm25, pct=True)} with EBITDA margin {_fmt_num(em25, pct=True)} in FY25"
+            if gm25 is not None
+            else (obs[0] if obs else "Historical trading")
+        )
 
     slides: list[SlideSpec] = [
         SlideSpec(
@@ -3129,6 +4054,39 @@ def plan_trading(
             title="Costs and people",
         )
         if costs is not None:
+            cost_series = _series_revenue_by_year(store)
+            costs = _overlay_series_revenue_rows(
+                costs,
+                cost_series,
+                revenue_labels=("revenue", "revenue (cost basis)"),
+            )
+            # Blank labour/SG&A % when the revenue basis cell is still empty.
+            if costs is not None:
+                hdrs = list(costs.headers or [])
+                rev_row = next(
+                    (
+                        list(r)
+                        for r in costs.rows
+                        if str(r[0]).lower() in {"revenue", "revenue (cost basis)"}
+                    ),
+                    None,
+                )
+                new_rows = []
+                for r in costs.rows:
+                    row = list(r)
+                    lab = str(row[0]).lower() if row else ""
+                    if "%" in lab and "revenue" in lab and rev_row is not None:
+                        for i in range(1, len(row)):
+                            if i < len(rev_row) and str(rev_row[i]).strip() in {
+                                "",
+                                "—",
+                                "0",
+                                "$0k",
+                                "$0",
+                            }:
+                                row[i] = "—"
+                    new_rows.append(row)
+                costs = costs.model_copy(update={"rows": new_rows})
             slides.append(
                 SlideSpec(
                     slide_id="ch_trading_costs",
@@ -3139,7 +4097,14 @@ def plan_trading(
                     table=costs,
                     observations=[
                         "Ask management which FY25 cost step-ups are structural vs one-off.",
-                    ],
+                        *(
+                            [
+                                "Revenue (cost basis) filled from CDD accounts extract where exhibits were blank."
+                            ]
+                            if cost_series
+                            else []
+                        ),
+                    ][:6],
                     source="Approved databook exhibits (M3)",
                     evidence_tier="B",
                     figure_ids=["ex_m3_costs"],
@@ -3379,6 +4344,11 @@ def plan_cash(
             ],
             title="Cash conversion and capex",
         )
+    # Hard-zero EBITDA on conversion tables is usually missing, not a priced nil.
+    if table is not None:
+        table = _blank_hard_zero_money_cells(
+            table, label_substrings=("ebitda", "operating cash", "free cash", "capex")
+        )
 
     obs = _clean_draft_obs(list(draft_obs))
     if ocf is not None and capex is not None:
@@ -3539,10 +4509,13 @@ def plan_cash(
     if not cash2_obs:
         cash2_obs = _held_obs(chapter_title="Cash stock / grants", requests=requests)
 
-    if cash_drop is not None:
+    cash_show_2 = cash_jul if cash_jul is not None else cash25
+    if cash_show_2 is not None and _money_is_effectively_zero(cash_show_2):
+        cash_show_2 = None
+    if cash_drop is not None and cash_show_2 is not None:
         cash2_headline = (
             f"Cash fell {_fmt_num(cash_drop, money=True, prose=True)} since Dec-22 "
-            f"to {_fmt_num(cash_jul, money=True, prose=True)}"
+            f"to {_fmt_num(cash_show_2, money=True, prose=True)}"
         )
         if usda_match is not None:
             cash2_headline += (
@@ -3551,11 +4524,13 @@ def plan_cash(
             )
         elif usda is not None:
             cash2_headline += f"; USDA grant about {_fmt_num(usda, money=True, prose=True)}"
-    else:
+    elif cash_show_2 is not None:
         cash2_headline = (
-            f"Cash {_fmt_num(cash_jul or cash25, money=True, prose=True)} "
+            f"Cash {_fmt_num(cash_show_2, money=True, prose=True)} "
             "with capex and grant match diligence open"
         )
+    else:
+        cash2_headline = "Cash position not evidenced — hard-zero stock treated as missing"
 
     slides.append(
         SlideSpec(
@@ -3621,6 +4596,11 @@ def plan_bs(
     equity = _metric(store, ("ex_m8_bs", "ex_db_bs"), "total_equity", 2025)
     if pack is not None:
         nd_cash = pack.cash.get(2025, nd_cash)
+        debt_series_pack = pack.financial_debt or pack.loans_payable or {}
+        if debt_series_pack.get(2025) is not None:
+            nd_debt = debt_series_pack.get(2025)
+        if nd_cash is not None and nd_debt is not None:
+            nd_net = float(nd_debt) - float(nd_cash)
         if div25 is None:
             div25 = pack.dividends_payable.get(2025)
         jul_div = pack.dividends_payable.get("Jul-26")
@@ -3663,34 +4643,59 @@ def plan_bs(
         # Drop empty rows.
         bs_rows = [r for r in bs_rows if any(c != "—" for c in r[1:])]
         cash_now = jul_cash if jul_cash is not None else nd_cash
+        if cash_now is not None and _money_is_effectively_zero(cash_now):
+            cash_now = None
         debt_now = (
             (pack.financial_debt or pack.loans_payable).get("Jul-26")
             or (pack.financial_debt or pack.loans_payable).get(2025)
             or nd_debt
         )
+        if debt_now is not None and _money_is_effectively_zero(debt_now):
+            debt_now = None
+        bs_table = _blank_hard_zero_money_cells(
+            SlideTable(
+                title=f"Summary balance sheet {scale_suffix()}",
+                headers=headers,
+                rows=bs_rows,
+                basis=_ctx().basis_default,
+                source="Monthly management accounts",
+                evidence_tier="B",
+            ),
+            label_substrings=("cash", "debt"),
+        )
+        if cash_now is not None:
+            bs_headline = (
+                f"Cash of {_fmt_num(cash_now, money=True, prose=True)} is the largest liquid asset"
+                + (
+                    f"; financial debt {_fmt_num(debt_now, money=True, prose=True)}"
+                    if debt_now is not None
+                    else ""
+                )
+            )
+        else:
+            bs_headline = "Balance sheet summary — cash / debt zeros treated as unevidenced"
+        # Drop stale M6 net-cash drafts ($1.25m) that disagree with pack nd_net (~$648k).
+        bs_obs: list[str] = []
+        for line in draft_obs:
+            text = str(line)
+            if re.search(r"(?i)net cash|net debt", text) and nd_net is not None:
+                continue
+            bs_obs.append(text)
+        if nd_net is not None:
+            label = "Net cash" if float(nd_net) < 0 else "Net debt"
+            bs_obs.insert(
+                0,
+                f"{label}: FY2025 {label.lower()} {_fmt_num(nd_net, money=True, prose=True)}",
+            )
         slides.append(
             SlideSpec(
                 slide_id="ch_bs_summary",
                 layout="section_table_obs",
                 chapter="bs",
                 banner="BALANCE SHEET, DEBT AND LEASES",
-                headline=(
-                    f"Cash of {_fmt_num(cash_now, money=True, prose=True)} is the largest liquid asset"
-                    + (
-                        f"; financial debt {_fmt_num(debt_now, money=True, prose=True)}"
-                        if debt_now is not None
-                        else ""
-                    )
-                )[:180],
-                table=SlideTable(
-                    title=f"Summary balance sheet {scale_suffix()}",
-                    headers=headers,
-                    rows=bs_rows,
-                    basis=_ctx().basis_default,
-                    source="Monthly management accounts",
-                    evidence_tier="B",
-                ),
-                observations=draft_obs[:3]
+                headline=bs_headline[:180],
+                table=bs_table,
+                observations=(bs_obs[:3] or draft_obs[:3])
                 or [
                     "Balances from unaudited monthly management accounts.",
                     "Financial debt = Vehicle Loans + State & Fed (SBA) loans payable.",
@@ -3764,10 +4769,13 @@ def plan_bs(
                 div_k = pack.dividends_payable.get(k)
                 if k == 2025 and div_k is None:
                     div_k = div25
-                if k == 2025 and nd_net is not None:
-                    net_row.append(_fmt_num(nd_net, money=True))
-                elif cash_k is not None and debt_k is not None:
+                # Always derive from pack cash/debt so Dec-25 ties to the cash/debt
+                # rows (Compost: 2019 − 2668 = (649)). Do not inject M6 nd_net which
+                # used a summed cash total (~$3.27m → net debt 1,255).
+                if cash_k is not None and debt_k is not None:
                     net_row.append(_fmt_num(float(debt_k) - float(cash_k), money=True))
+                elif k == 2025 and nd_net is not None:
+                    net_row.append(_fmt_num(nd_net, money=True))
                 else:
                     net_row.append("—")
                 if cash_k is not None and debt_k is not None and div_k is not None:
@@ -3806,6 +4814,17 @@ def plan_bs(
             ],
         )
 
+    if nd_cash is not None and _money_is_effectively_zero(nd_cash):
+        nd_cash = None
+    if nd_debt is not None and _money_is_effectively_zero(nd_debt):
+        nd_debt = None
+    if nd_net is not None and _money_is_effectively_zero(nd_net):
+        nd_net = None
+    debt_table = _blank_hard_zero_money_cells(
+        debt_table,
+        label_substrings=("net debt", "cash", "gross interest", "financial debt"),
+    )
+
     div_show = jul_div if jul_div is not None else div25
     debt_show = (
         (pack.financial_debt or pack.loans_payable).get("Jul-26")
@@ -3816,16 +4835,52 @@ def plan_bs(
         debt_show = (pack.financial_debt or pack.loans_payable).get(2025)
     if debt_show is None:
         debt_show = nd_debt
-    debt_headline = (
-        f"Financial debt {_fmt_num(debt_show, money=True, prose=True)} vs cash "
-        f"{_fmt_num(jul_cash or nd_cash, money=True, prose=True)}"
-        if debt_show is not None
-        else f"Net debt {_fmt_num(nd_net, money=True, prose=True)}"
-    )
+    if debt_show is not None and _money_is_effectively_zero(debt_show):
+        debt_show = None
+    cash_show = jul_cash if jul_cash is not None else nd_cash
+    if cash_show is not None and _money_is_effectively_zero(cash_show):
+        cash_show = None
+    if debt_show is not None and cash_show is not None:
+        debt_headline = (
+            f"Financial debt {_fmt_num(debt_show, money=True, prose=True)} vs cash "
+            f"{_fmt_num(cash_show, money=True, prose=True)}"
+        )
+    elif debt_show is not None:
+        debt_headline = f"Financial debt {_fmt_num(debt_show, money=True, prose=True)}"
+    elif nd_net is not None:
+        debt_headline = f"Net debt {_fmt_num(nd_net, money=True, prose=True)}"
+    else:
+        debt_headline = "Net debt / cash position not evidenced in exhibits"
     if div_show is not None:
         debt_headline += (
             f"; accrued dividends of {_fmt_num(div_show, money=True, prose=True)} "
             "proposed debt-like"
+        )
+    # Drop draft net-debt lines that are $0, tokenized, or stale M6 ($1.25m).
+    cleaned_draft: list[str] = []
+    for line in draft_obs:
+        text = str(line)
+        cites_net_debt = bool(
+            re.search(r"(?i)net debt|net cash|\{\{ex:[^}]*net_debt", text)
+        )
+        if cites_net_debt and (
+            nd_net is None
+            or re.search(
+                r"(?i)net debt[:\s]+\$?0(?:\.0+)?k?\b|net debt of \$?0\b"
+                r"|\{\{ex:[^}]*net_debt|1\.25\s*m|1,255|1255",
+                text,
+            )
+        ):
+            continue
+        cleaned_draft.append(line)
+    debt_obs = [
+        "Proposed: accrued cumulative dividends are debt-like; operating payables stay in NWC.",
+        *cleaned_draft[:2],
+    ]
+    if nd_net is None and debt_show is None:
+        debt_obs.insert(
+            0,
+            "Net debt is blank where exhibits show a hard-zero nil — treat as unevidenced, not a priced result.",
         )
     slides.append(
         SlideSpec(
@@ -3835,10 +4890,7 @@ def plan_bs(
             banner="BALANCE SHEET, DEBT AND LEASES",
             headline=debt_headline[:180],
             table=debt_table,
-            observations=[
-                "Proposed: accrued cumulative dividends are debt-like; operating payables stay in NWC.",
-                *draft_obs[:2],
-            ][:6],
+            observations=debt_obs[:6],
             source="Approved databook exhibits (M6/M8); Dividends payable from BS",
             evidence_tier="B",
             figure_ids=["ex_m6_net_debt", "ex_db_bs", "ex_m8_bs"],
@@ -3964,12 +5016,35 @@ def plan_bs(
         )
     ar23 = pack.ar.get(2023) if pack is not None else None
     ar25 = pack.ar.get(2025) if pack is not None else ar
-    nwc_headline = f"Trade working capital {_fmt_num(nwc, money=True, prose=True)} at FY25; no peg is proposed"
-    if ar23 is not None and ar25 is not None and abs(float(ar23)) > 1e-12:
-        ar_growth = 100.0 * (float(ar25) - float(ar23)) / abs(float(ar23))
+    if nwc is not None and _money_is_effectively_zero(nwc):
+        nwc = None
+    nwc_table = _blank_hard_zero_money_cells(
+        nwc_table,
+        label_substrings=(
+            "accounts receivable",
+            "inventory",
+            "accounts payable",
+            "prepaid",
+            "net working",
+            "working capital",
+        ),
+    )
+    if nwc is not None:
         nwc_headline = (
-            f"Trade working capital {_fmt_num(nwc, money=True, prose=True)} at FY25 "
-            f"as receivables grew {_fmt_num(ar_growth, pct=True)} since Dec-23; no peg is proposed"
+            f"Trade working capital {_fmt_num(nwc, money=True, prose=True)} at FY25; "
+            "no peg is proposed"
+        )
+        if ar23 is not None and ar25 is not None and abs(float(ar23)) > 1e-12:
+            ar_growth = 100.0 * (float(ar25) - float(ar23)) / abs(float(ar23))
+            nwc_headline = (
+                f"Trade working capital {_fmt_num(nwc, money=True, prose=True)} at FY25 "
+                f"as receivables grew {_fmt_num(ar_growth, pct=True)} since Dec-23; "
+                "no peg is proposed"
+            )
+    else:
+        nwc_headline = (
+            "Trade working capital not evidenced at FY25 — hard-zero components "
+            "treated as missing; no peg is proposed"
         )
     slides.append(
         SlideSpec(
@@ -4110,9 +5185,16 @@ def plan_deal(
     from agetic_cdd_api.services_fdd_chapter_depth import chunked
     from agetic_cdd_api.services_fdd_findings import top_findings
 
-    findings_list = top_findings(_high_mod_findings(findings), limit=10) or _high_mod_findings(
-        findings
-    )[:10]
+    # Same revenue claim filter as ES findings so High counts stay aligned.
+    def _is_revenue_basis_claim(f: Any) -> bool:
+        src = getattr(getattr(f, "source", None), "value", None) or getattr(f, "source", None)
+        title_l = str(getattr(f, "title", "") or "").lower()
+        return str(src) == "claim" and "revenue" in title_l and (
+            "contradicted" in title_l or "claimed vs" in title_l or "resolve claim" in title_l
+        )
+
+    high_mod = [f for f in _high_mod_findings(findings) if not _is_revenue_basis_claim(f)]
+    findings_list = top_findings(high_mod, limit=10) or high_mod[:10]
     prot_rows: list[list[str]] = []
     ranked: list[FindingRankRow] = []
     for i, f in enumerate(findings_list, start=1):
@@ -4202,14 +5284,37 @@ def plan_deal(
 
     req_rows: list[list[str]] = []
     for i, item in enumerate(req_items, start=1):
-        rid = getattr(item, "request_id", None) or f"R{i:02d}"
-        rid_s = rid if str(rid).startswith("R") else f"R{i:02d}"
-        blocking = [str(x) for x in list(getattr(item, "blocking_sections", None) or [])]
-        why = (
+        title_raw = (
+            getattr(item, "title", None)
+            or getattr(item, "detail", None)
+            or "Request"
+        )
+        why_raw = (
             getattr(item, "detail", None)
             or getattr(item, "figure_impact", None)
             or "Diligence completeness"
-        )[:70]
+        )
+        # Never surface sticky-scale leftovers on the client request slides.
+        title_blob = (
+            f"{title_raw} {why_raw} {getattr(item, 'figure_impact', None) or ''}"
+        )
+        if _request_text_is_sticky(title_blob):
+            continue
+        if re.search(r"(?i)\bdatabook\s+0(?:\.0+)?\b", title_blob):
+            continue
+        if re.search(r"(?i)\binvestor workbook\s+0(?:\.0+)?\b", title_blob):
+            continue
+        rid = getattr(item, "request_id", None) or f"R{i:02d}"
+        rid_s = rid if str(rid).startswith("R") else f"R{i:02d}"
+        blocking = [str(x) for x in list(getattr(item, "blocking_sections", None) or [])]
+        why = str(why_raw)
+        if _request_text_is_sticky(why) or re.search(
+            r"(?i)=\s*-?\d[\d,]*(?:\.\d+)?\s*(?:usd|inr)?", why
+        ):
+            mk = getattr(item, "metric_key", None) or "figure"
+            from agetic_cdd_api.services_databook_consume import humanize_metric_key
+
+            why = f"Reconcile {humanize_metric_key(str(mk))} against the approved databook."
         affects = (
             ", ".join(blocking[:3])
             if blocking
@@ -4218,13 +5323,9 @@ def plan_deal(
         req_rows.append(
             [
                 rid_s if len(str(rid_s)) <= 8 else f"R{i:02d}",
-                _humanize_request_title(
-                    getattr(item, "title", None)
-                    or getattr(item, "detail", None)
-                    or "Request"
-                )[:70],
+                _humanize_request_title(title_raw)[:70],
                 str(why)[:70],
-                str(affects)[:40],
+                _humanize_request_affects(affects),
                 _request_priority(item),
             ]
         )
@@ -4329,15 +5430,69 @@ def plan_appendix(
             if result in {"contradicted", "unverifiable"} or getattr(c, "failed", False)
             else ("context only" if result == "agrees" else result or "pending")
         )
+        claim_text = _clean_claim_text(getattr(c, "text", None), getattr(c, "claimed_value", None))
+        metric_key = str(getattr(c, "metric_key", "") or "")
+        claimed = getattr(c, "claimed_value", None)
+        book = getattr(c, "databook_value", None)
+        if (
+            isinstance(claimed, (int, float))
+            and ("yoy" in metric_key.lower() or "growth" in metric_key.lower())
+            and abs(float(claimed)) > 80
+        ):
+            # Hide absurd YoY artefacts (e.g. -99.85%, 18306%).
+            continue
+        # Hide sticky-scale raw leftovers (9436 / 98097 / 56182 / 0.039) from the client appendix.
+        if claim_text and re.search(r"\b(9436|98097|56182)\b", claim_text):
+            continue
+        if isinstance(claimed, (int, float)) and abs(float(claimed)) >= 1000.0:
+            continue
+        if isinstance(book, (int, float)) and 1e-6 < abs(float(book)) < 0.05:
+            continue
+        if (
+            isinstance(claimed, (int, float))
+            and isinstance(book, (int, float))
+            and abs(float(book)) < 1e-9
+            and abs(float(claimed)) >= 0.1
+        ):
+            continue
+        if (
+            isinstance(claimed, (int, float))
+            and isinstance(book, (int, float))
+            and abs(float(claimed)) > 0.05
+            and abs(float(book)) >= 1000.0
+            and abs(float(book)) / max(abs(float(claimed)), 1e-12) >= 50.0
+        ):
+            continue
+        from agetic_cdd_api.services_databook_consume import humanize_metric_key
+
+        metric_lab = humanize_metric_key(metric_key) if metric_key else ""
+        fy_lab = getattr(c, "fiscal_year", None)
+        tested = (
+            f"{metric_lab} FY{fy_lab}".strip()
+            if metric_lab
+            else "Databook / narrative"
+        )
+        # Prefer humanized metric label when claim prose still looks like a raw key.
+        display_claim = claim_text
+        if metric_lab and (
+            "usd_m" in (claim_text or "").lower()
+            or (metric_key and metric_key.lower() in (claim_text or "").lower())
+        ):
+            if isinstance(claimed, (int, float)):
+                display_claim = (
+                    f"{metric_lab} = {float(claimed):.4f}".rstrip("0").rstrip(".")
+                )
+            else:
+                display_claim = metric_lab
+        display_claim = re.sub(r"(?i)(?:\s*\|\s*|\s+)[mkbcr]\s*$", "", display_claim or "")
+        display_claim = display_claim.strip(" =|")
         rows.append(
             [
                 f"C{i:02d}",
-                str(getattr(c, "source_agent", None) or getattr(c, "metric_key", None) or "—")[:28],
-                (getattr(c, "text", None) or "")[:70],
-                (
-                    f"{getattr(c, 'metric_key', '')} FY{getattr(c, 'fiscal_year', '')}".strip()
-                    or "Databook / narrative"
-                )[:40],
+                str(getattr(c, "source_agent", None) or metric_lab or "—")
+                .replace("_", " ")[:28],
+                display_claim[:70],
+                tested[:40],
                 result or "—",
                 use,
             ]
@@ -4407,8 +5562,29 @@ def plan_appendix(
                 )
             )
 
+    def _material_inconsist(c: Any) -> bool:
+        claimed = getattr(c, "claimed_value", None)
+        book = getattr(c, "databook_value", None)
+        text = str(getattr(c, "text", None) or "")
+        if re.search(r"\b(9436|98097|56182)\b", text):
+            return False
+        if isinstance(claimed, (int, float)) and abs(float(claimed)) >= 1000.0:
+            return False
+        # Missing databook cell (0 / $0k) vs a real pack figure is not a client inconsistency.
+        if (
+            isinstance(claimed, (int, float))
+            and isinstance(book, (int, float))
+            and abs(float(book)) < 1e-9
+            and abs(float(claimed)) >= 0.1
+        ):
+            return False
+        if book is None:
+            return False
+        return True
+
+    material_contr = [c for c in contradicted if _material_inconsist(c)]
     inconsist_rows = []
-    for c in contradicted[:12]:
+    for c in material_contr[:12]:
         inconsist_rows.append(
             [
                 f"{getattr(c, 'metric_key', '')} FY{getattr(c, 'fiscal_year', '')}".strip()
@@ -4426,8 +5602,8 @@ def plan_appendix(
             chapter="appendix",
             banner="APPENDICES",
             headline=(
-                f"Source inconsistencies: {len(contradicted)} contradicted claim(s) vs approved databook"
-                if contradicted
+                f"Source inconsistencies: {len(material_contr)} contradicted claim(s) vs approved databook"
+                if material_contr
                 else "Source inconsistencies — agent claims vs approved databook"
             )[:180],
             table=SlideTable(

@@ -664,15 +664,50 @@ def phase1_agent_output(deal: Deal, *, agent_key: str, index: dict) -> dict:
 
 
 def ingest_phase1(db: Session, *, deal: Deal) -> dict[str, dict]:
-    """Build the library and return outputs for both Phase 1 agents."""
+    """Build the library and return outputs for both Phase 1 agents.
+
+    Gate 2: when statement-shaped / FIN_* workbooks are present but no mapped
+    Financial history series is stored, Phase 1 agents finish as ``failed``
+    instead of silently leaving an empty databook.
+    """
     index = ingest_vdr_to_library(db, deal=deal)
+    from agetic_cdd_api.services_series_ingest import assess_statement_series_ingest
     from agetic_cdd_api.services_statement_reader import read_confirmed_room
 
+    room_result: dict | None = None
+    read_error: BaseException | None = None
     try:
-        read_confirmed_room(deal)
-    except Exception:
+        room_result = read_confirmed_room(deal)
+    except Exception as exc:
+        read_error = exc
         logger.exception(
             "statement room read failed for deal %s — Financial history will stay empty",
             getattr(deal, "id", None) or getattr(deal, "slug", None),
         )
-    return {key: phase1_agent_output(deal, agent_key=key, index=index) for key in PHASE1_AGENT_KEYS}
+
+    gate = assess_statement_series_ingest(deal, room_result, error=read_error)
+    if not gate.ok:
+        logger.error(
+            "Gate 2 statement ingest failed for deal %s: %s",
+            gate.deal_id,
+            gate.summary(),
+        )
+
+    outputs = {
+        key: phase1_agent_output(deal, agent_key=key, index=index)
+        for key in PHASE1_AGENT_KEYS
+    }
+    gate_payload = gate.as_dict()
+    for payload in outputs.values():
+        payload["statement_ingest"] = gate_payload
+        spec = dict(payload.get("spec") or {})
+        spec["statement_ingest"] = gate_payload
+        payload["spec"] = spec
+        if gate.ok:
+            continue
+        payload["status"] = "failed"
+        payload["error"] = gate.summary()
+        payload["summary"] = gate.summary()
+        findings = [gate.summary(), *[str(f) for f in (payload.get("findings") or [])]]
+        payload["findings"] = findings[:12]
+    return outputs

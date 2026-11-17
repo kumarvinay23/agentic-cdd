@@ -381,6 +381,18 @@ def _year(row: dict[str, Any]) -> int | None:
 
 
 def _after(deal_id: str, action: str, fact_id: str) -> dict[str, Any]:
+    from agetic_cdd_api.services_databook_release import SlugDeal
+    from agetic_cdd_api.services_series_canonical import canonicalize_financial_history
+    from agetic_cdd_api.services_series_labels import sync_material_series_labels
+
+    # Gate 3: reviewer choices must not leave multiple SELECTED series cells.
+    series_canonical = canonicalize_financial_history(deal_id)
+    # Gate 4: refresh eight labels / release after HITL.
+    series_labels: dict[str, Any] = {}
+    try:
+        series_labels = sync_material_series_labels(SlugDeal(id=deal_id, slug=deal_id))
+    except Exception:
+        series_labels = {"synced": 0, "error": "series_label_sync_failed"}
     refreshed = _refresh(deal_id)
     published = _republish(deal_id)
     return {
@@ -389,6 +401,8 @@ def _after(deal_id: str, action: str, fact_id: str) -> dict[str, Any]:
         "status": (get_fact(fact_id) or {}).get("status"),
         "flags": refreshed.get("flags") or [],
         "published": published,
+        "series_canonical": series_canonical,
+        "series_labels": series_labels,
     }
 
 

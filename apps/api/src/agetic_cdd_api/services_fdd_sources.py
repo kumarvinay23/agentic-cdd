@@ -151,7 +151,14 @@ def prefer_workbook_among(
                     score += 2
             return score
 
-        workbook.sort(key=lambda c: -_wb_strength(c[1]))
+        # Prefer SME-plausible store millions (|v|<1000) so sticky-scale raw USD
+        # grains (e.g. 9436 stamped as workbook) cannot beat a coherent 13.41.
+        workbook.sort(
+            key=lambda c: (
+                0 if abs(float(c[0])) < 1000.0 else 1,
+                -_wb_strength(c[1]),
+            )
+        )
         wb_val, wb_src, _ = workbook[0]
         # Retain every materially different peer as an alternative for gap notes.
         peers: list[dict[str, Any]] = []

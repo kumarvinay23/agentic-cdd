@@ -168,6 +168,34 @@ def test_strict_year_match_no_cross_year_fallback() -> None:
     assert result.failed
 
 
+def test_sticky_scale_gap_is_unverifiable_not_contradicted() -> None:
+    """Compost-style 13.41 vs 9436 must not become a HIGH claim contradiction."""
+    claim = ClaimsLedgerEntry(
+        claim_id="cl_scale",
+        source_agent="historical_performance",
+        text="Revenue FY2024",
+        kind="financial",
+        metric_key="revenue",
+        fiscal_year=2024,
+        claimed_value=13.41,
+    )
+    facts_idx = index_facts(
+        [
+            FddFact(
+                fact_id="db:rel:r_bad",
+                metric_key="revenue",
+                fiscal_year=2024,
+                value=9436.09,
+                status=CellStatus.PROVEN,
+                release_status=CellStatus.PROVEN,
+            )
+        ]
+    )
+    result = evaluate_financial_claim(claim, facts_idx)
+    assert result.test_result == "unverifiable"
+    assert result.failed
+
+
 def test_agent_fact_id_rejected() -> None:
     with pytest.raises(AgentExhibitFigureError):
         assert_fact_id_not_agent_sourced("agent:historical_performance:revenue")
