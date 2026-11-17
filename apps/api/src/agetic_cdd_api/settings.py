@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # Deep Dive hybrid refine (Slice 3+). Off by default; heuristics always run first.
     deep_dive_llm: bool = False
 
+    # When true, FDD/CDD export fails if the databook contract is incomplete.
+    # When false (default), export still writes the file but marks it unreliable
+    # and watermarks PPTX with UNRELIABLE.
+    report_contract_strict: bool = False
+
     @property
     def databook_source(self) -> str:
         """ontology | file | dual. Anything else stays on ontology."""

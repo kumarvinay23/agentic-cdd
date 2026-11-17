@@ -200,6 +200,7 @@ def list_reports(deal_slug: str) -> list[dict[str, Any]]:
                 "stale_databook": bool(entry.get("stale_databook")),
                 "stale_release_id": entry.get("stale_release_id"),
                 "stale_reason": entry.get("stale_reason"),
+                "reliability": entry.get("reliability"),
                 "pdf_available": pdf_available,
                 "pdf_artifact_path": pdf_path,
             })
@@ -237,8 +238,10 @@ def finish_report(
     artifact_path: str | None = None,
     pdf_artifact_path: str | None = None,
     error: str | None = None,
+    status: str | None = None,
+    reliability: dict | None = None,
 ) -> None:
-    """Mark a report as ready (or failed)."""
+    """Mark a report as ready, unreliable, or failed."""
     with _meta_lock(deal_slug):
         all_meta = _read_body(deal_slug)
         entry = all_meta.get(report_type, {})
@@ -247,7 +250,11 @@ def finish_report(
             entry["status"] = "failed"
             entry["error"] = error
         else:
-            entry["status"] = "ready"
+            # Never elevate an incomplete databook contract to ready.
+            final_status = str(status or "ready").strip() or "ready"
+            if final_status not in {"ready", "unreliable", "stale"}:
+                final_status = "ready"
+            entry["status"] = final_status
             entry["ready_at"] = now
             entry["error"] = None
             # Fresh build clears databook-stale markers (G1 / C-5).
@@ -256,6 +263,10 @@ def finish_report(
             entry.pop("stale_release_id", None)
             entry.pop("stale_release_version", None)
             entry.pop("stale_reason", None)
+        if reliability is not None:
+            entry["reliability"] = reliability
+        elif not error:
+            entry.pop("reliability", None)
         if storyline is not None:
             entry["storyline"] = storyline
         if sources is not None:
@@ -321,7 +332,7 @@ def mark_reports_stale_for_databook_release(
             if not isinstance(entry, dict):
                 continue
             status = str(entry.get("status") or "")
-            if status not in {"ready", "stale"}:
+            if status not in {"ready", "stale", "unreliable"}:
                 continue
             entry["stale_databook"] = True
             entry["stale_at"] = now

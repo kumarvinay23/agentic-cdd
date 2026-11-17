@@ -256,15 +256,23 @@ def _reported_period_type(label: str, period_type: str) -> str:
         return "forecast"
     if re.search(r"(?i)\b(?:fy)?20\d{2}\s*[pe]\b", text):
         return "forecast"
+    year_match = re.search(r"(20\d{2})", text)
+    year = int(year_match.group(1)) if year_match else None
     partial = kind in _PARTIAL_TYPES or bool(
         re.search(r"(?i)\b(?:ytd|ttm|l12m|year to date)\b|\bjan(?:uary)?\b|\bq[1-4]\b|\bh[12]\b", text)
     )
     if partial:
+        # Explicit YTD/TTM (including open-year management packs) stay partial.
+        if kind in _PARTIAL_TYPES or re.search(r"(?i)\bytd|ttm|l12m|year to date", text):
+            if "ytd" in kind or re.search(r"(?i)\bytd|year to date|\bjan(?:uary)?\b", text):
+                return "ytd"
+            return "ttm"
+        # Bare future quarters (2027 Q4) are plan, not year-to-date actuals.
+        if year is not None and year >= _OPEN_YEAR:
+            return "forecast"
         if "ytd" in kind or re.search(r"(?i)\bytd|year to date|\bjan(?:uary)?\b", text):
             return "ytd"
         return "ttm"
-    year_match = re.search(r"(20\d{2})", text)
-    year = int(year_match.group(1)) if year_match else None
     if year is not None and year >= _OPEN_YEAR and kind in {"", "actual"}:
         return "forecast"
     if kind in {"", "actual"}:

@@ -972,13 +972,59 @@ class ReportBuilder(ABC):
             # 8. export
             artifact = self.export_artifact(self.ctx)
             self.ctx.artifact_path = artifact
+
+            # 8b. databook contract gate (FDD / CDD) — never ship incomplete as ready
+            from agetic_cdd_api.services_report_contract import (
+                CONTRACT_GATED_REPORTS,
+                ReportContractBlockedError,
+                apply_report_contract_gate,
+                gate_as_event,
+            )
+
+            report_status = "ready"
+            reliability: dict[str, Any] | None = None
+            if self.report_type in CONTRACT_GATED_REPORTS:
+                try:
+                    gate = apply_report_contract_gate(
+                        self.deal_slug, self.report_type, artifact
+                    )
+                except ReportContractBlockedError as blocked:
+                    yield _evt(
+                        "validation",
+                        str(blocked),
+                        level="error",
+                        reliable=False,
+                    )
+                    raise
+                reliability = {
+                    "reliable": gate.reliable,
+                    "draft_mode": gate.draft_mode,
+                    "g6_blocked": gate.g6_blocked,
+                    "contract_complete": gate.contract_complete,
+                    "blockers": gate.blockers,
+                    "reasons": gate.reasons[:12],
+                    "source": gate.source,
+                }
+                gate_evt = gate_as_event(gate)
+                yield _evt(
+                    "validation",
+                    str(gate_evt.get("message") or gate.summary()),
+                    **{
+                        key: value
+                        for key, value in gate_evt.items()
+                        if key not in {"type", "message"}
+                    },
+                )
+                if not gate.reliable:
+                    report_status = "unreliable"
+
             from agetic_cdd_api.services_step_log import record_report
 
             record_report(
                 self.deal_slug,
                 report_type=self.report_type,
                 artifact=artifact,
-                status="ready",
+                status=report_status,
                 source_files=list((sources or {}).get("cited_files") or []),
                 agent_keys=list((sources or {}).get("agent_keys") or []),
                 extra_parents=list(getattr(self.ctx, "lineage_step_ids", []) or []),
@@ -992,10 +1038,24 @@ class ReportBuilder(ABC):
                 sources=sources,
                 artifact_path=artifact,
                 pdf_artifact_path=getattr(self.ctx, "pdf_artifact_path", None),
+                status=report_status,
+                reliability=reliability,
             )
             export_fmt = REPORT_TYPES.get(self.report_type, {}).get("export", "")
-            yield _evt("done",
-                       f"{rt_label} — {enabled} sections, export: .{export_fmt}")
+            if report_status == "unreliable":
+                yield _evt(
+                    "done",
+                    f"{rt_label} — UNRELIABLE (databook contract incomplete); "
+                    f"{enabled} sections, export: .{export_fmt}",
+                    level="warning",
+                    status=report_status,
+                )
+            else:
+                yield _evt(
+                    "done",
+                    f"{rt_label} — {enabled} sections, export: .{export_fmt}",
+                    status=report_status,
+                )
 
         except Exception as exc:
             try:

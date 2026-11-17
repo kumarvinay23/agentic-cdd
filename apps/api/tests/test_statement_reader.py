@@ -99,6 +99,81 @@ def test_slice_d_maps_nine_series_captions_and_assumes_currency(tmp_path) -> Non
     assert not is_non_statement_document("CORPORATE_DOCS")
 
 
+def test_gate5_fin_typed_opaque_filename_is_not_skipped(tmp_path) -> None:
+    """Gate 5: FIN_* packs with opaque names must still be read."""
+    from agetic_cdd_api.services_statement_reader import (
+        is_fin_typed_workbook,
+        xlsx_skip_reason,
+    )
+
+    opaque = tmp_path / "Umoja_Pack_v3.xlsx"
+    opaque.write_bytes(b"PK\x03\x04")
+    fin_row = {
+        "file_name": "Umoja_Pack_v3.xlsx",
+        "doc_type": "FIN_MGMT_ACCOUNTS",
+        "format": "xlsx",
+    }
+    assert is_fin_typed_workbook(fin_row)
+    assert xlsx_skip_reason(opaque, fin_row) is None
+
+    # Same opaque name without FIN_* typing stays blocked.
+    corporate = {
+        "file_name": "Umoja_Pack_v3.xlsx",
+        "doc_type": "CORPORATE_DOCS",
+        "format": "xlsx",
+    }
+    assert xlsx_skip_reason(opaque, corporate) == "workbook file name is not statement-shaped"
+
+    # Oversized FIN_* pack is still allowed (size budget was name-gated).
+    fat = tmp_path / "DealRoom_Export_final.xlsx"
+    fat.write_bytes(b"x" * (5_000_000 + 10))
+    assert (
+        xlsx_skip_reason(
+            fat,
+            {
+                "file_name": "DealRoom_Export_final.xlsx",
+                "doc_type": "FIN_QOE_REPORT",
+                "format": "xlsx",
+            },
+        )
+        is None
+    )
+
+
+def test_gate5_fin_opaque_workbook_stores_revenue(tmp_path) -> None:
+    """Opaque FIN_* workbook is read through and maps series revenue."""
+    path = tmp_path / "Umoja_Pack_v3.xlsx"
+    _workbook(path)
+    onto = load_ontology()
+    locs: dict = {}
+    facts = read_excel(path, "doc-umoja-opaque", onto, "USD", locs, scale=1, fye_month=12)
+    stored = store_lines(
+        facts,
+        locs,
+        "umoja-opaque",
+        doc_type="FIN_MGMT_ACCOUNTS",
+        file_name="Umoja_Pack_v3.xlsx",
+    )
+    from agetic_cdd_api.services_statement_reader import xlsx_skip_reason
+
+    assert (
+        xlsx_skip_reason(
+            path,
+            {
+                "file_name": "Umoja_Pack_v3.xlsx",
+                "doc_type": "FIN_MGMT_ACCOUNTS",
+            },
+        )
+        is None
+    )
+    revenue = [
+        row["value"]
+        for row in stored
+        if row["concept_id"] == "fin.pl.revenue" and row["status"] == "SELECTED"
+    ]
+    assert sorted(revenue) == [10, 11, 12, 13]
+
+
 def test_non_statement_sheet_is_declined(tmp_path) -> None:
     path = tmp_path / "mixed.xlsx"
     book = Workbook()

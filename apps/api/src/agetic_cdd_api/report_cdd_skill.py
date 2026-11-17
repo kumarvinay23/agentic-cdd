@@ -35,6 +35,7 @@ from agetic_cdd_api.report_cdd_deck_v4 import (
     _is_ledger_sizing_text,
     _is_ownership_perimeter,
     _is_qa_meta,
+    _OPEN_YEAR,
     _resolve,
     _revenue_millions,
     _sizing_metrics,
@@ -70,6 +71,66 @@ def _fit_line(text: str, limit: int = 160) -> str:
     if len(line) <= limit:
         return line
     return line[:limit].rsplit(" ", 1)[0]
+
+
+def _polish_finding_money(text: str) -> str:
+    """Turn raw ``EBITDA USD -0.152242`` into reader-facing millions."""
+
+    def _repl(match: re.Match[str]) -> str:
+        label = match.group(1)
+        sign = -1.0 if match.group(2) == "-" else 1.0
+        raw = sign * float(match.group(3).replace(",", ""))
+        millions = _revenue_millions(raw)
+        if abs(millions) < 0.0005:
+            # Missing ≠ a priced $0.0M result in finding prose.
+            return f"{label} not evidenced"
+        if millions < 0:
+            body = f"(${abs(millions):,.2f}M)"
+        else:
+            body = _fmt_number(millions, scale="million")
+        return f"{label} {body}"
+
+    return re.sub(
+        r"(?i)\b(EBITDA|EBIT|Revenue|Net Income|Gross Profit)\s+USD\s*(-?)\$?\s*([\d,.]+)\b",
+        _repl,
+        str(text or ""),
+    )
+
+
+def _format_perimeter(value: Any, limit: int = 150) -> str:
+    """Human perimeter text — never a raw Python dict / list repr."""
+    if isinstance(value, dict):
+        bits = []
+        for key, raw in value.items():
+            label = str(key).replace("_", " ").strip()
+            if isinstance(raw, (list, tuple)):
+                body = ", ".join(str(item).strip() for item in raw if str(item).strip())
+            else:
+                body = " ".join(str(raw or "").split())
+            if label and body:
+                bits.append(f"{label}: {body}")
+        text = "; ".join(bits) if bits else ""
+    elif isinstance(value, (list, tuple)):
+        text = "; ".join(" ".join(str(item or "").split()) for item in value if str(item or "").strip())
+    else:
+        text = " ".join(str(value or "").split())
+        if text.startswith("{") and ":" in text:
+            text = text.strip("{}")
+            text = "; ".join(part.strip().strip("'\"") for part in text.split(",") if part.strip())
+    return _clean(text, limit) if text else ""
+
+
+def _exception_slide_label(gap: dict[str, Any], filled: set[str]) -> str:
+    """Prefer a slide that actually shipped; otherwise a count of withheld templates."""
+    refs = [str(item) for item in (gap.get("slides") or []) if item]
+    if not refs:
+        return "—"
+    for ref in refs:
+        if ref in filled or any(key.startswith(ref) for key in filled):
+            return ref.split("_", 1)[0]
+    if len(refs) > 1 and all(ref not in filled for ref in refs):
+        return f"{len(refs)} withheld"
+    return refs[0].split("_", 1)[0]
 
 
 def _title(text: str) -> dict[str, Any]:
@@ -810,11 +871,21 @@ def build_skill_content(
             ),
         }
         shown = opening[:5]
+        fillers = [
+            ("What has the business delivered?", "Ask", "Trading"),
+            ("How large is the serviceable market?", "Ask", "Market"),
+            ("How are customers retained?", "Ask", "Customers"),
+            ("Who competes for the same customers?", "Ask", "Competition"),
+            ("Which levers are in the plan?", "Ask", "Plan"),
+        ]
         while len(shown) < 5:
-            shown.append(["The pages that follow carry the support.", "—", "Record"])
+            shown.append(list(fillers[len(shown)]))
         for index, row in enumerate(shown, 1):
             heads[f"col{index}_head"] = _clean(str(row[2]), 28)
-            elements[f"col{index}_body"] = _bullets([f"{row[0]} Grade: {row[1]}."])
+            if str(row[1]).lower() == "ask":
+                elements[f"col{index}_body"] = _bullets([str(row[0])])
+            else:
+                elements[f"col{index}_body"] = _bullets([f"{row[0]} Grade: {row[1]}."])
         put("S003_engagement", {
             "title": _title("What to test before signing"),
             "subtitle": _title(
@@ -915,6 +986,8 @@ def build_skill_content(
         else:
             headline = f"{_fmt_number(latest[1], scale='million')} revenue in {latest[0]}"
         _bind(book, "revenue_actual", "revenue_partial", "narrative_hpf")
+        # Snapshot chart/KPIs stay on full-year actuals; partials only when no actuals.
+        chart_points = actuals[-6:] if actuals else points[-6:]
         kpis = [
             {
                 "value": _fmt_number(value, scale="million"),
@@ -922,36 +995,76 @@ def build_skill_content(
                 "refs": [fid] if fid and fid != _REF else _refs_now(),
                 "kind": "fact",
             }
-            for label, value, fid in points[-4:]
+            for label, value, fid in chart_points[-4:]
         ]
-        if actuals and partials and len(kpis) < 5:
-            label, value, fid = partials[-1]
+        live_partials = [
+            row for row in partials
+            if (year := _year_sort_key(row[0]))
+            and (
+                year < _OPEN_YEAR
+                or re.search(r"(?i)\bytd|ttm|l12m|year to date", str(row[0]))
+            )
+        ]
+        if actuals and live_partials and len(kpis) < 5:
+            label, value, fid = live_partials[-1]
+            # Keep quarter/partial KPIs, but mark them so they are not read as full-year.
+            partial_label = str(label)
+            if not re.search(r"(?i)\bytd\b|ttm|partial|quarter|q[1-4]\b", partial_label):
+                partial_label = f"{partial_label} (partial)"
+            elif re.search(r"(?i)\bq[1-4]\b", partial_label) and "partial" not in partial_label.lower():
+                partial_label = f"{partial_label} (partial)"
             kpis.append({
                 "value": _fmt_number(value, scale="million"),
-                "label": f"Revenue {label}",
+                "label": f"Revenue {partial_label}",
                 "refs": [fid] if fid and fid != _REF else _refs_now(),
                 "kind": "fact",
             })
         if len(kpis) < 5 and math.margins:
-            shown = next(
-                (item for item in math.margins if "ebitda" in str(item.get("metric") or "").lower()),
-                math.margins[-1],
-            )
-            kpis.append({
-                "value": f"{shown['value']:.1f}%",
-                "label": f"{shown.get('metric') or 'Margin'} {shown['label']}",
-                "refs": [shown["id"]],
-                "kind": "fact",
-            })
+            # Prefer latest meaningful margin — skip hard-zero FY23 artefacts.
+            ebitda_margins = [
+                item
+                for item in math.margins
+                if "ebitda" in str(item.get("metric") or "").lower()
+                and isinstance(item.get("value"), (int, float))
+                and abs(float(item["value"])) >= 0.05
+            ]
+            shown = ebitda_margins[-1] if ebitda_margins else None
+            if shown is None:
+                shown = next(
+                    (
+                        item
+                        for item in reversed(math.margins)
+                        if isinstance(item.get("value"), (int, float))
+                        and abs(float(item["value"])) >= 0.05
+                    ),
+                    None,
+                )
+            if shown is not None:
+                kpis.append({
+                    "value": f"{shown['value']:.1f}%",
+                    "label": f"{shown.get('metric') or 'Margin'} {shown['label']}",
+                    "refs": [shown["id"]],
+                    "kind": "fact",
+                })
         facts = [
-            line for line in _findings(hist, 6)
+            _polish_finding_money(line)
+            for line in _findings(hist, 6)
             if not _is_qa_meta(line)
             and not _is_cap_table_text(line)
             and not _is_ownership_perimeter(line)
             and not is_debug_line(line)
             and not contradicts_profit_return(line, book)
         ]
-        latest_year = max((_year_sort_key(label) for label, _value, _fid in points), default=0)
+        facts = [
+            line
+            for line in facts
+            if line
+            and not re.search(
+                r"(?i)EBITDA not evidenced|EBITDA \$0(?:\.0)?M\b|peaked in .{0,20}\(EBITDA not evidenced\)",
+                line,
+            )
+        ]
+        latest_year = max((_year_sort_key(label) for label, _value, _fid in chart_points), default=0)
         facts = [
             line for line in facts
             if not (
@@ -961,11 +1074,16 @@ def build_skill_content(
             )
         ]
         ytd_note = ""
-        if len(partials) >= 2:
-            earlier, later = partials[-2], partials[-1]
-            ytd_note = (
-                f"Year-to-date {later[0]} is set against the same months of {earlier[0]}. "
-            )
+        if len(live_partials) >= 2 and actuals:
+            earlier, later = live_partials[-2], live_partials[-1]
+            # Quarters mis-tagged as partials must not read as "Year-to-date 2025 Q4".
+            if re.search(
+                r"(?i)\bytd\b|ttm|l12m|year[\s-]?to[\s-]?date",
+                f"{earlier[0]} {later[0]}",
+            ):
+                ytd_note = (
+                    f"Year-to-date {later[0]} is set against the same months of {earlier[0]}. "
+                )
         put("S009_company_snapshot", {
             "title": _title(headline),
             "subtitle": _title(ytd_note + "Actuals from the accounts extract. Plan years are not on this chart."),
@@ -973,10 +1091,10 @@ def build_skill_content(
                 "kpis": {"type": "kpis", "items": kpis},
                 "left": _bullets([headline, *facts]),
                 "right": _chart(
-                    [p[0] for p in points[-6:]],
-                    [p[1] for p in points[-6:]],
+                    [p[0] for p in chart_points],
+                    [p[1] for p in chart_points],
                     "Revenue",
-                    point_refs=[p[2] for p in points[-6:]],
+                    point_refs=[p[2] for p in chart_points],
                 ),
             },
         })
@@ -1485,17 +1603,19 @@ def build_skill_content(
             })
 
     perimeter = _spec(_resolve(ctx, "market_definition")).get("perimeter") or _spec(_resolve(ctx, "market_definition")).get("insight_snapshot")
-    if _filled(perimeter) and not _is_ownership_perimeter(str(perimeter)):
+    perimeter_text = _format_perimeter(perimeter, 150)
+    if perimeter_text and not _is_ownership_perimeter(perimeter_text):
         excluded = _spec(_resolve(ctx, "market_definition")).get("excluded") or []
-        rows = [["In perimeter", _clean(perimeter, 80)]]
+        rows = [["In perimeter", _format_perimeter(perimeter, 80)]]
         if isinstance(excluded, list):
             for item in excluded[:3]:
-                if _filled(item) and not _is_ownership_perimeter(str(item)) and not _is_cap_table_text(str(item)):
-                    rows.append(["Excluded", _clean(item, 80)])
+                item_text = _format_perimeter(item, 80)
+                if item_text and not _is_ownership_perimeter(item_text) and not _is_cap_table_text(item_text):
+                    rows.append(["Excluded", item_text])
         _bind(book, "perimeter")
         put("S034_market_definitions", {
             "title": _title(f"The market used for {company} is the perimeter in the market-definition module"),
-            "subtitle": _title(_clean(perimeter, 150)),
+            "subtitle": _title(perimeter_text),
             "elements": {
                 "table": _table(["Boundary", "As stated"], rows),
                 "takeaway": _text("Agent perimeters that disagree with this page are exceptions."),
@@ -2425,7 +2545,7 @@ def build_skill_content(
     audit_docs = list((book.by_id[method_ids[0]].get("citations") or {}).get("doc") or []) if method_ids else []
     gap_ids = []
     for gap in gaps:
-        slide_label = str((gap.get("slides") or ["—"])[0]).split("_", 1)[0]
+        slide_label = _exception_slide_label(gap, filled)
         fid = book.add(
             module="SCM",
             title="Scope & Methodology",
@@ -2449,7 +2569,7 @@ def build_skill_content(
             gap["severity"],
             gap.get("rule") or "—",
             gap["issue"],
-            str((gap.get("slides") or ["—"])[0]).split("_", 1)[0],
+            _exception_slide_label(gap, filled),
             gap["treatment"],
         ] for gap in gaps],
         "The adjusted verdicts and the source register are the other half of this audit.",

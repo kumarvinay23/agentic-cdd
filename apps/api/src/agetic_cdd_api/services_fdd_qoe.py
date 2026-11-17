@@ -152,12 +152,13 @@ def build_bridge(
     period: str,
     reported_ebitda: float,
     register: list[AdjustmentRow],
+    base_label: str = "Reported EBITDA",
 ) -> QoeBridgePeriod:
-    """Adjusted EBITDA = Reported + Σ accepted/partial diligence amounts."""
+    """Adjusted EBITDA = opening reported + Σ accepted/partial diligence amounts."""
     steps: list[QoeBridgeStep] = [
         QoeBridgeStep(
             step_id="base",
-            label="Reported EBITDA",
+            label=(base_label or "Reported EBITDA").strip() or "Reported EBITDA",
             amount=float(reported_ebitda),
             running_total=float(reported_ebitda),
         )
@@ -395,8 +396,13 @@ def recompute_qoe(doc: QoeWorkbookDoc) -> QoeWorkbookDoc:
             continue
         mgmt_adj += _management_amount(row)
 
+    # Opening line is the diligence baseline. Keep the label distinct from
+    # accounts "Reported EBITDA" on the ES key-figures table (often a different figure).
     bridge = build_bridge(
-        period=period, reported_ebitda=dil_reported, register=register
+        period=period,
+        reported_ebitda=dil_reported,
+        register=register,
+        base_label="Diligence reported EBITDA",
     )
     dil_adj = bridge.adjusted_ebitda
 

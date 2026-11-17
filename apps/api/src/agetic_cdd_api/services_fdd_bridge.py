@@ -47,7 +47,7 @@ from agetic_cdd_api.services_fdd_store import (
 from agetic_cdd_api.services_fdd_sources import prefer_workbook_among
 from agetic_cdd_api.services_fdd_tokens import format_fdd_number, metric_cell_id
 
-BRIDGE_VERSION = "0.1.4"
+BRIDGE_VERSION = "0.1.5"
 
 # SaaS retention keys are optional for non-SaaS FDD packs — incomplete eight
 # labels on NRR/GRR must not force draft_mode across every figure.
@@ -415,6 +415,53 @@ def released_cell_to_fact(
         labels = labels.model_copy(update={"unit": "%"})
     elif unit != cell.unit and labels.unit and "%" in (labels.unit or ""):
         labels = labels.model_copy(update={"unit": None})
+    else:
+        # Raw USD dollars (or M-stamped raw) must not enter the fact table as
+        # millions — Compost FY25 revenue 9436 / EBITDA 98097 blew decks to $bn.
+        from agetic_cdd_api.services_fdd_tokens import coerce_fdd_money_store
+
+        coerced, scale_out, keep = coerce_fdd_money_store(
+            value,
+            scale=scale,
+            unit=unit or currency,
+            metric_key=cell.metric_key,
+        )
+        if keep:
+            value = coerced
+            if scale_out:
+                scale = scale_out
+        else:
+            # Promote a coherent alternative (true $13.41m) when primary is a
+            # sticky-scale raw grain; else null so claims do not false-contradict.
+            promoted = False
+            for alt in alternatives or []:
+                if not isinstance(alt, dict):
+                    continue
+                try:
+                    alt_v = float(alt["value"]) if alt.get("value") is not None else None
+                except (TypeError, ValueError):
+                    alt_v = None
+                if alt_v is None:
+                    continue
+                c2, s2, k2 = coerce_fdd_money_store(
+                    alt_v,
+                    scale=scale,
+                    unit=unit or currency,
+                    metric_key=cell.metric_key,
+                )
+                if k2 and c2 is not None:
+                    value = c2
+                    if s2:
+                        scale = s2
+                    asrc = [str(s) for s in (alt.get("sources") or []) if str(s).strip()]
+                    if asrc:
+                        sources = asrc
+                    promoted = True
+                    break
+            if not promoted:
+                value = None
+                if status == CellStatus.PROVEN:
+                    status = CellStatus.DOUBTFUL
     return FddFact(
         fact_id=fact_id_for_cell(cell, release),
         metric_key=cell.metric_key,

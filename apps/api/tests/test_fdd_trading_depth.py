@@ -84,6 +84,22 @@ def test_concentration_rows_dc_and_muni() -> None:
     assert dc_share == pytest.approx(100.0 * 3.078 / 13.412, rel=1e-3)
 
 
+def test_account01_muni_share_prefers_billings_over_top5_extract() -> None:
+    """Top-5 88.1% must not replace Account 01 billings÷muni (~64%)."""
+    pack = _synthetic_pack()
+    pack.dc_share_of_muni = 0.881  # polluted extract (top-5)
+    rows = concentration_rows(pack, year=2025)
+    muni_share = next(
+        v
+        for lab, v, _k in rows
+        if "share of municipal billings" in lab.lower()
+    )
+    assert muni_share == pytest.approx(100.0 * 3.078 / 4.794, abs=0.2)
+    assert muni_share < 70.0  # not the top-5 88.1%
+    top5 = next(v for lab, v, _k in rows if "five largest municipal" in lab.lower())
+    assert top5 == pytest.approx(88.1, abs=0.2)
+
+
 def test_ebitda_bridge_explains_fy25_drop() -> None:
     pack = _synthetic_pack()
     bridge = ebitda_bridge_rows(pack)

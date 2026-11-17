@@ -231,6 +231,266 @@ def test_cost_pressure_finding_when_opex_outgrows_revenue(deal_root: Path) -> No
     assert "13.0" in obs or "13" in obs  # pack revenue growth ~13.0%
 
 
+def test_cost_pressure_from_trading_pack_when_m3_yoy_missing(
+    deal_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pack labour/SG&A levels restore the HIGH finding after sticky-scale rebuild."""
+    from agetic_cdd_api.fdd_schemas import (
+        ArtefactStatus,
+        Exhibit,
+        ExhibitCell,
+        ExhibitStoreDoc,
+        FigureType,
+    )
+    from agetic_cdd_api.services_fdd_findings import _from_cost_pressure
+    from agetic_cdd_api.services_fdd_trading import TradingPack
+
+    closed = date.today().year - 1
+    prior = closed - 1
+    pack = TradingPack(deal_slug="pack-cost", scale="M", years=(prior, closed))
+    pack.fy = {
+        "Revenue": {prior: 11.869, closed: 13.412},
+        "Labour — operations": {prior: 2.0, closed: 2.4},
+        "Labour — SG&A": {prior: 1.0, closed: 1.15},
+        "SG&A (reported)": {prior: 3.0, closed: 3.9},
+        "Depreciation": {prior: 0.2, closed: 0.25},
+        "EBITDA (management)": {prior: 1.115, closed: 0.565},
+    }
+
+    def _fake_pack(slug: str) -> TradingPack:
+        return pack
+
+    monkeypatch.setattr(
+        "agetic_cdd_api.services_fdd_trading.build_trading_pack", _fake_pack
+    )
+
+    store = ExhibitStoreDoc(
+        deal_slug="pack-cost",
+        run_id="r",
+        updated_at="t",
+        exhibits=[
+            Exhibit(
+                exhibit_id="ex_m1_trading",
+                title="Trading",
+                section_id="SEC-B",
+                status=ArtefactStatus.CHECKED,
+                cells=[
+                    ExhibitCell(
+                        exhibit_id="ex_m1_trading",
+                        cell_id=f"ebitda_fy{prior}",
+                        fact_id=f"f:eb:{prior}",
+                        metric_key="ebitda",
+                        fiscal_year=prior,
+                        value=1.115,
+                        figure_type=FigureType.CALCULATED,
+                        status=CellStatus.PROVEN,
+                        label="ebitda",
+                        model_id="M1",
+                        basis_label="investor workbook",
+                    ),
+                    ExhibitCell(
+                        exhibit_id="ex_m1_trading",
+                        cell_id=f"ebitda_fy{closed}",
+                        fact_id=f"f:eb:{closed}",
+                        metric_key="ebitda",
+                        fiscal_year=closed,
+                        value=0.565,
+                        figure_type=FigureType.CALCULATED,
+                        status=CellStatus.PROVEN,
+                        label="ebitda",
+                        model_id="M1",
+                        basis_label="investor workbook",
+                    ),
+                ],
+            )
+        ],
+    )
+    findings = _from_cost_pressure(store, deal_slug="pack-cost")
+    assert len(findings) == 1
+    assert findings[0].severity.value == "high"
+    assert "cost growth" in findings[0].title.lower()
+    assert "labour grew" in findings[0].observation.lower()
+
+
+def test_cost_pressure_ignores_sticky_claim_ebitda(
+    deal_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sticky claim EBITDA (98097) must not block pack-based cost-growth HIGH."""
+    from agetic_cdd_api.fdd_schemas import (
+        ArtefactStatus,
+        Exhibit,
+        ExhibitCell,
+        ExhibitStoreDoc,
+        FigureType,
+        ClaimsLedgerDoc,
+        ClaimsLedgerEntry,
+    )
+    from agetic_cdd_api.services_fdd_findings import _from_cost_pressure
+    from agetic_cdd_api.services_fdd_store import save_claims_ledger
+    from agetic_cdd_api.services_fdd_trading import TradingPack
+
+    closed = date.today().year - 1
+    prior = closed - 1
+    slug = "sticky-eb-cost"
+    (deal_root / slug).mkdir(parents=True)
+    manifest, store, _ = ensure_phase0_run(
+        slug, company="StickyEB", prefer_current_release=True
+    )
+    save_claims_ledger(
+        ClaimsLedgerDoc(
+            run_id=manifest.run_id,
+            deal_slug=slug,
+            updated_at="t",
+            claims=[
+                ClaimsLedgerEntry(
+                    claim_id="cl_sticky",
+                    source_agent="historical_performance",
+                    text="EBITDA FY2025 = 98097.67 USD M",
+                    kind="financial",
+                    metric_key="ebitda",
+                    fiscal_year=closed,
+                    claimed_value=98097.67,
+                    test_result="unverifiable",
+                    failed=True,
+                ),
+                ClaimsLedgerEntry(
+                    claim_id="cl_ok",
+                    source_agent="historical_performance",
+                    text="ebitda_fy2024_usd_m = 1.135",
+                    kind="financial",
+                    metric_key="ebitda",
+                    fiscal_year=prior,
+                    claimed_value=1.135,
+                    databook_value=1.115,
+                    test_result="contradicted",
+                    failed=True,
+                ),
+            ],
+        )
+    )
+    pack = TradingPack(deal_slug=slug, scale="M", years=(prior, closed))
+    pack.fy = {
+        "Revenue": {prior: 11.869, closed: 13.412},
+        "Labour — operations": {prior: 2.0, closed: 2.4},
+        "Labour — SG&A": {prior: 1.0, closed: 1.15},
+        "SG&A (reported)": {prior: 3.0, closed: 3.9},
+        "Depreciation": {prior: 0.2, closed: 0.25},
+        "EBITDA (management)": {prior: 1.135, closed: 0.572},
+    }
+    monkeypatch.setattr(
+        "agetic_cdd_api.services_fdd_trading.build_trading_pack", lambda _s: pack
+    )
+    store = ExhibitStoreDoc(
+        deal_slug=slug,
+        run_id=manifest.run_id,
+        updated_at="t",
+        exhibits=[
+            Exhibit(
+                exhibit_id="ex_m3_costs",
+                title="Costs",
+                section_id="SEC-D",
+                status=ArtefactStatus.CHECKED,
+                cells=[
+                    ExhibitCell(
+                        exhibit_id="ex_m3_costs",
+                        cell_id=f"labor_yoy_fy{closed}",
+                        fact_id="f:lab",
+                        metric_key="labor_yoy",
+                        fiscal_year=closed,
+                        value=17.61,
+                        figure_type=FigureType.CALCULATED,
+                        status=CellStatus.PROVEN,
+                        label="labor_yoy",
+                        model_id="M3",
+                    ),
+                    ExhibitCell(
+                        exhibit_id="ex_m3_costs",
+                        cell_id=f"sga_yoy_fy{closed}",
+                        fact_id="f:sga",
+                        metric_key="sga_yoy",
+                        fiscal_year=closed,
+                        value=29.28,
+                        figure_type=FigureType.CALCULATED,
+                        status=CellStatus.PROVEN,
+                        label="sga_yoy",
+                        model_id="M3",
+                    ),
+                    # Sticky dust revenue — must be ignored in favour of pack.
+                    ExhibitCell(
+                        exhibit_id="ex_m3_costs",
+                        cell_id=f"revenue_fy{closed}",
+                        fact_id="f:rev",
+                        metric_key="revenue",
+                        fiscal_year=closed,
+                        value=0.039,
+                        figure_type=FigureType.CALCULATED,
+                        status=CellStatus.PROVEN,
+                        label="revenue",
+                        model_id="M3",
+                    ),
+                ],
+            )
+        ],
+    )
+    findings = _from_cost_pressure(store, deal_slug=slug, run_id=manifest.run_id)
+    assert len(findings) == 1
+    assert findings[0].severity.value == "high"
+    assert "cost growth" in findings[0].title.lower()
+    assert "98097" not in findings[0].observation
+
+
+def test_zero_databook_claim_is_not_a_finding(deal_root: Path) -> None:
+    from agetic_cdd_api.fdd_schemas import ClaimsLedgerDoc, ClaimsLedgerEntry
+    from agetic_cdd_api.services_fdd_findings import _from_claims
+    from agetic_cdd_api.services_fdd_store import save_claims_ledger
+
+    slug = "fdd-zero-book"
+    (deal_root / slug).mkdir(parents=True)
+    closed = date.today().year - 1
+    manifest, _, _ = ensure_phase0_run(
+        slug, company="ZeroBook", prefer_current_release=True
+    )
+    save_claims_ledger(
+        ClaimsLedgerDoc(
+            run_id=manifest.run_id,
+            deal_slug=slug,
+            updated_at="t",
+            claims=[
+                ClaimsLedgerEntry(
+                    claim_id="cl_zero",
+                    source_agent="historical_performance",
+                    text="Revenue FY2024 = 11.869",
+                    kind="financial",
+                    metric_key="revenue",
+                    fiscal_year=closed - 1,
+                    claimed_value=11.869,
+                    databook_value=0.0,
+                    test_result="contradicted",
+                    failed=True,
+                ),
+                ClaimsLedgerEntry(
+                    claim_id="cl_real",
+                    source_agent="historical_performance",
+                    text="Gross profit FY2024 = 4.5",
+                    kind="financial",
+                    metric_key="gross_profit",
+                    fiscal_year=closed - 1,
+                    claimed_value=4.5,
+                    databook_value=4.2,
+                    test_result="contradicted",
+                    failed=True,
+                ),
+            ],
+        )
+    )
+    findings = _from_claims(slug, manifest.run_id)
+    refs = {r for f in findings for r in (f.evidence_refs or [])}
+    titles = " ".join(f.title for f in findings).lower()
+    assert "cl_zero" not in refs
+    assert "cl_real" in refs
+    assert "revenue" not in titles or "gross" in titles
+
+
 def test_claim_findings_respect_absolute_materiality(deal_root: Path) -> None:
     """Core P&L gaps below 0.03 M stay MODERATE; at/above threshold are HIGH."""
     from agetic_cdd_api.fdd_schemas import ClaimsLedgerDoc, ClaimsLedgerEntry
@@ -323,16 +583,15 @@ def test_assemble_front_matter_and_slim_deck(deal_root: Path) -> None:
         slug, manifest.run_id, store=store2, company="PackCo"
     )
     assert commentary is not None
-    assert ASSEMBLY_VERSION.startswith("0.3")
+    assert ASSEMBLY_VERSION.startswith("0.")
     ids = {n.node_id for n in spec.nodes}
     assert "sec_basis" in ids
     assert "sec_integrity" in ids
     assert "sec_toc" in ids
     assert "sec_abbreviations" in ids
     assert "sec_not_evidenced" in ids
-    assert "slide_agenda" in ids
-    assert "slide_es_dashboard" in ids
-    assert "slide_open_items" in ids
+    # Chapter storyline slides (Phase C) — not the legacy agenda/dashboard ids.
+    assert any(i.startswith("slide_ch_") for i in ids)
     # Slim deck: no raw exhibit appendix slides by default
     assert not any(i.startswith("slide_ex_") for i in ids)
     # Report still has exhibit sections
@@ -340,7 +599,9 @@ def test_assemble_front_matter_and_slim_deck(deal_root: Path) -> None:
 
     deck = render_stub(kind="deck", spec=spec, store=store2)
     report = render_stub(kind="report", spec=spec, store=store2)
-    assert len(deck.pages) <= 20
+    # Chapter storyline is denser than the old slim stub; still shorter than full report.
+    assert len(deck.pages) <= 40
+    assert len(deck.pages) < len(report.pages)
     assert any(p.title == "Basis of preparation" for p in report.pages)
     assert any("Contents" in (p.title or "") for p in report.pages)
     # Shared figure map identity (R5)

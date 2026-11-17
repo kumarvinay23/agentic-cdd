@@ -21,6 +21,7 @@ from agetic_cdd_api.report_cdd_deck_v4 import (
     _pct_from,
     _reported_period_type,
     _resolve,
+    _revenue_millions,
     _spec,
 )
 from agetic_cdd_api.report_cdd_evidence import EvidenceBook
@@ -150,11 +151,19 @@ def derive(ctx: BuildContext, book: EvidenceBook) -> DeckMath:
 
 
 def _from_published(ctx: BuildContext, math: DeckMath) -> None:
-    """Keep the comparisons this deck already draws, and take their numbers from fact ids."""
+    """Attach published pages; fill YoY only when the VDR spine has none.
+
+    Published ``fin.pl.revenue`` can be a different series (e.g. pro forma) than
+    the CDD snapshot KPIs. Overwriting VDR YoY produced $3.6M→$4.4M KPIs next to
+    a +11.7% / +$0.41M growth page — prefer the accounts extract spine already
+    on ``math.yoy``.
+    """
     from agetic_cdd_api.services_published_pages import comparisons_from_pages, pages_for_deal
 
     pages = pages_for_deal(ctx.deal_slug)
     math.published_pages = pages
+    if math.yoy:
+        return
     rows = comparisons_from_pages(pages)
     if rows:
         seen: set[tuple[Any, Any]] = set()
@@ -296,14 +305,21 @@ def _risks(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> None:
 
 
 def _yoy(book: EvidenceBook, math: DeckMath) -> None:
-    series: list[tuple[str, float, str]] = [
-        (label, round(value, 2), fid)
-        for label, value, fid, status in book.vdr_points
-        if status == "actual"
-    ]
+    """Year-over-year steps on calendar-year actuals, always in $ millions."""
+    series: list[tuple[str, float, str]] = []
+    seen_years: set[int] = set()
+    for label, value, fid, status in book.vdr_points:
+        if status != "actual" or not re.fullmatch(r"20\d{2}", str(label or "").strip()):
+            continue
+        year = _year(label)
+        if year is None or year in seen_years:
+            continue
+        seen_years.add(year)
+        series.append((str(label).strip(), round(_revenue_millions(float(value)), 2), fid))
+    series.sort(key=lambda item: item[0])
     if len(series) < 2:
         series = []
-        seen_years: set[int] = set()
+        seen_years = set()
         for fid in book.buckets.get("revenue_actual", []):
             fact = book.by_id.get(fid) or {}
             if fact.get("source") == "vdr_direct":
@@ -316,7 +332,7 @@ def _yoy(book: EvidenceBook, math: DeckMath) -> None:
             if year is None or year in seen_years or not re.fullmatch(r"20\d{2}", label):
                 continue
             seen_years.add(year)
-            series.append((label, float(amount), fid))
+            series.append((label, round(_revenue_millions(float(amount)), 2), fid))
         series.sort(key=lambda item: item[0])
     if len(series) < 2:
         return
@@ -2113,13 +2129,13 @@ def _room_conclusion(book: EvidenceBook, math: DeckMath) -> None:
     if isinstance(plan, (int, float)) and isinstance(high, (int, float)) and isinstance(low_value, (int, float)):
         line = f"{low_value:.2f} to {high:.2f} million, against a plan of {plan:.2f}"
         parts.append(f"Recent trading points to {line}.")
-        rows.append(["Plan", line])
+        rows.append(["Trading", line])
         above = plan > max(high, low_value)
         pair = True
     elif isinstance(plan, (int, float)) and isinstance(high, (int, float)):
         line = f"{high:.2f} million, against a plan of {plan:.2f}"
         parts.append(f"Recent trading points to {line}.")
-        rows.append(["Plan", line])
+        rows.append(["Trading", line])
         above = plan > high
     else:
         above = False
@@ -2162,7 +2178,7 @@ def _room_conclusion(book: EvidenceBook, math: DeckMath) -> None:
         else "The plan is above the trading case" if above
         else "The plan against the trading case"
     )
-    if name and rows and rows[0][0] == "Plan":
+    if name and rows and rows[0][0] == "Trading":
         title = f"{plan_title}, and the build record is {name}'s biography"
     elif name:
         title = f"The build record is {name}'s biography, and nobody tested that account"
@@ -2173,7 +2189,7 @@ def _room_conclusion(book: EvidenceBook, math: DeckMath) -> None:
         else "The plan is above the trading case." if above
         else "The plan and the trading case are on the record."
     )
-    if name and rows and rows[0][0] == "Plan":
+    if name and rows and rows[0][0] == "Trading":
         subtitle = "The trading range and the biography are already on the record. The reliance point is that nobody tested the acquirer."
         bullets = [
             plan_bullet,
@@ -3424,6 +3440,24 @@ _ROLE = re.compile(
     r"Managing Director)"
 )
 _HISTORY_LABELS = ("FOUNDED", "ACQUISITION", "DIVERSIFICATION", "ACCELERATION", "EXPANSION")
+_LEADER_SECTION = re.compile(
+    r"(?i)^(technology|operations|finance|sales|marketing|legal|product|"
+    r"engineering|board|management|team|executive|leadership)\s+"
+)
+_LEADER_ORG = re.compile(
+    r"(?i)\b(inc\.?|llc|ltd\.?|corp\.?|corporation|solutions|holdings|company|co\.)\b"
+)
+
+
+def _person_name(name: str) -> str | None:
+    """Keep First Last people names; drop department headers and legal entities."""
+    cleaned = " ".join(str(name or "").split())
+    cleaned = _LEADER_SECTION.sub("", cleaned).strip(" ,.-")
+    if len(cleaned.split()) < 2 or _LEADER_ORG.search(cleaned):
+        return None
+    if _LEADER_SECTION.match(cleaned + " "):
+        return None
+    return cleaned
 
 
 def _leadership_bios(slide: str, pairs: list[tuple[str, str]]) -> dict[int, str]:
@@ -3547,7 +3581,14 @@ def _cim_milestones(book: EvidenceBook, math: DeckMath, slides: list[str], docs:
 
 def _cim_leaders(book: EvidenceBook, math: DeckMath, slides: list[str], docs: list[str]) -> None:
     blob = next((slide for slide in slides if re.search(r"(?i)leadership team", slide)), "")
-    pairs = _ROLE.findall(blob)[:4]
+    raw_pairs = _ROLE.findall(blob)
+    pairs: list[tuple[str, str]] = []
+    for name, role in raw_pairs:
+        person = _person_name(name)
+        if person:
+            pairs.append((person, role))
+        if len(pairs) >= 4:
+            break
     if len(pairs) < 2:
         return
     bios = _leadership_bios(blob, pairs)
@@ -3572,9 +3613,9 @@ def _room_executives(ctx: BuildContext, book: EvidenceBook, math: DeckMath) -> N
     for row in raw:
         if not isinstance(row, dict):
             continue
-        name = " ".join(str(row.get("name") or "").split())
+        name = _person_name(str(row.get("name") or ""))
         role = " ".join(str(row.get("role") or row.get("title") or "Executive").split())
-        if len(name.split()) < 2 or _NOT_A_COMPETITOR.search(name):
+        if not name or _NOT_A_COMPETITOR.search(name):
             continue
         bits = [
             str(row.get(key) or "").strip()

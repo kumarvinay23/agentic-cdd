@@ -1727,6 +1727,16 @@ export function formatBytes(bytes: number): string {
 // Reports
 // ---------------------------------------------------------------------------
 
+export type ReportReliability = {
+  reliable?: boolean;
+  draft_mode?: boolean;
+  g6_blocked?: boolean;
+  contract_complete?: boolean;
+  blockers?: string[];
+  reasons?: string[];
+  source?: string;
+};
+
 export type ReportCatalogEntry = {
   report_type: string;
   label: string;
@@ -1735,7 +1745,7 @@ export type ReportCatalogEntry = {
   /** Allowed download formats for this report type (e.g. ["pptx"] for FDD). */
   formats?: string[];
   description: string;
-  status: "not_generated" | "running" | "ready" | "failed" | string;
+  status: "not_generated" | "running" | "ready" | "unreliable" | "stale" | "failed" | string;
   job_id?: string | null;
   started_at?: string | null;
   ready_at?: string | null;
@@ -1744,6 +1754,8 @@ export type ReportCatalogEntry = {
   implemented?: boolean;
   /** Hidden from the Reports catalog when true (API may still accept the type). */
   deprecated?: boolean;
+  /** Databook contract gate payload when status is unreliable. */
+  reliability?: ReportReliability | null;
   /** True when a legacy PDF twin exists alongside the primary artifact. */
   pdf_available?: boolean;
   pdf_artifact_path?: string | null;

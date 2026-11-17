@@ -216,6 +216,7 @@ def report_status(
         "started_at": meta.get("started_at"),
         "ready_at": meta.get("ready_at"),
         "error": meta.get("error"),
+        "reliability": meta.get("reliability"),
         "artifact_path": meta.get("artifact_path"),
         "content_sha256": meta.get("content_sha256"),
         "artifact_bytes": meta.get("artifact_bytes"),
@@ -285,7 +286,7 @@ def download_report(
 ):
     deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
     meta = get_report(deal.slug, report_type)
-    if not meta or meta.get("status") not in {"ready", "stale"}:
+    if not meta or meta.get("status") not in {"ready", "stale", "unreliable"}:
         raise HTTPException(status_code=404, detail="Report not ready for download.")
 
     # Ensure report_type is on meta for export default lookup.
@@ -334,7 +335,7 @@ def preview_report(
 
     deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
     meta = get_report(deal.slug, report_type)
-    if not meta or meta.get("status") not in {"ready", "stale"}:
+    if not meta or meta.get("status") not in {"ready", "stale", "unreliable"}:
         raise HTTPException(status_code=404, detail="Report not ready for preview.")
 
     meta = {**meta, "report_type": report_type}

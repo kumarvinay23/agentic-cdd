@@ -79,23 +79,151 @@ def format_fdd_number(
     return body
 
 
+def _normalize_scale_token(raw: str | None, *, default: str = "m") -> str:
+    tok = (raw or default or "m").strip().lower()
+    if tok in {"$k", "000", "thousands", "k"}:
+        return "k"
+    if tok in {"$m", "mm", "millions", "m"}:
+        return "m"
+    if tok in {"1", "u", "unit", "units", "usd", "absolute", "abs", "ones", ""}:
+        return "1"
+    return tok
+
+
+def coerce_fdd_money_store(
+    value: float | None,
+    *,
+    scale: str | None,
+    unit: str | None = None,
+    metric_key: str | None = None,
+) -> tuple[float | None, str | None, bool]:
+    """Normalise money into store millions; drop ambiguous mid-range grains.
+
+    Returns ``(value, scale, keep)``. ``keep=False`` means the figure looks like
+    a wrong period grain (e.g. $9,436 tagged as FY revenue) and must not beat a
+    coherent millions peer in trading / debt models.
+
+    - ``scale=M`` with |v|≥1000 → mislabeled raw dollars; divide by 1e6.
+    - Unscaled |v|≥100_000 → raw dollars; divide by 1e6, set ``M``.
+    - Unscaled 1000≤|v|<100_000 on core money metrics → reject (keep=False).
+    """
+    if value is None:
+        return None, scale, True
+    mk = (metric_key or "").strip().lower()
+    if mk.endswith("_margin") or mk.endswith("_pct") or mk.endswith("_rate"):
+        return float(value), scale, True
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return value, scale, True
+    mag = abs(num)
+    scl = _normalize_scale_token(scale, default="") if (scale or "").strip() else ""
+    unt = (unit or "").strip().upper()
+
+    core = mk in {
+        "revenue",
+        "ebitda",
+        "gross_profit",
+        "cash",
+        "net_debt",
+        "gross_debt",
+        "net_income",
+        "operating_cash_flow",
+        "free_cash_flow",
+        "capex",
+        "nwc",
+    } or any(
+        tok in mk
+        for tok in ("revenue", "ebitda", "cash", "debt", "income", "profit")
+    )
+
+    if scl == "m":
+        # Explicit millions are trusted for large-cap packs (e.g. 3140 = $3.14bn).
+        # Sticky raw vs coherent peers is resolved in _bucket_sum / bridge alts
+        # (prefer |v|<1000) and ES `_revenue_value_is_usable` (|v|≥1000 rejected).
+        return num, "M", True
+    if scl in {"cr", "crore", "crores", "b", "bn", "billion"}:
+        # Non-USD store scales (INR Cr, $bn) — leave value and scale alone.
+        return num, scale or scl.upper(), True
+    if scl == "k":
+        # |v|≥500 as $k on core (≥$0.5m stored as thousands) is usually a mis-tagged
+        # raw grain (9436 → 9.436M). Reject so coherent millions peers win.
+        if mag >= 500.0 and core:
+            return num, "k", False
+        return num / 1000.0, "M", True
+    if scl == "1":
+        # Mid-range unit currency (1e3–1e5) → do not convert to 0.039M ("$39k").
+        if 1000.0 <= mag < 100_000.0 and core:
+            return num, "1", False
+        if mag >= 100_000.0:
+            return num / 1_000_000.0, "M", True
+        return num, "M", True
+
+    # No trustworthy scale — infer from magnitude.
+    if mag >= 100_000.0 or (unt in {"USD", "GBP", "EUR"} and mag >= 100_000.0):
+        return num / 1_000_000.0, "M", True
+    if mag >= 1000.0:
+        if core:
+            return num, scale, False
+        return num / 1_000_000.0, "M", True
+    return num, "M", True
+
+
+def _infer_money_store_scale(
+    value: float | None,
+    *,
+    cell_scale: str | None,
+    fallback: str = "M",
+) -> str:
+    """Resolve store scale for PPTX money formatting.
+
+    Missing cell.scale used to default to millions, which blows raw-dollar
+    net income (e.g. -127614) into ($127,614,390) under a ($k) header.
+    Large unlabelled magnitudes are treated as unit currency instead.
+
+    Unrecognised scale tokens (e.g. ``B`` for basis) are ignored — they are
+    not store units and previously printed raw dollars as ``1,873,592.10``.
+
+    Explicit ``M`` with |value|≥1000 is treated as mislabeled unit currency
+    (Compost FY25 revenue 9436 stamped M → $9,436m).
+    """
+    explicit = (cell_scale or "").strip()
+    try:
+        mag = abs(float(value)) if value is not None else 0.0
+    except (TypeError, ValueError):
+        mag = 0.0
+    if explicit:
+        low = explicit.lower()
+        if low in {"%", "pp", "pct", "percent"}:
+            return explicit
+        norm = _normalize_scale_token(explicit, default="")
+        if norm == "m" and mag >= 1000.0:
+            return "1"
+        if norm in {"1", "k", "m"}:
+            return norm
+        # Fall through for unknown tokens like "B".
+    if mag >= 1000.0:
+        return "1"
+    return fallback or "M"
+
+
 def _to_scale(value: float, *, from_scale: str, to_scale: str) -> float:
-    src = (from_scale or "M").strip().lower()
-    dst = (to_scale or "k").strip().lower()
-    if src in {"$k", "000", "thousands"}:
-        src = "k"
-    if src in {"$m", "mm", "millions"}:
-        src = "m"
-    if dst in {"$k", "000", "thousands"}:
-        dst = "k"
-    if dst in {"$m", "mm", "millions"}:
-        dst = "m"
+    src = _normalize_scale_token(from_scale, default="m")
+    dst = _normalize_scale_token(to_scale, default="k")
     if src == dst:
         return value
-    if src == "m" and dst == "k":
-        return value * 1000.0
-    if src == "k" and dst == "m":
-        return value / 1000.0
+    # Convert via unit currency, then to destination.
+    as_units = {
+        "1": value,
+        "k": value * 1000.0,
+        "m": value * 1_000_000.0,
+    }.get(src, value)
+    if dst == "1":
+        return as_units
+    if dst == "k":
+        return as_units / 1000.0
+    if dst == "m":
+        return as_units / 1_000_000.0
     return value
 
 
@@ -161,10 +289,17 @@ def _cell_is_money(cell: ExhibitCell) -> bool:
     unit = (cell.unit or "").strip().lower()
     if currency:
         return True
-    if scale in {"m", "k", "$m", "$k", "mm", "000", "thousands", "millions"}:
+    if scale in {"m", "k", "$m", "$k", "mm", "000", "thousands", "millions", "1", "u", "unit", "units", "usd"}:
         return True
     if unit in {"m", "k", "usd", "gbp", "eur"}:
         return True
+    # Unknown scale token (e.g. "B" = basis) with a currency-sized magnitude.
+    if scale and scale not in {"%", "pp", "pct", "percent", "x", "multiple", "ratio", "count", "fte", "#"}:
+        try:
+            if cell.value is not None and abs(float(cell.value)) >= 1000.0:
+                return True
+        except (TypeError, ValueError):
+            pass
     return False
 
 
@@ -190,8 +325,12 @@ def format_cell_display_pptx(
     if _cell_is_percent(cell):
         return format_cell_display(cell)
     if _cell_is_money(cell):
-        cell_store = (cell.scale or store_scale or "M").strip() or "M"
-        if cell_store.lower() in {"%", "pp", "pct", "percent"}:
+        cell_store = _infer_money_store_scale(
+            cell.value,
+            cell_scale=getattr(cell, "scale", None),
+            fallback=store_scale or "M",
+        )
+        if str(cell_store).lower() in {"%", "pp", "pct", "percent"}:
             return format_cell_display(cell)
         return format_pptx_money(
             cell.value,
@@ -278,13 +417,28 @@ def resolve_token(
     )
 
 
+_CLIENT_SEC_TITLES = {
+    "SEC-A": "Scope & perimeter",
+    "SEC-B": "Historical trading",
+    "SEC-C": "Revenue & margin",
+    "SEC-D": "Costs & people",
+    "SEC-E": "Quality of earnings",
+    "SEC-F": "Balance sheet / NAV",
+    "SEC-G": "Net working capital",
+    "SEC-H": "Net debt",
+    "SEC-I": "Cash flow / capex",
+    "SEC-J": "Forecast",
+    "SEC-K": "Key findings",
+    "SEC-ES": "Executive summary",
+}
+_CLIENT_SEC_RE = re.compile(r"\bSEC-[A-Z]+\b")
+
+
 def client_facing_text(text: str) -> str:
     """Strip internal tags / request ids from client PDF/deck prose.
 
-    Does **not** strip arbitrary ``SEC-*`` tokens from prose — that turned
-    held-back footers into \"Held back: No exhibits mapped to\". Section codes
-    should be written as human titles at draft time; only bare
-    ``Section: SEC-X`` exhibit lines are dropped.
+    Bare ``Section: SEC-X`` exhibit lines are dropped; inline ``SEC-*`` codes
+    are rewritten to human section titles (e.g. SEC-K → Key findings).
     """
     out: list[str] = []
     for raw in (text or "").split("\n"):
@@ -295,6 +449,10 @@ def client_facing_text(text: str) -> str:
         if _CLIENT_SECTION_LINE_RE.match(line.strip()):
             continue
         line = _CLIENT_REQ_RE.sub("open diligence request", line)
+        line = _CLIENT_SEC_RE.sub(
+            lambda mm: _CLIENT_SEC_TITLES.get(mm.group(0), "diligence section"),
+            line,
+        )
         line = re.sub(r"[ \t]{2,}", " ", line).rstrip()
         out.append(line)
     # Drop trailing empties but keep structural blanks mid-block

@@ -65,6 +65,10 @@ function statusBadge(status: string): { label: string; className: string } {
   switch (status) {
     case "ready":
       return { label: "Ready", className: "bg-[#ecfdf3] text-[#15803d] ring-1 ring-[#bbf7d0]" };
+    case "unreliable":
+      return { label: "Unreliable", className: "bg-[#fff7ed] text-[#c2410c] ring-1 ring-[#fed7aa]" };
+    case "stale":
+      return { label: "Stale", className: "bg-[#fffbeb] text-[#a16207] ring-1 ring-[#fde68a]" };
     case "running":
       return { label: "Generating…", className: "bg-[#eff6ff] text-[#1d4ed8] ring-1 ring-[#bfdbfe]" };
     case "failed":
@@ -72,6 +76,10 @@ function statusBadge(status: string): { label: string; className: string } {
     default:
       return { label: "Not generated", className: "bg-[#f3f4f6] text-[#6b7280] ring-1 ring-[#e5e7eb]" };
   }
+}
+
+function isDownloadable(status: string): boolean {
+  return status === "ready" || status === "unreliable" || status === "stale";
 }
 
 function formatKind(report: ReportCatalogEntry): string {
@@ -880,7 +888,7 @@ export function DealReports({
   }, [accessToken, selected, view, loadDetail, onError]);
 
   useEffect(() => {
-    if (!accessToken || !selectedReport || selectedReport.status !== "ready") return;
+    if (!accessToken || !selectedReport || !isDownloadable(selectedReport.status)) return;
     if (view !== "detail" || tab !== "preview") return;
     const fmt = selectedReport.export;
     if (fmt !== "xlsx" && fmt !== "docx" && fmt !== "pdf" && fmt !== "pptx") return;
@@ -944,11 +952,11 @@ export function DealReports({
   }
 
   async function onDownload(format?: string) {
-    if (!accessToken || !selected || selectedReport?.status !== "ready") return;
+    if (!accessToken || !selected || !selectedReport || !isDownloadable(selectedReport.status)) return;
     onError(null);
     try {
-      const ext = format || selectedReport!.export;
-      const name = `${dealName}_${(selectedReport!.label || selected).replace(/\s+/g, "_")}.${ext}`;
+      const ext = format || selectedReport.export;
+      const name = `${dealName}_${(selectedReport.label || selected).replace(/\s+/g, "_")}.${ext}`;
       await reportDownloadRequest(accessToken, dealId, selected, name, format);
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Download failed");
@@ -957,9 +965,9 @@ export function DealReports({
 
   // FDD Report is PPTX-only (Phase F) — never offer a PDF twin download.
   const canDownloadPdf =
-    selectedReport?.status === "ready" &&
-    !selectedReport.report_type.startsWith("fdd_") &&
-    (Boolean(selectedReport.pdf_available) || selectedReport.export === "pdf");
+    Boolean(selectedReport && isDownloadable(selectedReport.status)) &&
+    !selectedReport!.report_type.startsWith("fdd_") &&
+    (Boolean(selectedReport!.pdf_available) || selectedReport!.export === "pdf");
 
   async function onSheetChange(sheet: string) {
     if (!selected) return;
@@ -995,7 +1003,7 @@ export function DealReports({
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {catalogView.map((report) => {
             const itemBadge = statusBadge(report.status);
-            const ready = report.status === "ready";
+            const ready = isDownloadable(report.status);
             const implemented = IMPLEMENTED_REPORTS.has(report.report_type);
             const isFdd = report.report_type.startsWith("fdd_");
             return (
@@ -1093,12 +1101,21 @@ export function DealReports({
             <h1 className="text-[22px] font-semibold tracking-tight text-text-primary">{selectedReport.label}</h1>
           </div>
           <p className="max-w-3xl text-[13px] text-text-secondary">{detailSubtitle}</p>
+          {selectedReport.status === "unreliable" ? (
+            <p className="mt-2 max-w-3xl rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-3 py-2 text-[12px] text-[#9a3412]">
+              UNRELIABLE — databook contract incomplete
+              {selectedReport.reliability?.blockers?.length
+                ? ` (${selectedReport.reliability.blockers.join(", ")})`
+                : ""}
+              . Artifact is watermarked; do not price from this export.
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
             {badge.label}
           </span>
-          {selectedReport.status === "ready" ? (
+          {isDownloadable(selectedReport.status) ? (
             <button
               type="button"
               onClick={() => void onDownload()}
@@ -1136,7 +1153,11 @@ export function DealReports({
                 <path d="M21 12a9 9 0 1 1-2.6-6.3" />
                 <path d="M21 4v5h-5" />
               </svg>
-              {generating ? "Generating…" : selectedReport.status === "ready" ? "Regenerate" : "Generate"}
+              {generating
+                ? "Generating…"
+                : isDownloadable(selectedReport.status)
+                  ? "Regenerate"
+                  : "Generate"}
             </button>
           ) : (
             <span className="rounded-lg bg-[#f3f4f6] px-3 py-2 text-[12px] text-text-secondary">
@@ -1207,7 +1228,7 @@ export function DealReports({
 
       <div className="rounded-[10px] border border-border-primary bg-white p-5">
         {tab === "preview" ? (
-          selectedReport.status !== "ready" ? (
+          !isDownloadable(selectedReport.status) ? (
             <div className="py-14 text-center">
               <p className="text-[15px] font-medium text-text-primary">No preview yet</p>
               <p className="mt-1 text-[13px] text-text-secondary">

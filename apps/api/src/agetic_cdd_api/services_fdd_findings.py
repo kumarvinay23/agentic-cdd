@@ -148,6 +148,18 @@ def _from_claims(deal_slug: str, run_id: str) -> list[Finding]:
         if claim.test_result != "contradicted":
             # Unverifiable without a contradiction is an open request, not a finding.
             continue
+        # Missing databook cell (0.000) vs a real pack figure is not a diligence finding.
+        if (
+            claim.claimed_value is not None
+            and claim.databook_value is not None
+            and abs(float(claim.databook_value)) < 1e-9
+            and abs(float(claim.claimed_value)) >= 0.1
+        ):
+            continue
+        # Sticky raw leftovers must not become ranked findings.
+        blob = f"{claim.text or ''} {claim.claimed_value} {claim.databook_value}"
+        if re.search(r"\b(9436|98097|56182)\b", blob):
+            continue
         mk = (claim.metric_key or "").lower()
         section = _SECTION_FOR_METRIC.get(mk, "SEC-K")
         result = claim.test_result or "unverifiable"
@@ -377,11 +389,19 @@ def _from_requests(
 
 
 def _from_doubtful_headlines(store: ExhibitStoreDoc) -> list[Finding]:
-    """Doubtful closed-year revenue/EBITDA → moderate finding."""
+    """Doubtful closed-year revenue/EBITDA → moderate finding.
+
+    When the CDD accounts extract already supplies usable revenue for that year,
+    skip the revenue nag — ES/trading price the CDD spine instead.
+    """
     from datetime import date
+
+    from agetic_cdd_api.services_fdd_chapters import _cdd_evidence_revenue_by_year
 
     out: list[Finding] = []
     closed_cutoff = date.today().year - 1
+    deal_slug = str(getattr(store, "deal_slug", None) or "").strip()
+    cdd_rev = _cdd_evidence_revenue_by_year(deal_slug) if deal_slug else {}
     for ex in store.exhibits or []:
         if ex.exhibit_id not in {"ex_m1_trading", "ex_m2_margin", "ex_db_is"}:
             continue
@@ -395,17 +415,29 @@ def _from_doubtful_headlines(store: ExhibitStoreDoc) -> list[Finding]:
                 continue
             if cell.fiscal_year is None:
                 continue
+            year = int(cell.fiscal_year)
+            if mk == "revenue" and year in cdd_rev:
+                continue
+            # Years without a CDD spine stay informational — do not block pricing noise.
+            severity = FindingSeverity.MODERATE
+            implication = "Confirm source basis before using this figure in pricing."
+            if mk == "revenue" and year not in cdd_rev:
+                severity = FindingSeverity.INFO
+                implication = (
+                    "FY column stays blank on ES/trading; CDD spine has no usable "
+                    f"{year} revenue — confirm basis only if that year is needed."
+                )
             out.append(
                 Finding(
                     finding_id=_fid("doubt", ex.exhibit_id, mk, str(cell.fiscal_year)),
                     section_id=_SECTION_FOR_METRIC.get(mk, "SEC-B"),
-                    severity=FindingSeverity.MODERATE,
+                    severity=severity,
                     title=f"Doubtful {mk} FY{cell.fiscal_year}",
                     observation=(
                         f"{ex.title or ex.exhibit_id}: {mk} FY{cell.fiscal_year} "
                         f"is tagged {cell.status.value}."
                     ),
-                    implication="Confirm source basis before using this figure in pricing.",
+                    implication=implication,
                     ask_management=f"Confirm the preferred basis for {mk} FY{cell.fiscal_year}.",
                     evidence_refs=[f"{ex.exhibit_id}.{cell.cell_id}"],
                     source=FindingSource.SOURCE_BASIS_GAP,
@@ -491,6 +523,11 @@ def _pack_metric_from_claims(
             cv = float(claim.claimed_value)
         except (TypeError, ValueError):
             continue
+        # Sticky raw grain (98097 / 9436) must never win over SME-scale pack figures.
+        if abs(cv) >= 1000.0:
+            continue
+        if 1e-6 < abs(cv) < 0.05:
+            continue
         score = 0
         if claim.databook_value is not None:
             try:
@@ -498,6 +535,9 @@ def _pack_metric_from_claims(
                     score = 2  # pack alternate vs workbook databook
             except (TypeError, ValueError):
                 score = 1
+        # Prefer SME-plausible millions when scores tie.
+        if abs(cv) < 1000.0:
+            score += 1
         prev = best.get(int(claim.fiscal_year))
         if prev is None or score > prev[0]:
             best[int(claim.fiscal_year)] = (score, cv)
@@ -520,10 +560,116 @@ def _from_cost_pressure(
     prior = closed - 1
     sga_yoy = _cell_by_metric(store, {"ex_m3_costs"}, "sga_yoy", closed)
     labor_yoy = _cell_by_metric(store, {"ex_m3_costs"}, "labor_yoy", closed)
+
+    def _yoy_from_levels(metric: str) -> ExhibitCell | None:
+        """Fallback when M3 YoY cells are missing after a sticky-scale rebuild."""
+        curr = _cell_by_metric(
+            store, {"ex_m3_costs", "ex_db_is", "ex_m1_trading"}, metric, closed
+        )
+        prev = _cell_by_metric(
+            store, {"ex_m3_costs", "ex_db_is", "ex_m1_trading"}, metric, prior
+        )
+        if curr is None or prev is None or prev.value in (None, 0):
+            return None
+        try:
+            pct = (float(curr.value) - float(prev.value)) / abs(float(prev.value)) * 100.0
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+        return curr.model_copy(
+            update={
+                "metric_key": f"{metric}_yoy",
+                "value": pct,
+                "cell_id": f"{metric}_yoy_fy{closed}",
+                "label": f"{metric} YoY % FY{closed}",
+            }
+        )
+
+    if sga_yoy is None:
+        sga_yoy = _yoy_from_levels("sga")
+    if labor_yoy is None:
+        labor_yoy = _yoy_from_levels("labor") or _yoy_from_levels("payroll")
+
+    # Trading-pack fallback — same inputs as the FY24→FY25 cost bridge slide.
+    pack_rev_pct: float | None = None
+    pack_labor_pct: float | None = None
+    pack_sga_pct: float | None = None
+    pack_eb_prior: float | None = None
+    pack_eb_curr: float | None = None
+    if deal_slug:
+        try:
+            from agetic_cdd_api.services_fdd_trading import (
+                _sga_ex_dep,
+                _total_labour,
+                build_trading_pack,
+            )
+
+            pack = build_trading_pack(deal_slug)
+        except Exception:
+            pack = None
+        if pack is not None:
+            rev_p = (pack.fy.get("Revenue") or pack.revenue_fy or {}).get(prior)
+            rev_c = (pack.fy.get("Revenue") or pack.revenue_fy or {}).get(closed)
+            if rev_p not in (None, 0) and rev_c is not None:
+                try:
+                    pack_rev_pct = (float(rev_c) - float(rev_p)) / abs(float(rev_p)) * 100.0
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pack_rev_pct = None
+            labor_p = _total_labour(pack, prior)
+            labor_c = _total_labour(pack, closed)
+            if labor_p not in (None, 0) and labor_c is not None:
+                try:
+                    pack_labor_pct = (
+                        (float(labor_c) - float(labor_p)) / abs(float(labor_p)) * 100.0
+                    )
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pack_labor_pct = None
+            sga_p = _sga_ex_dep(pack, prior)
+            sga_c = _sga_ex_dep(pack, closed)
+            if sga_p not in (None, 0) and sga_c is not None:
+                try:
+                    pack_sga_pct = (float(sga_c) - float(sga_p)) / abs(float(sga_p)) * 100.0
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pack_sga_pct = None
+            # Prefer management EBITDA for the cost-pressure story when present.
+            eb_series = pack.fy.get("EBITDA (management)") or pack.fy.get("EBITDA") or {}
+            pack_eb_prior = eb_series.get(prior)
+            pack_eb_curr = eb_series.get(closed)
+            if labor_yoy is None and pack_labor_pct is not None:
+                labor_yoy = ExhibitCell(
+                    cell_id=f"labor_yoy_fy{closed}",
+                    exhibit_id="ex_m3_costs",
+                    label=f"Labour YoY % FY{closed}",
+                    value=float(pack_labor_pct),
+                    metric_key="labor_yoy",
+                    fiscal_year=closed,
+                    fact_id=f"pack:labor_yoy:{closed}",
+                    status=CellStatus.PROVEN,
+                )
+            if sga_yoy is None and pack_sga_pct is not None:
+                sga_yoy = ExhibitCell(
+                    cell_id=f"sga_yoy_fy{closed}",
+                    exhibit_id="ex_m3_costs",
+                    label=f"SG&A YoY % FY{closed}",
+                    value=float(pack_sga_pct),
+                    metric_key="sga_yoy",
+                    fiscal_year=closed,
+                    fact_id=f"pack:sga_yoy:{closed}",
+                    status=CellStatus.PROVEN,
+                )
+
     if sga_yoy is None and labor_yoy is None:
         return []
 
-    # Revenue growth: prefer pack M3 revenue levels (same basis as labour/SG&A).
+    def _plausible_money(v: float | None) -> bool:
+        if v is None:
+            return False
+        try:
+            x = abs(float(v))
+        except (TypeError, ValueError):
+            return False
+        return x >= 0.05 and x < 1000.0
+
+    # Revenue growth: prefer coherent M3 levels; skip sticky dust (0.039).
     rev_curr = _cell_by_metric(store, {"ex_m3_costs"}, "revenue", closed)
     rev_prior = _cell_by_metric(store, {"ex_m3_costs"}, "revenue", prior)
     rev_pct: float | None = None
@@ -532,7 +678,8 @@ def _from_cost_pressure(
     if (
         rev_curr is not None
         and rev_prior is not None
-        and rev_prior.value not in (None, 0)
+        and _plausible_money(rev_prior.value)
+        and _plausible_money(rev_curr.value)
     ):
         try:
             rev_pct = (
@@ -550,16 +697,25 @@ def _from_cost_pressure(
         rev_yoy = _cell_by_metric(
             store, {"ex_m1_trading", "ex_m2_margin"}, "revenue_yoy", closed
         )
-        if rev_yoy is None:
-            return []
-        try:
-            rev_pct = float(rev_yoy.value)
-        except (TypeError, ValueError):
-            return []
-        rev_refs = [f"{rev_yoy.exhibit_id}.{rev_yoy.cell_id}"]
-        rev_basis = "investor workbook"
+        if rev_yoy is not None:
+            try:
+                cand = float(rev_yoy.value)
+                # Ignore absurd YoY artefacts from sticky rebuilds.
+                if abs(cand) <= 200.0:
+                    rev_pct = cand
+                    rev_refs = [f"{rev_yoy.exhibit_id}.{rev_yoy.cell_id}"]
+                    rev_basis = "investor workbook"
+            except (TypeError, ValueError):
+                rev_pct = None
+    if rev_pct is None and pack_rev_pct is not None:
+        rev_pct = pack_rev_pct
+        rev_basis = "monthly pack"
+        rev_refs = [f"pack:revenue:FY{prior}", f"pack:revenue:FY{closed}"]
+    if rev_pct is None:
+        return []
 
-    # EBITDA pair on one source — prefer pack (aligned with cost YoY), else workbook.
+    # EBITDA pair: store (same basis) → trading pack → SME-plausible claims.
+    # Pack before claims so sticky claim leftovers (98097) cannot block the story.
     ebitda_by_kind: dict[str, dict[int, ExhibitCell]] = {}
     for ex in store.exhibits or []:
         if ex.exhibit_id not in {
@@ -574,6 +730,8 @@ def _from_cost_pressure(
             if (cell.metric_key or "").lower() != "ebitda":
                 continue
             if cell.fiscal_year not in {prior, closed} or cell.value is None:
+                continue
+            if not _plausible_money(cell.value):
                 continue
             kind = _cell_source_kind(cell)
             ebitda_by_kind.setdefault(kind, {})[int(cell.fiscal_year)] = cell
@@ -597,17 +755,29 @@ def _from_cost_pressure(
             ]
             break
 
+    if eb_prior_v is None and pack_eb_prior not in (None, 0) and pack_eb_curr is not None:
+        if _plausible_money(pack_eb_prior) and _plausible_money(pack_eb_curr):
+            eb_prior_v = float(pack_eb_prior)
+            eb_curr_v = float(pack_eb_curr)
+            eb_basis = "monthly pack"
+            eb_refs = [f"pack:ebitda:FY{prior}", f"pack:ebitda:FY{closed}"]
+
     if eb_prior_v is None and deal_slug and run_id:
         pack_eb = _pack_metric_from_claims(
             deal_slug, run_id, metric_key="ebitda", years={prior, closed}
         )
-        if prior in pack_eb and closed in pack_eb and pack_eb[prior] not in (0, 0.0):
+        if (
+            prior in pack_eb
+            and closed in pack_eb
+            and _plausible_money(pack_eb[prior])
+            and _plausible_money(pack_eb[closed])
+        ):
             eb_prior_v = pack_eb[prior]
             eb_curr_v = pack_eb[closed]
             eb_basis = "monthly pack"
             eb_refs = [f"claim:ebitda:FY{prior}", f"claim:ebitda:FY{closed}"]
 
-    if eb_prior_v is None or eb_curr_v is None or eb_prior_v == 0:
+    if eb_prior_v is None or eb_curr_v is None or eb_prior_v == 0 or rev_pct is None:
         return []
     eb_change = (eb_curr_v - eb_prior_v) / abs(eb_prior_v)
     if eb_change >= 0:

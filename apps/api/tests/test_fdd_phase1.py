@@ -282,7 +282,8 @@ def test_bridge_draft_flags_every_figure_when_incomplete(deal_root: Path) -> Non
     assert assessment.draft_mode
     assert manifest.draft_mode and manifest.g6_blocked
     assert all(f.draft_flagged for f in facts.facts)
-    assert all(f.status == CellStatus.DRAFT for f in facts.facts)
+    # draft_mode is a run banner — release proven/doubtful status is preserved.
+    assert all(f.status == CellStatus.PROVEN for f in facts.facts)
     assert all(c.draft_flagged for e in store.exhibits for c in e.cells)
     with pytest.raises(GateBlockedError):
         assert_g6_allowed(manifest)
@@ -437,5 +438,5 @@ def test_facts_preserve_release_status_under_draft() -> None:
     )
     facts = facts_from_release(release, draft_mode=True)
     assert facts[0].release_status == CellStatus.DOUBTFUL
-    assert facts[0].status == CellStatus.DRAFT
+    assert facts[0].status == CellStatus.DOUBTFUL
     assert facts[0].draft_flagged
