@@ -516,134 +516,253 @@ def _fact_is_open_or_ytd(fact: FddFact) -> bool:
     return False
 
 
+def _target_from_fact(fact: FddFact | None) -> tuple[str, str | None]:
+    """Resolve document + location for a fact (Fix 6 target)."""
+    if fact is None:
+        return "", None
+    sources = [str(s).strip() for s in (fact.sources or []) if str(s).strip()]
+    ref = fact.source_ref if isinstance(fact.source_ref, dict) else {}
+    doc = (
+        str(ref.get("document") or ref.get("doc_id") or ref.get("filename") or "").strip()
+        or (sources[0] if sources else "")
+    )
+    loc_parts = [
+        str(ref.get(k)).strip()
+        for k in ("sheet_or_page", "page", "cell_range", "bbox", "location")
+        if ref.get(k)
+    ]
+    if not loc_parts and getattr(fact.labels, "source", None):
+        loc_parts.append(str(fact.labels.source))
+    location = " / ".join(loc_parts) if loc_parts else None
+    if not doc and fact.fact_id:
+        # Prefer an explicit non-agent document id; never treat agent: as a target.
+        fid = str(fact.fact_id)
+        if not fid.lower().startswith(("agent:", "agent_", "claim:", "output:")):
+            doc = f"databook:{fid}"
+    return doc, location
+
+
+def _scale_mismatch(claimed: float, book: float) -> bool:
+    """Reject sticky-scale false contradictions (0.57 vs 98097, 13.41 vs 9436)."""
+    a, b = abs(float(claimed)), abs(float(book))
+    if a < 1e-12 or b < 1e-12:
+        return max(a, b) >= 1000.0
+    lo, hi = (a, b) if a <= b else (b, a)
+    return hi >= 1000.0 and hi / max(lo, 1e-12) >= 50.0
+
+
+def _is_self_comparison(claim: ClaimsLedgerEntry, fact: FddFact | None) -> bool:
+    """True when the agent assertion is the same databook fact restated."""
+    if fact is None or not fact.fact_id:
+        return False
+    # Cited pages that are only the fact id / databook mirror → self-comparison.
+    cites = [str(c).strip().lower() for c in (claim.cited_pages or []) if c]
+    fid = str(fact.fact_id).strip().lower()
+    if cites and all(
+        c in {fid, f"databook:{fid}", "databook", "fact table", "fact_table"}
+        or c.startswith("db:")
+        for c in cites
+    ):
+        return True
+    # Agent text that embeds the same fact_id with no external document citation.
+    text_l = (claim.text or "").lower()
+    if fid and fid in text_l and not claim.cited_pages:
+        return True
+    return False
+
+
+def _format_claim_subject_percent(subject: str, claim: ClaimsLedgerEntry) -> str:
+    """Render margin/rate subjects as points (1.8%), not ontology fractions."""
+    text = " ".join(str(subject or "").split())
+    key = str(claim.metric_key or "").lower()
+    claimed = claim.claimed_value
+    if (
+        isinstance(claimed, (int, float))
+        and re.search(r"margin|percent|pct|rate|yoy|growth", key)
+        and abs(float(claimed)) <= 1.0 + 1e-12
+    ):
+        from agetic_cdd_api.services_databook_consume import humanize_metric_key
+
+        lab = humanize_metric_key(claim.metric_key or "") or (claim.metric_key or "Metric")
+        pts = float(claimed) * 100.0
+        body = f"{pts:.1f}".rstrip("0").rstrip(".")
+        fy = claim.fiscal_year
+        return f"{lab} FY{fy} = {body}%" if fy else f"{lab} = {body}%"
+
+    def _frac(match: re.Match[str]) -> str:
+        try:
+            value = float(match.group(1))
+        except ValueError:
+            return match.group(0)
+        if abs(value) <= 1.0 + 1e-12:
+            points = value * 100.0
+            body = f"{points:.1f}".rstrip("0").rstrip(".")
+            return f"= {body}%"
+        body = f"{value:.1f}".rstrip("0").rstrip(".")
+        return f"= {body}%"
+
+    def _points(match: re.Match[str]) -> str:
+        try:
+            value = float(match.group(1))
+        except ValueError:
+            return match.group(0)
+        body = f"{value:.1f}".rstrip("0").rstrip(".")
+        return f"= {body}%"
+
+    text = re.sub(r"=\s*(-?0\.\d+)\s*%", _frac, text)
+    text = re.sub(r"=\s*(-?\d+\.\d{2,})\s*%", _points, text)
+    return text
+
+
+def _stamp_claim(
+    claim: ClaimsLedgerEntry,
+    *,
+    verdict: str,
+    failed: bool,
+    fact: FddFact | None = None,
+    extra: dict | None = None,
+) -> ClaimsLedgerEntry:
+    subject = (claim.subject or claim.text or "").strip() or (
+        f"{claim.metric_key} FY{claim.fiscal_year} = {claim.claimed_value}"
+        if claim.metric_key
+        else (claim.text or "")
+    )
+    subject = _format_claim_subject_percent(subject, claim)
+    doc, loc = _target_from_fact(fact)
+    if not doc and claim.cited_pages:
+        doc = str(claim.cited_pages[0])
+        loc = loc or (", ".join(claim.cited_pages[1:3]) if len(claim.cited_pages) > 1 else None)
+    update = {
+        "subject": subject[:400],
+        "target_document": doc[:240],
+        "target_location": (loc[:240] if loc else None),
+        "verdict": verdict,
+        "test_result": verdict,  # keep legacy field in sync
+        "failed": failed,
+        "self_comparison": _is_self_comparison(claim, fact),
+    }
+    if fact is not None:
+        update["databook_fact_id"] = fact.fact_id
+        update["databook_value"] = fact.value
+    if extra:
+        update.update(extra)
+    return claim.model_copy(update=update)
+
+
 def evaluate_financial_claim(
     claim: ClaimsLedgerEntry, facts_idx: dict[tuple[str, int], FddFact]
 ) -> ClaimsLedgerEntry:
+    """Fix 6 — test agent assertion against a document-backed fact target."""
     if claim.kind != "financial":
         return claim
+    if not claim.source_agent:
+        return _stamp_claim(claim, verdict="unverifiable", failed=True)
     if not claim.metric_key or claim.fiscal_year is None or claim.claimed_value is None:
-        return claim.model_copy(
-            update={
-                "test_result": "unverifiable",
-                "failed": True,
-            }
-        )
+        return _stamp_claim(claim, verdict="unverifiable", failed=True)
     from datetime import date
 
-    # Plan / incomplete years are not like-for-like vs closed actuals.
+    # Plan / incomplete years → wrong_period (not like-for-like vs closed actuals).
     if int(claim.fiscal_year) > date.today().year - 1:
-        return claim.model_copy(
-            update={
-                "test_result": "unverifiable",
-                "failed": False,
-            }
-        )
+        return _stamp_claim(claim, verdict="wrong_period", failed=False)
+
     # Strict (metric_key, fiscal_year) match — no cross-year fallback.
     fact = facts_idx.get((claim.metric_key, int(claim.fiscal_year)))
     if fact is None:
-        return claim.model_copy(
-            update={
-                "test_result": "unverifiable",
-                "failed": True,
-            }
+        # Look for same metric different year → wrong_period; else unverifiable / false_gap.
+        same_metric = [
+            f for (mk, _y), f in facts_idx.items() if mk == claim.metric_key
+        ]
+        text_l = (claim.text or "").lower()
+        asserted_missing = any(
+            tok in text_l for tok in ("missing", "not found", "unavailable", "no data")
         )
-    if _fact_is_open_or_ytd(fact):
-        return claim.model_copy(
-            update={
-                "test_result": "unverifiable",
-                "failed": False,
-                "databook_fact_id": fact.fact_id,
-                "databook_value": fact.value,
-            }
-        )
-    if fact.status == CellStatus.MISSING:
-        return claim.model_copy(
-            update={
-                "test_result": "unverifiable",
-                "failed": True,
-                "databook_fact_id": fact.fact_id,
-                "databook_value": fact.value,
-            }
-        )
-    def _scale_mismatch(claimed: float, book: float) -> bool:
-        """Reject sticky-scale false contradictions (0.57 vs 98097, 13.41 vs 9436)."""
-        a, b = abs(float(claimed)), abs(float(book))
-        if a < 1e-12 or b < 1e-12:
-            return max(a, b) >= 1000.0
-        lo, hi = (a, b) if a <= b else (b, a)
-        return hi >= 1000.0 and hi / max(lo, 1e-12) >= 50.0
+        if same_metric:
+            return _stamp_claim(
+                claim, verdict="wrong_period", failed=True, fact=same_metric[0]
+            )
+        if asserted_missing:
+            return _stamp_claim(claim, verdict="false_gap", failed=True)
+        return _stamp_claim(claim, verdict="unverifiable", failed=True)
 
-    # Doubtful/draft with a released value: still test the figure and surface gaps
-    # (e.g. ledger 13.412 vs workbook 13.282) instead of a blank "unverifiable".
+    if _is_self_comparison(claim, fact):
+        return _stamp_claim(
+            claim,
+            verdict="unverifiable",
+            failed=False,
+            fact=fact,
+            extra={"self_comparison": True},
+        )
+
+    if _fact_is_open_or_ytd(fact):
+        return _stamp_claim(claim, verdict="wrong_period", failed=False, fact=fact)
+
+    if fact.status == CellStatus.MISSING:
+        text_l = (claim.text or "").lower()
+        if any(tok in text_l for tok in ("missing", "not found", "unavailable")):
+            # Agent said missing and fact is missing — unverifiable, not a false gap.
+            return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
+        return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
+
+    # Line label mismatch when fact line differs materially from metric key.
+    fact_line = ""
+    if fact.labels and fact.labels.line:
+        fact_line = str(fact.labels.line).lower().replace(" ", "_")
+    mk = (claim.metric_key or "").lower()
+    if fact_line and mk and fact_line not in mk and mk not in fact_line:
+        # Only flag when values would otherwise look comparable but labels diverge.
+        if fact.value is not None and values_agree(claim.claimed_value, fact.value):
+            pass  # agree on value despite label wording
+        elif fact.value is not None and not _scale_mismatch(
+            float(claim.claimed_value), float(fact.value)
+        ):
+            # Different line family with different value → wrong_line.
+            if abs(float(claim.claimed_value) - float(fact.value)) > CLAIMS_ABS_TOLERANCE:
+                # Keep contradicted for clear money gaps; wrong_line when metric aliases differ.
+                aliases = {
+                    "ebitda": {"adjusted_ebitda", "reported_ebitda", "ebitda"},
+                    "revenue": {"total_revenue", "sales", "revenue"},
+                }
+                family = aliases.get(mk, {mk})
+                if fact_line not in family and not any(a in fact_line for a in family):
+                    return _stamp_claim(
+                        claim, verdict="wrong_line", failed=True, fact=fact
+                    )
+
     if fact.status in {CellStatus.DOUBTFUL, CellStatus.DRAFT}:
         if fact.value is None:
-            return claim.model_copy(
-                update={
-                    "test_result": "unverifiable",
-                    "failed": True,
-                    "databook_fact_id": fact.fact_id,
-                }
-            )
+            return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
         if values_agree(claim.claimed_value, fact.value):
-            return claim.model_copy(
-                update={
-                    "test_result": "agrees",
-                    "failed": False,
-                    "databook_fact_id": fact.fact_id,
-                    "databook_value": fact.value,
-                }
-            )
+            return _stamp_claim(claim, verdict="agrees", failed=False, fact=fact)
         if _scale_mismatch(float(claim.claimed_value), float(fact.value)):
-            return claim.model_copy(
+            return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
+        return _stamp_claim(claim, verdict="contradicted", failed=True, fact=fact)
+
+    if fact.value is None:
+        return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
+    if values_agree(claim.claimed_value, fact.value):
+        stamped = _stamp_claim(claim, verdict="agrees", failed=False, fact=fact)
+        # Agrees still requires a document target — otherwise unverifiable.
+        if not stamped.target_document:
+            return stamped.model_copy(
                 update={
+                    "verdict": "unverifiable",
                     "test_result": "unverifiable",
                     "failed": True,
-                    "databook_fact_id": fact.fact_id,
-                    "databook_value": fact.value,
                 }
             )
-        return claim.model_copy(
-            update={
-                "test_result": "contradicted",
-                "failed": True,
-                "databook_fact_id": fact.fact_id,
-                "databook_value": fact.value,
-            }
-        )
-    if fact.value is None:
-        return claim.model_copy(
-            update={
-                "test_result": "unverifiable",
-                "failed": True,
-                "databook_fact_id": fact.fact_id,
-            }
-        )
-    if values_agree(claim.claimed_value, fact.value):
-        return claim.model_copy(
-            update={
-                "test_result": "agrees",
-                "failed": False,
-                "databook_fact_id": fact.fact_id,
-                "databook_value": fact.value,
-            }
-        )
+        return stamped
     if _scale_mismatch(float(claim.claimed_value), float(fact.value)):
-        return claim.model_copy(
+        return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
+    stamped = _stamp_claim(claim, verdict="contradicted", failed=True, fact=fact)
+    if not stamped.target_document:
+        return stamped.model_copy(
             update={
+                "verdict": "unverifiable",
                 "test_result": "unverifiable",
                 "failed": True,
-                "databook_fact_id": fact.fact_id,
-                "databook_value": fact.value,
             }
         )
-    return claim.model_copy(
-        update={
-            "test_result": "contradicted",
-            "failed": True,
-            "databook_fact_id": fact.fact_id,
-            "databook_value": fact.value,
-        }
-    )
+    return stamped
 
 
 def score_modules(claims: list[ClaimsLedgerEntry]) -> list[ModuleReliability]:
@@ -780,9 +899,14 @@ def _append_claim_requests(
     seen = {(_input_key_str(i.input_key), i.title) for i in items}
 
     for claim in claims:
-        if claim.kind != "financial" or claim.test_result not in {
+        verdict = str(getattr(claim, "verdict", None) or claim.test_result or "")
+        # wrong_period is a ledger classification for open/plan years — not a
+        # client RFI (those titles were leaking "(wrong period)" across the deck).
+        if claim.kind != "financial" or verdict not in {
             "contradicted",
             "unverifiable",
+            "false_gap",
+            "wrong_line",
         }:
             continue
         claimed = claim.claimed_value
@@ -803,17 +927,13 @@ def _append_claim_requests(
         if claimed is not None and book is not None:
             gap = abs(float(claimed) - float(book))
             title = (
-                f"{fy} {metric}: {claimed_src} {float(claimed):.3f} vs "
-                f"{book_src} {float(book):.3f} — gap {gap:.3f} "
-                f"({claim.test_result})"
+                f"Reconcile {fy} {metric}: {claimed_src} vs {book_src} "
+                f"(gap {gap:.3f})"
             )
         elif book is not None:
-            title = (
-                f"{fy} {metric}: {book_src} {float(book):.3f} "
-                f"({claim.test_result})"
-            )
+            title = f"Confirm {fy} {metric} against {book_src}"
         else:
-            title = f"Resolve claim {claim.metric_key or '?'} FY{claim.fiscal_year or '?'} ({claim.test_result})"
+            title = f"Support {metric} for {fy} with a closed-year schedule"
         dedupe = (_input_key_str(InputKey.DATABOOK), title)
         if dedupe in seen:
             continue
@@ -822,7 +942,7 @@ def _append_claim_requests(
         # Never put raw agent figure prose in the client-facing Why column.
         detail = (
             f"Reconcile {metric} for {fy} against the approved databook."
-            if claim.test_result == "contradicted"
+            if verdict == "contradicted"
             else f"Support {metric} for {fy} with a schedule."
         )
         items.append(
@@ -873,21 +993,56 @@ def build_claims_ledger(
         raw_claims.extend(extract_claims_from_agent(deal_slug, agent))
 
     tested: list[ClaimsLedgerEntry] = []
+    dropped_self = 0
     for claim in raw_claims:
+        # Fix 6 — every row must name an agent module.
+        if not (claim.source_agent or "").strip():
+            continue
         if claim.kind == "financial":
-            tested.append(evaluate_financial_claim(claim, facts_idx))
+            evaluated = evaluate_financial_claim(claim, facts_idx)
+            # Zero self-comparisons: drop databook↔databook restatements.
+            if getattr(evaluated, "self_comparison", False):
+                dropped_self += 1
+                continue
+            tested.append(evaluated)
         else:
-            # qualitative already stamped narrative_ok / failed on extract
-            tested.append(claim)
+            # Qualitative: subject = text; target = first cited document.
+            cites = list(claim.cited_pages or [])
+            doc = cites[0] if cites else ""
+            verdict = (
+                "agrees"
+                if claim.narrative_ok and doc
+                else ("unverifiable" if not doc else claim.test_result or "pending")
+            )
+            tested.append(
+                claim.model_copy(
+                    update={
+                        "subject": (claim.subject or claim.text or "")[:400],
+                        "target_document": doc[:240],
+                        "target_location": (
+                            ", ".join(cites[1:3]) if len(cites) > 1 else None
+                        ),
+                        "verdict": verdict,
+                        "test_result": verdict,
+                        "failed": bool(claim.failed or not doc),
+                    }
+                )
+            )
 
     modules = score_modules(tested)
     unreliable = [m.source_agent for m in modules if m.unreliable]
 
+    def _verdict_of(c: ClaimsLedgerEntry) -> str:
+        return str(getattr(c, "verdict", None) or c.test_result or "pending")
+
     counts = {
-        "agrees": sum(1 for c in tested if c.test_result == "agrees"),
-        "contradicted": sum(1 for c in tested if c.test_result == "contradicted"),
-        "unverifiable": sum(1 for c in tested if c.test_result == "unverifiable"),
-        "pending": sum(1 for c in tested if c.test_result == "pending"),
+        "agrees": sum(1 for c in tested if _verdict_of(c) == "agrees"),
+        "contradicted": sum(1 for c in tested if _verdict_of(c) == "contradicted"),
+        "unverifiable": sum(1 for c in tested if _verdict_of(c) == "unverifiable"),
+        "pending": sum(1 for c in tested if _verdict_of(c) == "pending"),
+        "false_gap": sum(1 for c in tested if _verdict_of(c) == "false_gap"),
+        "wrong_line": sum(1 for c in tested if _verdict_of(c) == "wrong_line"),
+        "wrong_period": sum(1 for c in tested if _verdict_of(c) == "wrong_period"),
     }
     ledger = ClaimsLedgerDoc(
         run_id=run_id,
@@ -903,14 +1058,24 @@ def build_claims_ledger(
         contradicted=counts["contradicted"],
         unverifiable=counts["unverifiable"],
         pending=counts["pending"],
+        false_gap=counts["false_gap"],
+        wrong_line=counts["wrong_line"],
+        wrong_period=counts["wrong_period"],
+        self_comparisons_dropped=dropped_self,
         unreliable_modules=unreliable,
         modules=modules,
         claims=tested,
         notes=[
-            "Financial claims tested against FDD fact table (metric_key × fiscal_year).",
-            "Qualitative claims require cited_pages for narrative_ok.",
+            "Fix 6 — Subject = agent assertion; Target = document + source location.",
+            "Verdicts: agrees | contradicted | false_gap | wrong_line | wrong_period | unverifiable.",
+            "Self-comparisons (databook vs databook) are dropped.",
             "Agent figures never seed exhibits (R2).",
             f"Module unreliable when fail_rate > {CLAIMS_RELIABILITY_FAIL_THRESHOLD:.0%}.",
+            *(
+                [f"Dropped {dropped_self} self-comparison row(s)."]
+                if dropped_self
+                else []
+            ),
         ],
     )
     ledger = save_claims_ledger(ledger)

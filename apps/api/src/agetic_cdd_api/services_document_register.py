@@ -44,12 +44,24 @@ def document_type(doc_id: str) -> str | None:
 
 
 def note_unread(deal_id: str, file_name: str, reason: str) -> None:
-    """Keep an unread file in the register and record why."""
+    """Keep an unread file in the register and record why.
+
+    Fix 7 — prefer PARTIAL/FAILED when the reason names that outcome, instead of
+    always collapsing to SKIPPED.
+    """
     for row in _ROOMS.get(deal_id, []):
         if row.get("file_name") != file_name:
             continue
-        row["status"] = "SKIPPED"
-        row["status_reason"] = reason
+        text = " ".join(str(reason or "").split())
+        upper = text.upper()
+        if upper.startswith("FAILED") or " READ FAILED" in f" {upper}":
+            status = "FAILED"
+        elif upper.startswith("PARTIAL") or "UNREADABLE" in upper or "OCR GAP" in upper:
+            status = "PARTIAL"
+        else:
+            status = "SKIPPED"
+        row["status"] = status
+        row["status_reason"] = text or "unread"
         _update_status(row)
         return
 
@@ -210,14 +222,45 @@ def _graph(path: Path) -> tuple[dict[str, Any], str | None]:
 
 
 def _status(path: Path, suffix: str, parts: list[dict[str, Any]], error: str | None) -> tuple[str, str | None]:
+    """Fix 7 — honest PARTIAL/FAILED for OCR gaps and unreadable page images."""
     if error:
         return "FAILED", error
     if path.stat().st_size == 0:
         return "SKIPPED", "file is empty"
-    if any(part.get("usable_as_source") for part in parts):
-        return "READ", None
     if suffix not in _READABLE:
         return "SKIPPED", "format is not read"
+
+    usable = [p for p in parts if p.get("usable_as_source") and (p.get("text") or "").strip()]
+    ocr_parts = [
+        p
+        for p in parts
+        if p.get("level") in {"block", "cell"}
+        and (
+            str((p.get("locator") or {}).get("extraction") or "").upper() in {"OCR", "PAGE_IMAGE"}
+            or p.get("image_kind")
+            or p.get("ocr")
+        )
+    ]
+    attempted_ocr = any(p.get("ocr_attempted") for p in parts) or bool(ocr_parts)
+
+    if usable and ocr_parts and any(not (p.get("text") or "").strip() for p in parts if p.get("ocr_attempted")):
+        return "PARTIAL", "OCR gaps on some pages"
+    if usable and attempted_ocr and suffix in {"pdf", "png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp", "gif"}:
+        # Text recovered via OCR/page image — treat as partial when bbox missing on OCR blocks.
+        missing_bbox = [
+            p
+            for p in usable
+            if (p.get("image_kind") or str((p.get("locator") or {}).get("extraction") or "").upper() in {"OCR", "PAGE_IMAGE"})
+            and not (p.get("locator") or {}).get("bbox")
+        ]
+        if missing_bbox:
+            return "PARTIAL", "OCR text without full page bbox"
+        if ocr_parts:
+            return "PARTIAL", "source text from OCR / page image"
+    if usable:
+        return "READ", None
+    if attempted_ocr or suffix in {"pdf", "png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp", "gif"}:
+        return "FAILED", "unreadable — OCR returned no usable text"
     return "SKIPPED", "no text returned"
 
 

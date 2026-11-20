@@ -487,23 +487,34 @@ def _write_fdd_pptx(
     prs.save(str(path))
 
 
-def _side_json(path, *, manifest, rendered: StubRenderResult) -> None:
+def _side_json(
+    path,
+    *,
+    manifest,
+    rendered: StubRenderResult,
+    slides: list | None = None,
+    company: str | None = None,
+) -> None:
     side = path.parent / f"{path.stem}_figures.json"
-    side.write_text(
-        json.dumps(
-            {
-                "run_id": manifest.run_id,
-                "kind": rendered.kind,
-                "figures": rendered.figures,
-                "displays": rendered.displays,
-                "content_hash": rendered.content_hash,
-                "page_count": len(rendered.pages),
-                "pages": [p.model_dump(mode="json") for p in rendered.pages],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    payload: dict[str, Any] = {
+        "run_id": manifest.run_id,
+        "kind": rendered.kind,
+        "figures": rendered.figures,
+        "displays": rendered.displays,
+        "content_hash": rendered.content_hash,
+        "page_count": len(rendered.pages),
+        "pages": [p.model_dump(mode="json") for p in rendered.pages],
+    }
+    if company:
+        payload["company"] = company
+    # Stamp chapter slides next to the PPTX so preview matches download without
+    # depending on current_run pointer drift.
+    if slides:
+        payload["slides"] = [
+            s.model_dump(mode="json") if hasattr(s, "model_dump") else s for s in slides
+        ]
+        payload["page_count"] = len(slides)
+    side.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _published_pages(ctx: BuildContext) -> list[dict[str, Any]]:
@@ -559,18 +570,29 @@ def _export_chapter_pptx(
     ctx.pdf_artifact_path = None
     out_dir = report_artifact_dir(ctx.deal_slug, report_type)
     path = out_dir / filename
+    # Fix 8 — refuse deck production while open block flags sit on FDD schedules.
+    from agetic_cdd_api.services_fdd_deck_gate import assert_deck_release_allowed
+
+    assert_deck_release_allowed(str(getattr(ctx, "deal_slug", "") or ""))
     manifest, store, spec, rendered = _cached_bundle_and_render(ctx, kind="deck")
     chapter_slides = list(getattr(spec, "slides", None) or [])
     if chapter_slides:
         from agetic_cdd_api.services_fdd_chapters import default_chrome
         from agetic_cdd_api.services_fdd_pptx import write_fdd_presentation
 
+        company = _company(ctx)
         write_fdd_presentation(
             path,
             chapter_slides,
-            chrome=default_chrome(company=_company(ctx)),
+            chrome=default_chrome(company=company),
         )
-        _side_json(path, manifest=manifest, rendered=rendered)
+        _side_json(
+            path,
+            manifest=manifest,
+            rendered=rendered,
+            slides=chapter_slides,
+            company=company,
+        )
         return _artifact_relpath(path, ctx.deal_slug)
 
     pages = _published_pages(ctx)
@@ -652,6 +674,17 @@ class FddReportBuilder(ReportBuilder):
                 "validation",
                 f"databook contract complete · release {manifest.databook_release_id}",
             )
+        try:
+            from agetic_cdd_api.services_fdd_deck_gate import evaluate_deck_release_gate
+
+            deck_gate = evaluate_deck_release_gate(str(getattr(ctx, "deal_slug", "") or ""))
+            yield _evt(
+                "validation",
+                deck_gate.detail,
+                deck_release=deck_gate.as_dict(),
+            )
+        except Exception:
+            pass
 
     def export_artifact(self, ctx: BuildContext) -> str:
         # Never emit a PDF twin for the FDD Report.

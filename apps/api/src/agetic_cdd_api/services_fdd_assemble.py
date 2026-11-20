@@ -264,7 +264,9 @@ def _front_matter_nodes(
         if scope.materiality_m is not None:
             mat = f"{format_fdd_number(float(scope.materiality_m))} {scale or 'M'} ({basis_human})"
         elif scope.materiality_pct is not None:
-            mat = f"{float(scope.materiality_pct) * 100:.1f}% of {basis_human}"
+            from agetic_cdd_api.services_fdd_format import format_percent
+
+            mat = f"{format_percent(scope.materiality_pct, already_points=False)} of {basis_human}"
     basis_lines = [
         f"Entities in scope: {ents}",
         f"Periods: {periods}",

@@ -232,11 +232,41 @@ def _read_pdf(path: Path, doc_id: str) -> list[dict[str, Any]]:
             locator = {"page": index + 1}
             page_id = _part_id(doc_id, "page", locator, "")
             parts.append(_node(page_id, doc_id, "page", locator))
-            blocks = _pdf_blocks(page)
-            if sum(len(text) for text in blocks) <= 12:
-                blocks.extend(_ocr_page_images(pdf, page))
-            for block_index, text in enumerate(blocks, start=1):
-                block_locator = {"page": index + 1, "block": block_index}
+            blocks = _pdf_blocks_with_bbox(page)
+            text_only = {item["text"] for item in blocks}
+            if sum(len(item["text"]) for item in blocks) <= 12:
+                ocr_blocks = _ocr_page_images(pdf, page)
+                usable_ocr = [item for item in ocr_blocks if (item.get("text") or "").strip()]
+                if usable_ocr:
+                    blocks.extend(usable_ocr)
+                else:
+                    # Honest empty OCR attempt so register can mark PARTIAL/FAILED.
+                    parts.append(
+                        _node(
+                            _part_id(doc_id, "block", {"page": index + 1, "block": 0}, ""),
+                            page_id,
+                            "block",
+                            {
+                                "page": index + 1,
+                                "block": 0,
+                                "extraction": "OCR",
+                                "bbox": [0.0, 0.0, 1.0, 1.0],
+                            },
+                            text="",
+                            ocr_attempted=True,
+                            ocr=True,
+                        )
+                    )
+            for block_index, item in enumerate(blocks, start=1):
+                text = item["text"]
+                from_ocr = bool(item.get("ocr"))
+                block_locator = {
+                    "page": index + 1,
+                    "block": block_index,
+                    "bbox": item.get("bbox"),
+                }
+                if from_ocr:
+                    block_locator["extraction"] = item.get("extraction") or "OCR"
                 parts.append(
                     _node(
                         _part_id(doc_id, "block", block_locator, text),
@@ -244,29 +274,64 @@ def _read_pdf(path: Path, doc_id: str) -> list[dict[str, Any]]:
                         "block",
                         block_locator,
                         text=text,
-                        image_kind=_image_kind(text) if text not in _pdf_text_blocks(page) else None,
+                        image_kind=(
+                            _image_kind(text)
+                            if from_ocr or (text and text not in text_only)
+                            else None
+                        ),
+                        ocr_attempted=from_ocr,
+                        ocr=from_ocr,
                     )
                 )
     return parts
 
 
-def _pdf_blocks(page: Any) -> list[str]:
-    blocks = []
+def _page_norm_bbox(page: Any, rect: Any) -> list[float]:
+    """Normalize a PyMuPDF rect to page-relative [x0,y0,x1,y1] in 0..1."""
+    try:
+        w = float(page.rect.width) or 1.0
+        h = float(page.rect.height) or 1.0
+        x0 = max(0.0, min(1.0, float(rect.x0) / w))
+        y0 = max(0.0, min(1.0, float(rect.y0) / h))
+        x1 = max(0.0, min(1.0, float(rect.x1) / w))
+        y1 = max(0.0, min(1.0, float(rect.y1) / h))
+        if x1 <= x0:
+            x1 = min(1.0, x0 + 0.02)
+        if y1 <= y0:
+            y1 = min(1.0, y0 + 0.02)
+        return [round(x0, 6), round(y0, 6), round(x1, 6), round(y1, 6)]
+    except Exception:
+        return [0.0, 0.0, 1.0, 1.0]
+
+
+def _pdf_blocks_with_bbox(page: Any) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
     for block in page.get_text("blocks") or []:
         if len(block) < 5:
             continue
         text = " ".join(str(block[4]).split())
-        if text:
-            blocks.append(text)
+        if not text:
+            continue
+        try:
+            import fitz
+
+            rect = fitz.Rect(block[0], block[1], block[2], block[3])
+        except Exception:
+            rect = type("R", (), {"x0": 0, "y0": 0, "x1": 1, "y1": 1})()
+        blocks.append({"text": text, "bbox": _page_norm_bbox(page, rect), "ocr": False})
     return blocks
+
+
+def _pdf_blocks(page: Any) -> list[str]:
+    return [item["text"] for item in _pdf_blocks_with_bbox(page)]
 
 
 def _pdf_text_blocks(page: Any) -> set[str]:
     return set(_pdf_blocks(page))
 
 
-def _ocr_page_images(pdf: Any, page: Any) -> list[str]:
-    found = []
+def _ocr_page_images(pdf: Any, page: Any) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
     for item in page.get_images(full=True) or []:
         try:
             info = pdf.extract_image(item[0])
@@ -274,8 +339,21 @@ def _ocr_page_images(pdf: Any, page: Any) -> list[str]:
             continue
         blob = info.get("image") if isinstance(info, dict) else None
         text = ocr_image(blob) if blob else ""
-        if text:
-            found.append(text)
+        bbox = [0.05, 0.05, 0.95, 0.95]
+        try:
+            rects = page.get_image_rects(item[0]) if hasattr(page, "get_image_rects") else []
+            if rects:
+                bbox = _page_norm_bbox(page, rects[0])
+        except Exception:
+            pass
+        found.append(
+            {
+                "text": text or "",
+                "bbox": bbox,
+                "ocr": True,
+                "extraction": "PAGE_IMAGE" if text else "OCR",
+            }
+        )
     return found
 
 

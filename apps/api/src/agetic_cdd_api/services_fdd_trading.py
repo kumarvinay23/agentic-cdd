@@ -71,8 +71,17 @@ def _discover_product_streams(
         label = cap
         # Normalise common "X Sales" → short channel-style label when unused.
         m = re.match(r"(?i)^(.+?)\s+sales$", cap)
-        if m and m.group(1).strip().lower() not in seen:
-            label = m.group(1).strip()
+        stem = m.group(1).strip() if m else ""
+        if stem and stem.lower() not in seen:
+            # Drop stripped stem when a longer product label already covers it
+            # (e.g. "Compost Sales" → "Compost" duplicates "Compost & products").
+            if any(
+                existing.startswith(stem.lower()) and existing != stem.lower()
+                for existing in seen
+            ):
+                seen.add(cap.lower())
+                continue
+            label = stem
         if label.lower() in seen:
             continue
         # Verify at least one FY amount resolves.

@@ -750,3 +750,239 @@ def preview_pptx(path: Path, *, max_slides: int = 80) -> dict[str, Any]:
         "page_count": slide_count,
         "slide_count": slide_count,
     }
+
+
+def preview_fdd_from_slides(
+    slides: list[Any],
+    *,
+    chrome: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build an FDD deck preview from typed SlideSpecs (same source as PPTX).
+
+    Unlike ``preview_pptx`` (lossy CDD/Market shape scrape), this preserves
+    banner, headline, table+observations, footnotes, source, evidence, and
+    completeness so the web frame can match the downloaded report.
+    """
+    chrome = chrome or {}
+    slides_out: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
+    total = len(slides or [])
+
+    for index, slide in enumerate(slides or [], start=1):
+        if hasattr(slide, "model_dump"):
+            raw = slide.model_dump(mode="json")
+        elif isinstance(slide, dict):
+            raw = dict(slide)
+        else:
+            continue
+
+        layout = str(raw.get("layout") or "section_table_obs")
+        banner = str(raw.get("banner") or "")
+        headline = str(raw.get("headline") or "")
+        completeness = str(raw.get("completeness_state") or "complete").lower()
+        if completeness and completeness != "complete" and banner:
+            banner_disp = f"{banner} · {completeness.upper()}"
+        else:
+            banner_disp = banner
+
+        table_raw = raw.get("table") or None
+        table_rows: list[list[str]] = []
+        table_title = ""
+        table_basis = ""
+        if isinstance(table_raw, dict):
+            table_title = str(table_raw.get("title") or "")
+            table_basis = str(table_raw.get("basis") or "")
+            headers = [str(h) for h in (table_raw.get("headers") or [])]
+            body = [[str(c) for c in row] for row in (table_raw.get("rows") or [])]
+            if headers:
+                table_rows = [headers, *body]
+            else:
+                table_rows = body
+
+        kpis_out = []
+        for kpi in raw.get("kpis") or []:
+            if isinstance(kpi, dict):
+                kpis_out.append(
+                    {
+                        "value": str(kpi.get("value") or ""),
+                        "label": str(kpi.get("label") or ""),
+                        "detail": str(kpi.get("detail") or ""),
+                    }
+                )
+
+        findings_table: list[list[str]] = []
+        for row in raw.get("findings") or []:
+            if not isinstance(row, dict):
+                continue
+            findings_table.append(
+                [
+                    str(row.get("finding_id") or ""),
+                    str(row.get("title") or row.get("text") or ""),
+                    str(row.get("rating") or ""),
+                    str(row.get("quantified_effect") or ""),
+                    str(row.get("tier") or ""),
+                    str(row.get("protection") or ""),
+                ]
+            )
+
+        toc_rows: list[list[str]] = []
+        for entry in raw.get("toc_entries") or []:
+            if isinstance(entry, dict):
+                toc_rows.append(
+                    [
+                        str(entry.get("number") or ""),
+                        str(entry.get("title") or ""),
+                        str(entry.get("page") or ""),
+                    ]
+                )
+
+        kind = "content"
+        if layout == "cover":
+            kind = "cover"
+        elif layout == "toc":
+            kind = "agenda"
+
+        page_no = raw.get("page_no") or index
+        page = f"{int(page_no):02d}" if page_no else f"{index:02d}"
+
+        # Prefer findings / toc as the primary table when present.
+        display_table = table_rows
+        if findings_table and not display_table:
+            display_table = [
+                ["#", "Finding", "Rating", "Quantified effect", "Tier", "Protection"],
+                *findings_table,
+            ]
+        if toc_rows and layout == "toc":
+            display_table = [["#", "Section", "Page"], *toc_rows]
+
+        subtitle = ""
+        if chrome.get("project_label") or chrome.get("basis_short"):
+            subtitle = " | ".join(
+                x
+                for x in [
+                    str(chrome.get("project_label") or "").strip(),
+                    str(chrome.get("basis_short") or "").strip(),
+                ]
+                if x
+            )
+
+        slide_out = {
+            "index": index,
+            "kind": kind,
+            "layout": layout,
+            "eyebrow": banner_disp,
+            "title": headline
+            or str(raw.get("deal_name") or raw.get("banner") or f"Slide {index}"),
+            "subtitle": subtitle if layout != "cover" else str(raw.get("engagement") or ""),
+            "bullets": [str(x) for x in (raw.get("observations") or []) if str(x).strip()],
+            "paragraphs": [],
+            "table": display_table or None,
+            "table_title": table_title,
+            "table_basis": table_basis,
+            "kpis": kpis_out or None,
+            "footnotes": [str(x) for x in (raw.get("footnotes") or []) if str(x).strip()],
+            "source": str(raw.get("source") or ""),
+            "evidence_tier": str(raw.get("evidence_tier") or ""),
+            "completeness_state": completeness,
+            "banner": banner_disp,
+            "headline": headline,
+            "page": page,
+            "number": str(raw.get("adj_id") or "") or None,
+            "chrome": "fdd",
+        }
+        if layout == "cover":
+            slide_out["paragraphs"] = [
+                p
+                for p in [
+                    str(raw.get("entity_line") or ""),
+                    str(raw.get("basis_line") or ""),
+                    str(raw.get("date_line") or ""),
+                    str(raw.get("confidentiality") or ""),
+                ]
+                if p
+            ]
+            slide_out["title"] = str(raw.get("deal_name") or headline or "FDD Report")
+            slide_out["subtitle"] = str(raw.get("engagement") or "Financial due diligence")
+
+        slides_out.append(slide_out)
+        blocks.append(
+            {
+                "type": "heading",
+                "text": f"{page} · {banner_disp or layout}",
+                "level": 1,
+            }
+        )
+        if headline:
+            blocks.append({"type": "paragraph", "text": headline})
+        for bullet in slide_out["bullets"][:6]:
+            blocks.append({"type": "bullet", "text": bullet})
+
+    return {
+        "format": "pptx",
+        "preview_mode": "fdd_slidespec",
+        "chrome": {
+            "family": "fdd",
+            "project_label": chrome.get("project_label") or "",
+            "basis_short": chrome.get("basis_short") or "",
+            "currency": chrome.get("currency") or "USD",
+            "display_scale": chrome.get("display_scale") or "k",
+        },
+        "slides": slides_out,
+        "blocks": blocks,
+        "block_count": len(blocks),
+        "page_count": total,
+        "slide_count": total,
+    }
+
+
+def preview_fdd_report(deal_slug: str, artifact_path: Path | None = None) -> dict[str, Any] | None:
+    """Load FDD SlideSpecs for preview; None if unavailable (caller may scrape PPTX)."""
+    from agetic_cdd_api.services_fdd_chapters import default_chrome
+    from agetic_cdd_api.services_fdd_store import get_current_run_id, load_report_spec
+
+    run_id = None
+    if artifact_path is not None:
+        side = artifact_path.parent / f"{artifact_path.stem}_figures.json"
+        if side.is_file():
+            try:
+                import json
+
+                payload = json.loads(side.read_text(encoding="utf-8"))
+                run_id = str(payload.get("run_id") or "") or None
+                # Prefer slides stamped next to the PPTX when present.
+                stamped = payload.get("slides")
+                if isinstance(stamped, list) and stamped:
+                    company = str(payload.get("company") or deal_slug)
+                    chrome = default_chrome(company=company)
+                    return preview_fdd_from_slides(
+                        stamped,
+                        chrome={
+                            "project_label": chrome.project_label,
+                            "basis_short": chrome.basis_short,
+                            "currency": chrome.currency,
+                            "display_scale": chrome.display_scale,
+                        },
+                    )
+            except Exception:
+                run_id = run_id
+
+    if not run_id:
+        run_id = get_current_run_id(deal_slug)
+    if not run_id:
+        return None
+    spec = load_report_spec(deal_slug, run_id)
+    if spec is None or not (spec.slides or []):
+        return None
+    chrome = default_chrome(company=deal_slug)
+    # Prefer deal/project naming from cover slide when present.
+    cover = next((s for s in spec.slides if str(getattr(s, "layout", "")) == "cover"), None)
+    project = str(getattr(cover, "deal_name", None) or chrome.project_label)
+    return preview_fdd_from_slides(
+        list(spec.slides),
+        chrome={
+            "project_label": project,
+            "basis_short": chrome.basis_short,
+            "currency": chrome.currency,
+            "display_scale": chrome.display_scale,
+        },
+    )

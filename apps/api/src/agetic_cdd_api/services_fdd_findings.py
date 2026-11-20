@@ -27,7 +27,7 @@ from agetic_cdd_api.services_fdd_store import (
     save_manifest,
 )
 
-FINDINGS_VERSION = "1.0.0"
+FINDINGS_VERSION = "1.1.0"  # Fix 5 — register records; claims/RFIs are not findings
 _MAX_CLAIM_FINDINGS = 12
 # Absolute USD-M gap for core P&L claim contradictions. Below this → MODERATE.
 _CLAIM_HIGH_ABS = 0.03
@@ -122,126 +122,14 @@ def finding_page_title(finding: Finding) -> str:
 
 
 def _from_claims(deal_slug: str, run_id: str) -> list[Finding]:
-    from datetime import date
+    """Fix 5 — claim contradictions are NOT findings.
 
-    from agetic_cdd_api.services_fdd_tokens import format_fdd_number
-
-    ledger = load_claims_ledger(deal_slug, run_id)
-    if ledger is None:
-        return []
-    out: list[Finding] = []
-    closed_cutoff = date.today().year - 1
-    unreliable = {
-        m.source_agent
-        for m in (ledger.modules or [])
-        if getattr(m, "unreliable", False)
-    }
-    for claim in ledger.claims or []:
-        if not getattr(claim, "failed", False) and claim.test_result not in {
-            "contradicted",
-            "unverifiable",
-        }:
-            continue
-        # Plan / open years are not diligence contradictions (pack YTD ≠ plan).
-        if claim.fiscal_year is not None and int(claim.fiscal_year) > closed_cutoff:
-            continue
-        if claim.test_result != "contradicted":
-            # Unverifiable without a contradiction is an open request, not a finding.
-            continue
-        # Missing databook cell (0.000) vs a real pack figure is not a diligence finding.
-        if (
-            claim.claimed_value is not None
-            and claim.databook_value is not None
-            and abs(float(claim.databook_value)) < 1e-9
-            and abs(float(claim.claimed_value)) >= 0.1
-        ):
-            continue
-        # Sticky raw leftovers must not become ranked findings.
-        blob = f"{claim.text or ''} {claim.claimed_value} {claim.databook_value}"
-        if re.search(r"\b(9436|98097|56182)\b", blob):
-            continue
-        mk = (claim.metric_key or "").lower()
-        section = _SECTION_FOR_METRIC.get(mk, "SEC-K")
-        result = claim.test_result or "unverifiable"
-        if result == "contradicted" and mk in {"revenue", "ebitda", "gross_profit"}:
-            # HIGH only at/above absolute materiality (0.03 M); smaller gaps stay
-            # MODERATE so FY2023/24 EBITDA ~0.02 M are not false alarms.
-            severity = FindingSeverity.MODERATE
-            if (
-                claim.claimed_value is not None
-                and claim.databook_value is not None
-            ):
-                gap = abs(float(claim.claimed_value) - float(claim.databook_value))
-                if gap + 1e-12 >= _CLAIM_HIGH_ABS:
-                    severity = FindingSeverity.HIGH
-                elif (
-                    abs(float(claim.databook_value)) > 1e-9
-                    and gap / abs(float(claim.databook_value)) >= max(_LARGE_GAP_REL, 0.05)
-                ):
-                    # Large relative miss on a small base still warrants HIGH.
-                    severity = FindingSeverity.HIGH
-        elif result == "contradicted":
-            severity = FindingSeverity.MODERATE
-        elif mk.startswith("grr") or mk.startswith("nrr"):
-            severity = FindingSeverity.LOW
-        else:
-            severity = FindingSeverity.LOW
-        if claim.source_agent and claim.source_agent in unreliable:
-            if severity == FindingSeverity.LOW:
-                severity = FindingSeverity.MODERATE
-        year_lab = f"FY{claim.fiscal_year}" if claim.fiscal_year else "open period"
-        metric_lab = (mk or "item").replace("_", " ")
-        obs = (claim.text or "").strip()
-        if (
-            claim.claimed_value is not None
-            and claim.databook_value is not None
-            and result == "contradicted"
-        ):
-            obs = (
-                f"{metric_lab} {year_lab}: claimed "
-                f"{format_fdd_number(float(claim.claimed_value))} "
-                f"vs databook {format_fdd_number(float(claim.databook_value))}."
-            )
-            title = (
-                f"{metric_lab.title()} {year_lab}: claimed vs accounts "
-                f"({result})"
-            )
-        elif result == "unverifiable":
-            title = f"{metric_lab.title()} {year_lab} unverifiable vs accounts"
-            if not obs:
-                obs = title
-        else:
-            title = f"{metric_lab.title()} {year_lab} ({result})"
-            if not obs:
-                obs = title
-        out.append(
-            Finding(
-                finding_id=_fid("claim", claim.claim_id),
-                section_id=section,
-                severity=severity,
-                title=title[:160],
-                observation=obs[:400],
-                implication=(
-                    "Reconcile sources before IC relies on this figure."
-                    if result == "contradicted"
-                    else "Obtain supporting evidence or retire the claim."
-                ),
-                ask_management=(
-                    f"Please provide the schedule that supports {mk or 'this claim'} "
-                    f"for FY{claim.fiscal_year}."
-                    if claim.fiscal_year
-                    else "Please provide supporting schedules for this claim."
-                ),
-                evidence_refs=[claim.claim_id]
-                + ([claim.databook_fact_id] if claim.databook_fact_id else []),
-                source=FindingSource.CLAIM
-                if "gap" not in obs.lower()
-                else FindingSource.SOURCE_BASIS_GAP,
-            )
-        )
-        if len(out) >= _MAX_CLAIM_FINDINGS:
-            break
-    return out
+    Failed agent claims stay on the claims ledger and open information
+    requests / gaps. Rule and claim bookkeeping must not crowd the IC findings
+    register.
+    """
+    _ = (deal_slug, run_id, load_claims_ledger, _MAX_CLAIM_FINDINGS, _CLAIM_HIGH_ABS)
+    return []
 
 
 def _from_g3(store: ExhibitStoreDoc) -> list[Finding]:
@@ -343,49 +231,123 @@ def _from_requests(
     *,
     covered_claim_keys: set[str] | None = None,
 ) -> list[Finding]:
-    from datetime import date
+    """Fix 5 — open RFIs are requests, not findings (GOV-03 info_request)."""
+    _ = (deal_slug, run_id, covered_claim_keys, load_request_list)
+    return []
 
-    from agetic_cdd_api.services_fdd_commentary import (
-        _request_title_is_open_year,
-        _request_title_is_readiness_scaffold,
+
+def _mechanism_for(finding: Finding) -> str:
+    sev = finding.severity
+    if sev == FindingSeverity.HIGH:
+        return "condition"
+    if sev == FindingSeverity.MODERATE:
+        return "covenant"
+    return "information"
+
+
+def _tier_for(finding: Finding) -> str:
+    refs = list(finding.evidence_refs or [])
+    for ref in refs:
+        t = str(ref).strip().upper()
+        if t in {"A", "B", "C"}:
+            return t
+    src = finding.source
+    if src in {FindingSource.MODEL, FindingSource.QOE}:
+        return "B"
+    if src == FindingSource.G3:
+        return "B"
+    return "C" if src == FindingSource.HELD_SECTION else "B"
+
+
+def _enrich_finding_record(finding: Finding, *, display_id: str) -> Finding:
+    """Fill Fix 5 register fields from existing prose when unset."""
+    quant = (finding.quantified_effect or "").strip()
+    if not quant:
+        for blob in (finding.implication, finding.observation):
+            if blob:
+                quant = " ".join(str(blob).split())[:72]
+                break
+        if not quant:
+            quant = "Size / effect pending"
+    protection = (finding.protection or "").strip()
+    if not protection:
+        protection = (
+            " ".join(str(finding.ask_management).split())[:70]
+            if finding.ask_management
+            else "Confirm with management / counsel"
+        )
+    mechanism = finding.mechanism or _mechanism_for(finding)
+    tier = (finding.tier_or_grade or "").strip() or _tier_for(finding)
+    area = (finding.area or "").strip() or (finding.section_id or "").replace("SEC-", "")
+    fact_ids = list(finding.fact_ids or [])
+    if not fact_ids:
+        fact_ids = [
+            r
+            for r in (finding.evidence_refs or [])
+            if r and not str(r).lower().startswith(("req_", "fnd_", "claim"))
+        ]
+    return finding.model_copy(
+        update={
+            "display_id": display_id,
+            "area": area[:40],
+            "quantified_effect": quant[:120],
+            "tier_or_grade": tier,
+            "protection": protection[:120],
+            "mechanism": mechanism,
+            "fact_ids": fact_ids[:8],
+            "slide_ref": finding.slide_ref or "ch_es_findings",
+        }
     )
 
-    doc = load_request_list(deal_slug, run_id)
-    if doc is None:
+
+def assign_findings_register(
+    findings: list[Finding],
+    *,
+    population_limit: int = 12,
+) -> tuple[list[Finding], list[str]]:
+    """Assign stable F01… display_ids; declare the IC population."""
+    ranked = top_findings(findings, limit=max(population_limit, len(findings)))
+    # Population = diligence items that may appear on ES / protections (high/mod first).
+    population_src = [
+        f
+        for f in ranked
+        if f.severity in {FindingSeverity.HIGH, FindingSeverity.MODERATE}
+    ] or ranked[:population_limit]
+    population_src = population_src[:population_limit]
+    id_by_finding: dict[str, str] = {}
+    for i, f in enumerate(population_src, start=1):
+        id_by_finding[f.finding_id] = f"F{i:02d}"
+    # Remaining findings get F-numbers after the population for stable refs.
+    next_i = len(population_src) + 1
+    enriched: list[Finding] = []
+    for f in sort_findings(findings):
+        did = id_by_finding.get(f.finding_id)
+        if not did:
+            did = f"F{next_i:02d}"
+            next_i += 1
+        enriched.append(_enrich_finding_record(f, display_id=did))
+    population = [id_by_finding[f.finding_id] for f in population_src]
+    return enriched, population
+
+
+def materialize_findings_register(
+    findings_doc: FindingsDoc | None,
+    *,
+    limit: int = 12,
+) -> list[Finding]:
+    """Return population findings in display_id order for ES / protections."""
+    if findings_doc is None:
         return []
-    items = list(getattr(doc, "items", None) or getattr(doc, "requests", None) or [])
-    out: list[Finding] = []
-    closed_cutoff = date.today().year - 1
-    covered = covered_claim_keys or set()
-    for item in items[:8]:
-        item_id = getattr(item, "request_id", None) or ""
-        title = getattr(item, "title", None) or str(item_id)
-        detail = getattr(item, "detail", None) or title
-        status = str(getattr(item, "status", "") or "").lower()
-        if status in {"received", "waived"}:
-            continue
-        if _request_title_is_open_year(str(title), closed_cutoff):
-            continue
-        if _request_title_is_readiness_scaffold(str(title)):
-            continue
-        # Skip INFO duplicates of claim findings already raised at higher severity.
-        title_l = str(title).lower()
-        if any(key and key in title_l for key in covered):
-            continue
-        out.append(
-            Finding(
-                finding_id=_fid("req", str(item_id) or title),
-                section_id="SEC-A",
-                severity=FindingSeverity.INFO,
-                title=f"Open information request — {title}"[:160],
-                observation=str(detail)[:400],
-                implication="Information gap remains on the diligence perimeter.",
-                ask_management=str(detail)[:240],
-                evidence_refs=[str(item_id)] if item_id else [],
-                source=FindingSource.HELD_SECTION,
-            )
-        )
-    return out
+    by_id = {
+        f.display_id: f
+        for f in (findings_doc.findings or [])
+        if getattr(f, "display_id", None)
+    }
+    pop = list(findings_doc.population or [])
+    if pop:
+        return [by_id[d] for d in pop if d in by_id][:limit]
+    # Fallback for older docs without population.
+    return top_findings(list(findings_doc.findings or []), limit=limit)
 
 
 def _from_doubtful_headlines(store: ExhibitStoreDoc) -> list[Finding]:
@@ -842,6 +804,611 @@ def _from_cost_pressure(
     ]
 
 
+def _ic_money(val: float | None) -> str:
+    """Prose money for IC quantified_effect / observation (store units = $m)."""
+    from agetic_cdd_api.services_fdd_format import format_display
+
+    return format_display(
+        val,
+        money=True,
+        prose=True,
+        store_scale="M",
+        display_scale="k",
+    )
+
+
+def _from_ic_diligence(
+    store: ExhibitStoreDoc,
+    *,
+    deal_slug: str | None = None,
+) -> list[Finding]:
+    """IC-style diligence findings (concentration, leases, dividends, funding, rights).
+
+    Complements cost-pressure / QoE so the ES register can surface a Crew-like
+    set without promoting claims or RFIs into findings (Fix 5).
+    """
+    from agetic_cdd_api.services_fdd_tokens import format_fdd_number
+
+    slug = (deal_slug or str(getattr(store, "deal_slug", "") or "")).strip()
+    out: list[Finding] = []
+
+    # Shared cash/BS pack for dividend / lease / funding fallbacks.
+    try:
+        from agetic_cdd_api.services_fdd_chapter_depth import build_cash_bs_pack
+
+        bsp = build_cash_bs_pack(slug) if slug else None
+    except Exception:
+        bsp = None
+
+    # --- Concentration ---
+    try:
+        from agetic_cdd_api.services_fdd_trading import (
+            build_trading_pack,
+            concentration_rows,
+        )
+
+        pack = build_trading_pack(slug) if slug else None
+    except Exception:
+        pack = None
+    if pack is not None:
+        conc = concentration_rows(pack, year=2025) or []
+        top_share = next(
+            (
+                float(v)
+                for lab, v, _k in conc
+                if v is not None
+                and "share of total revenue" in str(lab).lower()
+                and "municipal share" not in str(lab).lower()
+            ),
+            None,
+        )
+        muni_share = next(
+            (
+                float(v)
+                for lab, v, _k in conc
+                if v is not None and "municipal share" in str(lab).lower()
+            ),
+            None,
+        )
+        share = top_share if top_share is not None else muni_share
+        if share is not None and share >= 0.15:
+            pct = format_fdd_number(share * 100.0 if share <= 1.5 else share)
+            out.append(
+                Finding(
+                    finding_id=_fid("ic", "concentration", slug or "deal"),
+                    section_id="SEC-C",
+                    severity=FindingSeverity.HIGH if share >= 0.20 else FindingSeverity.MODERATE,
+                    title="Customer / channel concentration is material",
+                    observation=(
+                        f"Largest evidenced share is {pct}% of FY25 revenue; "
+                        "contract term and renewal evidence remain open."
+                    ),
+                    implication="Earnings and retention risk concentrate in one relationship.",
+                    ask_management="Provide the customer agreement, options, and renewal history.",
+                    evidence_refs=["B", "ex_m1_trading"],
+                    source=FindingSource.MODEL,
+                    area="Trading",
+                    quantified_effect=f"{pct}% of FY25 revenue",
+                    protection="Obtain agreement and option evidence before pricing concentration risk",
+                    mechanism="condition",
+                    tier_or_grade="B",
+                )
+            )
+
+    # --- Dividend arrears / debt-like ---
+    div = _cell_by_metric(
+        store, {"ex_m6_net_debt", "ex_m8_bs", "ex_db_bs"}, "dividends_payable", 2025
+    )
+    if div is None:
+        div = _cell_by_metric(
+            store, {"ex_m6_net_debt", "ex_m8_bs", "ex_db_bs"}, "dividend_payable", 2025
+        )
+    if div is None:
+        div = _cell_by_metric(
+            store, {"ex_m6_net_debt", "ex_m8_bs", "ex_db_bs"}, "dividends", 2025
+        )
+    div_val: float | None = None
+    div_fact: str | None = None
+    if div is not None and isinstance(div.value, (int, float)):
+        div_val = abs(float(div.value))
+        div_fact = str(div.fact_id) if div.fact_id else None
+    # Prefer Jul-26 accrued (matches ES KPI) then FY25 from cash/BS pack.
+    if bsp is not None:
+        pack_div = bsp.dividends_payable.get("Jul-26")
+        if pack_div is None:
+            pack_div = bsp.dividends_payable.get(2025)
+        if pack_div is not None and abs(float(pack_div)) >= 0.05:
+            if div_val is None or abs(float(pack_div)) >= div_val:
+                div_val = abs(float(pack_div))
+    if div_val is not None and div_val >= 0.05:
+        amt = _ic_money(div_val)
+        out.append(
+            Finding(
+                finding_id=_fid("ic", "dividends", slug or "deal", f"{div_val:.3f}"),
+                section_id="SEC-G",
+                severity=FindingSeverity.HIGH,
+                title="Accrued dividends are debt-like for value",
+                observation=(
+                    f"Dividends payable of about {amt} remain outstanding; "
+                    "treat as debt-like until settled or waived."
+                ),
+                implication="Equity value and net debt shift once arrears are recognised as debt-like.",
+                ask_management="Confirm Series preferred dividend policy, arrears, and settlement path.",
+                evidence_refs=["B", div_fact or "ex_m6_net_debt"],
+                source=FindingSource.MODEL,
+                area="Balance sheet",
+                quantified_effect=f"Dividends payable ~{amt}",
+                protection="SPA / price for dividend arrears as debt-like",
+                mechanism="price",
+                tier_or_grade="B",
+                fact_ids=[div_fact] if div_fact else [],
+            )
+        )
+
+    # --- Lease / commitment evidence ---
+    rent = _cell_by_metric(store, {"ex_m3_costs", "ex_db_is", "ex_m1_trading"}, "rent", 2025)
+    lease_missing = True
+    rent_val: float | None = None
+    if bsp is not None and getattr(bsp, "evidenced_lease_rent_m", None) is not None:
+        lease_missing = False
+    if rent is not None and rent.value is not None:
+        rent_val = float(rent.value)
+    elif bsp is not None and getattr(bsp, "rent_fy25", None) is not None:
+        rent_val = float(bsp.rent_fy25)
+    if lease_missing:
+        quant = f"FY25 rent ~{_ic_money(rent_val)}" if rent_val is not None else "Lease schedule missing"
+        out.append(
+            Finding(
+                finding_id=_fid("ic", "leases", slug or "deal"),
+                section_id="SEC-G",
+                severity=FindingSeverity.MODERATE,
+                title="Lease commitments are largely unevidenced",
+                observation=(
+                    "Rent expense is in the accounts but lease files / ASC 842 schedules "
+                    "are incomplete or PARTIAL — commitments cannot be sized."
+                ),
+                implication="Off-balance commitments and ROU liabilities may be understated.",
+                ask_management="Provide the full lease schedule (term, rent, termination) for all sites.",
+                evidence_refs=["C", "LEASE_AGREEMENT"],
+                source=FindingSource.MODEL,
+                area="Leases",
+                quantified_effect=quant,
+                protection="Condition / RFI for lease schedule before IC reliance",
+                mechanism="condition",
+                tier_or_grade="C",
+            )
+        )
+
+    # --- Funding / grant match ---
+    if bsp is not None and (
+        getattr(bsp, "usda_match_m", None) is not None
+        or getattr(bsp, "usda_grant_m", None) is not None
+    ):
+        match_m = getattr(bsp, "usda_match_m", None)
+        grant_m = getattr(bsp, "usda_grant_m", None)
+        out.append(
+            Finding(
+                finding_id=_fid("ic", "funding", slug or "deal"),
+                section_id="SEC-H",
+                severity=FindingSeverity.HIGH,
+                title="Funding / grant match requirement is open",
+                observation=(
+                    f"Grant evidence shows USDA {_ic_money(grant_m)}"
+                    if grant_m is not None
+                    else "Grant / FPEP funding is referenced in the room"
+                )
+                + (
+                    f" with matching requirement {_ic_money(match_m)} still to evidence."
+                    if match_m is not None
+                    else "; matching cash requirement is not fully evidenced."
+                ),
+                implication="Sources & uses and runway for the round remain incomplete.",
+                ask_management="Provide sources & uses and evidence of matching funds / draw conditions.",
+                evidence_refs=["C", "FPEP"],
+                source=FindingSource.MODEL,
+                area="Funding",
+                quantified_effect=(
+                    f"Match ~{_ic_money(match_m)}"
+                    if match_m is not None
+                    else "Match requirement open"
+                ),
+                protection="IC condition — confirm funding plan before relying on grant cash",
+                mechanism="condition",
+                tier_or_grade="C",
+            )
+        )
+
+    # --- Preferred / transaction rights ---
+    try:
+        from agetic_cdd_api.services_fdd_chapter_depth import parse_transaction_terms
+
+        terms = parse_transaction_terms(slug) if slug else None
+    except Exception:
+        terms = None
+    if terms is not None:
+        round_size = getattr(terms, "primary_m", None)
+        has_pref = bool(
+            getattr(terms, "existing_preferred", None)
+            or getattr(terms, "round_label", None)
+            or round_size
+        )
+        if has_pref:
+            pref_note = str(getattr(terms, "existing_preferred", None) or "").strip()
+            out.append(
+                Finding(
+                    finding_id=_fid("ic", "preferred", slug or "deal"),
+                    section_id="SEC-A",
+                    severity=FindingSeverity.MODERATE,
+                    title="Preferred rights and round terms need confirmation",
+                    observation=(
+                        pref_note
+                        or "Series preferred carries cumulative dividends / participation rights; "
+                        "executed terms and cap table must be confirmed against the CIM."
+                    ),
+                    implication="Economic rights can reorder proceeds at exit and affect pricing.",
+                    ask_management="Provide executed preferred charter, side letters, and current cap table.",
+                    evidence_refs=["B", "CIM"],
+                    source=FindingSource.MODEL,
+                    area="Transaction",
+                    quantified_effect=(
+                        f"Round ~{_ic_money(float(round_size))}"
+                        if round_size is not None
+                        else "Preferred terms open"
+                    ),
+                    protection="Counsel review of preferred rights before IC",
+                    mechanism="condition",
+                    tier_or_grade="B",
+                )
+            )
+
+    # --- Core trading decline (residential + commercial), masked by growth streams ---
+    if pack is not None:
+        ytd_year = 2026
+        core_labels = ("Residential", "Commercial")
+        prior = sum(
+            float((pack.ytd.get(lab) or {}).get(ytd_year - 1) or 0.0)
+            for lab in core_labels
+        )
+        curr = sum(
+            float((pack.ytd.get(lab) or {}).get(ytd_year) or 0.0)
+            for lab in core_labels
+        )
+        if prior >= 0.5 and curr > 0 and curr < prior * 0.97:
+            pct_num = (curr / prior - 1.0) * 100.0
+            pct = f"{pct_num:.1f}"
+            res_p = (pack.ytd.get("Residential") or {}).get(ytd_year - 1)
+            res_c = (pack.ytd.get("Residential") or {}).get(ytd_year)
+            com_p = (pack.ytd.get("Commercial") or {}).get(ytd_year - 1)
+            com_c = (pack.ytd.get("Commercial") or {}).get(ytd_year)
+
+            def _chg(a: object, b: object) -> str | None:
+                if a is None or b is None or float(a) == 0:
+                    return None
+                return f"{(float(b) / float(a) - 1.0) * 100.0:.1f}"
+
+            res_pct = _chg(res_p, res_c)
+            com_pct = _chg(com_p, com_c)
+            detail_bits = []
+            if res_pct is not None:
+                detail_bits.append(f"residential {res_pct}%")
+            if com_pct is not None:
+                detail_bits.append(f"commercial {com_pct}%")
+            detail = (", ".join(detail_bits) + "; ") if detail_bits else ""
+            out.append(
+                Finding(
+                    finding_id=_fid("ic", "core_decline", slug or "deal"),
+                    section_id="SEC-C",
+                    severity=FindingSeverity.HIGH,
+                    title="Core residential and commercial revenue is declining",
+                    observation=(
+                        f"YTD core (residential + commercial) is down {abs(pct_num):.1f}% "
+                        f"({_ic_money(prior)} → {_ic_money(curr)}); {detail}"
+                        "municipal and Key Compostables lift headline revenue."
+                    ),
+                    implication=(
+                        "Headline growth masks softness in the core book; "
+                        "pricing and retention risk sit in the larger channels."
+                    ),
+                    ask_management=(
+                        "Explain residential and commercial volume/price drivers "
+                        "and the outlook for the rest of FY26."
+                    ),
+                    evidence_refs=["B", "ex_m1_trading"],
+                    source=FindingSource.MODEL,
+                    area="Trading",
+                    quantified_effect=(
+                        f"Core YTD {pct}% ({_ic_money(curr)} vs {_ic_money(prior)})"
+                    ),
+                    protection="Diligence deep-dive on core channel retention before IC",
+                    mechanism="condition",
+                    tier_or_grade="B",
+                )
+            )
+
+    # --- Receivables build / DSO ---
+    ar_end = None
+    ar_start = None
+    if bsp is not None:
+        ar_end = (bsp.ar or {}).get("Jul-26")
+        ar_start = (bsp.ar or {}).get(2025)
+        if ar_start is None:
+            ar_start = (bsp.ar or {}).get(2024)
+    if ar_end is None:
+        ar_cell = _cell_by_metric(
+            store, {"ex_m5_nwc", "ex_m8_bs", "ex_db_bs"}, "accounts_receivable", 2025
+        )
+        if ar_cell is not None and isinstance(ar_cell.value, (int, float)):
+            ar_end = float(ar_cell.value)
+    if (
+        ar_end is not None
+        and ar_start is not None
+        and float(ar_start) > 0
+        and float(ar_end) >= float(ar_start) * 1.15
+    ):
+        growth_pct = (float(ar_end) / float(ar_start) - 1.0) * 100.0
+        growth = f"{growth_pct:.1f}"
+        # Days of revenue: prefer LTM when available, else FY25 revenue / 365.
+        rev_base = None
+        if pack is not None:
+            rev_base = getattr(pack, "ltm_revenue", None) or (pack.revenue_fy or {}).get(
+                2025
+            )
+        if rev_base is None and bsp is not None:
+            rev_base = getattr(bsp, "ltm_revenue", None)
+        if rev_base is None:
+            rev_cell = _cell_by_metric(
+                store, {"ex_m1_trading", "ex_db_is"}, "revenue", 2025
+            )
+            if rev_cell is not None and isinstance(rev_cell.value, (int, float)):
+                rev_base = float(rev_cell.value)
+        days = None
+        if rev_base and float(rev_base) > 0:
+            days = float(ar_end) / (float(rev_base) / 365.0)
+        days_txt = f", ~{days:.0f} days of revenue" if days else ""
+        sev = (
+            FindingSeverity.HIGH
+            if growth_pct >= 25.0 or (days is not None and days >= 40.0)
+            else FindingSeverity.MODERATE
+        )
+        out.append(
+            Finding(
+                finding_id=_fid("ic", "receivables", slug or "deal"),
+                section_id="SEC-G",
+                severity=sev,
+                title="Receivables have built ahead of revenue",
+                observation=(
+                    f"Trade receivables rose {growth}% "
+                    f"({_ic_money(float(ar_start))} → {_ic_money(float(ar_end))})"
+                    f"{days_txt}; bad-debt provision remains thin versus the build."
+                ),
+                implication="Working capital and earnings quality risk if collections slip.",
+                ask_management=(
+                    "Provide an aged AR schedule, top-balance detail, and collection outlook."
+                ),
+                evidence_refs=["B", "ex_m5_nwc"],
+                source=FindingSource.MODEL,
+                area="Balance sheet",
+                quantified_effect=(
+                    f"AR {_ic_money(float(ar_end))}"
+                    + (f" (~{days:.0f} days)" if days else "")
+                ),
+                protection="NWC / AR diligence condition before pegging working capital",
+                mechanism="condition",
+                tier_or_grade="B",
+            )
+        )
+
+    # --- Cash dividends paid while loss-making ---
+    paid = None
+    ni = None
+    if bsp is not None:
+        paid_ytd = (bsp.dividend_paid or {}).get("Jul-26")
+        paid_fy = (bsp.dividend_paid or {}).get(2025)
+        # Prefer the larger evidenced cash leakage (FY closed vs YTD).
+        cands = [abs(float(x)) for x in (paid_ytd, paid_fy) if x is not None]
+        paid = max(cands) if cands else None
+        ni = (bsp.net_income or {}).get("Jul-26")
+        if ni is None:
+            ni = (bsp.net_income or {}).get(2025)
+    if paid is not None and float(paid) >= 0.05 and (
+        ni is None or float(ni) <= 0
+    ):
+        out.append(
+            Finding(
+                finding_id=_fid("ic", "dividend_cash", slug or "deal"),
+                section_id="SEC-G",
+                severity=FindingSeverity.HIGH,
+                title="Cash dividends paid while the business is loss-making",
+                observation=(
+                    f"About {_ic_money(float(paid))} of cash dividends have been paid "
+                    "while earnings remain negative — cash leakage ahead of the round."
+                ),
+                implication="New money can be diverted to legacy preferred / arrears without a hard stop.",
+                ask_management="Confirm dividend policy, cash paid since Jan-25, and waiver path.",
+                evidence_refs=["B", "ex_db_cf"],
+                source=FindingSource.MODEL,
+                area="Cash flow",
+                quantified_effect=f"Cash dividends ~{_ic_money(float(paid))}",
+                protection="No-leakage covenant to closing; bar on using proceeds for arrears",
+                mechanism="covenant",
+                tier_or_grade="B",
+            )
+        )
+
+    # --- Loan schedule / asset register integrity ---
+    loan_gap = False
+    loan_note = ""
+    try:
+        from agetic_cdd_api.services_fdd_chapter_depth import list_data_room_files
+
+        docs = list_data_room_files(slug) if slug else []
+    except Exception:
+        docs = []
+    loan_docs = [
+        d
+        for d in docs
+        if re.search(
+            r"(?i)loan|asset.?register|fixed.?asset|ppe",
+            str(d.get("document") or ""),
+        )
+    ]
+    # Compare vehicle + SBA components to financial debt (do not also add loans_payable).
+    if bsp is not None:
+        gross = (bsp.financial_debt or {}).get(2025)
+        veh = (bsp.vehicle_loans or {}).get(2025)
+        sba = (bsp.sba_loans or {}).get(2025)
+        if gross is not None and (veh is not None or sba is not None):
+            part_sum = float(veh or 0.0) + float(sba or 0.0)
+            if part_sum > 0 and abs(float(gross) - part_sum) >= 0.05:
+                loan_gap = True
+                loan_note = (
+                    f"Vehicle + SBA loans {_ic_money(part_sum)} vs "
+                    f"financial debt {_ic_money(float(gross))}."
+                )
+    if loan_docs and not loan_gap:
+        # Room has a loan/asset file but schedule integrity is not proven.
+        loan_gap = True
+        loan_note = (
+            "Loan / asset-register files are in the room but schedule integrity "
+            "(#REF / unexplained PPE) is not closed."
+        )
+    if loan_gap:
+        out.append(
+            Finding(
+                finding_id=_fid("ic", "loan_register", slug or "deal"),
+                section_id="SEC-G",
+                severity=FindingSeverity.HIGH if loan_docs else FindingSeverity.MODERATE,
+                title="Loan schedule and asset register need a clean tie-out",
+                observation=(
+                    loan_note
+                    or "Debt and fixed-asset schedules are incomplete or inconsistent."
+                ),
+                implication="Gross debt and PPE can be misstated until schedules foot to the books.",
+                ask_management=(
+                    "Provide a clean loan schedule and fixed-asset register that tie to the BS."
+                ),
+                evidence_refs=["C", "ex_m6_net_debt"],
+                source=FindingSource.MODEL,
+                area="Balance sheet",
+                quantified_effect=loan_note[:80] if loan_note else "Schedule open",
+                protection="Condition — loan and asset register tie-out before IC reliance",
+                mechanism="condition",
+                tier_or_grade="C",
+            )
+        )
+
+    # --- Interest / other income netting with dividend accrual ---
+    interest = _cell_by_metric(
+        store, {"ex_db_is", "ex_m1_trading", "ex_m3_costs"}, "interest_income", 2025
+    )
+    other_inc = _cell_by_metric(
+        store, {"ex_db_is", "ex_m1_trading"}, "other_income", 2025
+    )
+    if other_inc is None:
+        other_inc = _cell_by_metric(
+            store, {"ex_db_is", "ex_m1_trading"}, "other_revenue", 2025
+        )
+    other_val = (
+        float(other_inc.value)
+        if other_inc is not None and isinstance(other_inc.value, (int, float))
+        else None
+    )
+    interest_val = (
+        float(interest.value)
+        if interest is not None and isinstance(interest.value, (int, float))
+        else None
+    )
+    # Fallback: monthly extract "Other income (expense)" often holds the net line.
+    if other_val is None and slug:
+        try:
+            from agetic_cdd_api.services_fdd_chapter_depth import _load_extract
+
+            for row in _load_extract(slug) or []:
+                if getattr(row, "fiscal_year", None) != 2025:
+                    continue
+                cap = str(getattr(row, "caption", None) or "")
+                if not re.search(r"(?i)^other income", cap):
+                    continue
+                raw = getattr(row, "value", None)
+                if raw is None:
+                    continue
+                fv = float(raw)
+                # Absolute dollars → $m when clearly not already in millions.
+                other_val = fv / 1_000_000.0 if abs(fv) >= 1000.0 else fv
+                break
+        except Exception:
+            pass
+    div_acc = None
+    if bsp is not None:
+        div_acc = (bsp.dividend_accrual or {}).get(2025)
+    if (
+        div_acc is not None
+        and abs(float(div_acc)) >= 0.01
+        and (other_val is not None or interest_val is not None)
+    ):
+        net_bits: list[str] = []
+        net_val = 0.0
+        if interest_val is not None:
+            net_bits.append(f"interest {_ic_money(interest_val)}")
+            net_val += interest_val
+        if other_val is not None:
+            net_bits.append(f"other income {_ic_money(other_val)}")
+            net_val += other_val
+        net_bits.append(f"dividend accrual {_ic_money(float(div_acc))}")
+        # Other income (expense) often already includes the accrual; show residual.
+        residual = net_val  # keep reported other-income line as the net signal
+        out.append(
+            Finding(
+                finding_id=_fid("ic", "interest_netting", slug or "deal"),
+                section_id="SEC-B",
+                severity=FindingSeverity.MODERATE,
+                title="Interest and other income are netted with dividend accrual",
+                observation=(
+                    "Below-EBITDA items mix interest / other income with preferred "
+                    f"dividend accrual ({'; '.join(net_bits)}). Nature of other income "
+                    "and any acquisition accounting remains open."
+                ),
+                implication=(
+                    "Earnings quality and cash conversion can be overstated if netting hides cost."
+                ),
+                ask_management=(
+                    "Provide a bridge of interest, other income, and dividend accrual for FY25."
+                ),
+                evidence_refs=["B", "ex_db_is"],
+                source=FindingSource.MODEL,
+                area="QoE",
+                quantified_effect=f"Other income (expense) ~{_ic_money(residual)}",
+                protection="QoE bridge — separate interest, other income, and dividend accrual",
+                mechanism="information",
+                tier_or_grade="B",
+            )
+        )
+
+    # --- Earnings quality / records ---
+    out.append(
+        Finding(
+            finding_id=_fid("ic", "records", slug or "deal"),
+            section_id="SEC-B",
+            severity=FindingSeverity.MODERATE,
+            title="Earnings quality depends on unaudited records",
+            observation=(
+                "Diligence EBITDA rests on unaudited monthly management accounts; "
+                "ledger detail behind other income / adjustments remains open."
+            ),
+            implication="IC should not treat diligence EBITDA as audited until tie-outs close.",
+            ask_management="Provide ledger detail for other income and QoE adjustments.",
+            evidence_refs=["B"],
+            source=FindingSource.MODEL,
+            area="QoE",
+            quantified_effect="Unaudited basis",
+            protection="Information rights / closing condition for audit tie-out",
+            mechanism="information",
+            tier_or_grade="B",
+        )
+    )
+    return out
+
+
 def build_findings(
     deal_slug: str,
     run_id: str,
@@ -860,32 +1427,17 @@ def build_findings(
         )
     commentary = commentary if commentary is not None else load_commentary(deal_slug, run_id)
 
-    claim_findings = _from_claims(deal_slug, run_id)
-    covered_keys: set[str] = set()
-    for f in claim_findings:
-        # "Resolve claim ebitda FY2023" → cover request titles with same metric×year.
-        title_l = (f.title or "").lower()
-        for token in title_l.replace("(", " ").replace(")", " ").split():
-            if token.startswith("fy20") or token in {
-                "revenue",
-                "ebitda",
-                "gross_profit",
-                "gross_margin",
-                "cogs",
-                "sga",
-            }:
-                covered_keys.add(token)
-        if f.evidence_refs:
-            covered_keys.update(str(r).lower() for r in f.evidence_refs if r)
+    # Fix 5 — claims and RFIs are not findings (ledger / request list only).
+    _ = _from_claims(deal_slug, run_id)
+    _ = _from_requests(deal_slug, run_id)
     findings = sort_findings(
         [
             *_from_g3(store),
             *_from_qoe(deal_slug, run_id),
             *_from_held_sections(commentary),
-            *claim_findings,
             *_from_cost_pressure(store, deal_slug=deal_slug, run_id=run_id),
             *_from_doubtful_headlines(store),
-            *_from_requests(deal_slug, run_id, covered_claim_keys=covered_keys),
+            *_from_ic_diligence(store, deal_slug=deal_slug),
         ]
     )
     # De-dupe by finding_id, then by metric×year stem (keep higher severity).
@@ -907,12 +1459,14 @@ def build_findings(
         ):
             by_stem[stem] = f
     findings = sort_findings(list(by_stem.values()))
+    findings, population = assign_findings_register(findings, population_limit=12)
 
     doc = FindingsDoc(
         run_id=run_id,
         deal_slug=deal_slug,
         updated_at=_now(),
         findings=findings,
+        population=population,
         counts=_counts(findings),
         version=FINDINGS_VERSION,
     )

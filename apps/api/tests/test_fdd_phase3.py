@@ -164,7 +164,9 @@ def test_strict_year_match_no_cross_year_fallback() -> None:
         ]
     )
     result = evaluate_financial_claim(claim, facts_idx)
-    assert result.test_result == "unverifiable"
+    # Fix 6 — same metric, different year is wrong_period (not silent unverifiable).
+    assert result.test_result == "wrong_period"
+    assert result.verdict == "wrong_period"
     assert result.failed
 
 

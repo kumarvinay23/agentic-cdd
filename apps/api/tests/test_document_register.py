@@ -35,8 +35,9 @@ def test_register_count_matches_the_room_including_skipped_files(tmp_path, monke
 
     skipped = [row for row in rows if row["status"] == "SKIPPED"]
     failed = [row for row in rows if row["status"] == "FAILED"]
+    partial = [row for row in rows if row["status"] == "PARTIAL"]
     assert {row["file_name"] for row in skipped} >= {"empty.txt", "notes.bin"}
-    assert all(row["status_reason"] for row in skipped + failed)
+    assert all(row["status_reason"] for row in skipped + failed + partial)
     assert any(row["file_name"] == "broken.pdf" and row["status"] in {"SKIPPED", "FAILED"} for row in rows)
 
     cim = next(row for row in rows if row["file_name"] == "CIM.txt")
@@ -56,6 +57,31 @@ def test_register_count_matches_the_room_including_skipped_files(tmp_path, monke
     assert older["version_rank"] == 2
     assert newer["doc_type"] == "FIN_TRIAL_BALANCE"
     assert newer["evidence_tier"] == "B"
+
+    # Fix 7 — unreadable / OCR-gap outcomes must not collapse to silent missing.
+    from agetic_cdd_api.services_document_register import _status, note_unread
+    import fitz
+
+    blank = docs / "blank_scan.pdf"
+    pdf = fitz.open()
+    pdf.new_page(width=100, height=100)
+    pdf.save(blank)
+    pdf.close()
+    status, reason = _status(
+        blank,
+        "pdf",
+        [{"level": "block", "text": "", "usable_as_source": False, "ocr_attempted": True}],
+        None,
+    )
+    assert status in {"FAILED", "PARTIAL"}
+    assert reason
+
+    note_unread(_DEAL, "empty.txt", "PARTIAL — OCR gaps on some pages")
+    empty_after = next(
+        row for row in document_register._ROOMS[_DEAL] if row["file_name"] == "empty.txt"
+    )
+    assert empty_after["status"] == "PARTIAL"
+    assert empty_after["status_reason"].startswith("PARTIAL")
 
     url = os.environ.get("AGETIC_CDD_DATABOOK_DATABASE_URL", "").strip()
     if not url:

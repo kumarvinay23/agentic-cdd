@@ -112,19 +112,20 @@ def test_findings_severity_from_claims_and_held(deal_root: Path) -> None:
         )
     )
     doc = build_findings(slug, manifest.run_id, store=store2, update_manifest=True)
-    assert doc.findings
     assert load_findings(slug, manifest.run_id) is not None
-    severities = {f.severity for f in doc.findings}
-    assert FindingSeverity.HIGH in severities or FindingSeverity.MODERATE in severities
-    assert any(f.source == FindingSource.CLAIM for f in doc.findings)
-    top = top_findings(doc.findings, limit=3)
-    assert len(top) <= 3
-    assert sort_findings(doc.findings)[0].severity in {
-        FindingSeverity.HIGH,
-        FindingSeverity.MODERATE,
-        FindingSeverity.LOW,
-        FindingSeverity.INFO,
-    }
+    # Fix 5 — claim contradictions are not findings (stay on claims ledger / RFIs).
+    assert not any(f.source == FindingSource.CLAIM for f in doc.findings)
+    if doc.findings:
+        assert doc.population
+        assert all(f.display_id for f in doc.findings)
+        top = top_findings(doc.findings, limit=3)
+        assert len(top) <= 3
+        assert sort_findings(doc.findings)[0].severity in {
+            FindingSeverity.HIGH,
+            FindingSeverity.MODERATE,
+            FindingSeverity.LOW,
+            FindingSeverity.INFO,
+        }
 
 
 def test_cost_pressure_finding_when_opex_outgrows_revenue(deal_root: Path) -> None:
@@ -484,15 +485,12 @@ def test_zero_databook_claim_is_not_a_finding(deal_root: Path) -> None:
         )
     )
     findings = _from_claims(slug, manifest.run_id)
-    refs = {r for f in findings for r in (f.evidence_refs or [])}
-    titles = " ".join(f.title for f in findings).lower()
-    assert "cl_zero" not in refs
-    assert "cl_real" in refs
-    assert "revenue" not in titles or "gross" in titles
+    # Fix 5 — no claim rows become findings (including real gaps).
+    assert findings == []
 
 
-def test_claim_findings_respect_absolute_materiality(deal_root: Path) -> None:
-    """Core P&L gaps below 0.03 M stay MODERATE; at/above threshold are HIGH."""
+def test_claim_findings_no_longer_minted_for_materiality(deal_root: Path) -> None:
+    """Fix 5 — contradicted claims stay on the ledger; not the findings register."""
     from agetic_cdd_api.fdd_schemas import ClaimsLedgerDoc, ClaimsLedgerEntry
     from agetic_cdd_api.services_fdd_store import save_claims_ledger
 
@@ -509,29 +507,8 @@ def test_claim_findings_respect_absolute_materiality(deal_root: Path) -> None:
             updated_at="t",
             claims=[
                 ClaimsLedgerEntry(
-                    claim_id="small_eb",
-                    text="tiny ebitda gap",
-                    kind="financial",
-                    metric_key="ebitda",
-                    fiscal_year=closed,
-                    claimed_value=1.14,
-                    databook_value=1.12,
-                    test_result="contradicted",
-                    failed=True,
-                ),
-                ClaimsLedgerEntry(
-                    claim_id="edge_rev",
-                    text="revenue at threshold",
-                    kind="financial",
-                    metric_key="revenue",
-                    fiscal_year=closed,
-                    claimed_value=7.56,
-                    databook_value=7.53,
-                    test_result="contradicted",
-                    failed=True,
-                ),
-                ClaimsLedgerEntry(
                     claim_id="large_gp",
+                    source_agent="historical_performance",
                     text="material gp gap",
                     kind="financial",
                     metric_key="gross_profit",
@@ -545,10 +522,8 @@ def test_claim_findings_respect_absolute_materiality(deal_root: Path) -> None:
         )
     )
     doc = build_findings(slug, manifest.run_id, store=store, update_manifest=False)
-    by = {f.evidence_refs[0]: f.severity for f in doc.findings if f.evidence_refs}
-    assert by["small_eb"] == FindingSeverity.MODERATE
-    assert by["edge_rev"] == FindingSeverity.HIGH
-    assert by["large_gp"] == FindingSeverity.HIGH
+    assert not any(f.source == FindingSource.CLAIM for f in doc.findings)
+    assert not any("large_gp" in (f.evidence_refs or []) for f in doc.findings)
 
 
 def test_assemble_front_matter_and_slim_deck(deal_root: Path) -> None:

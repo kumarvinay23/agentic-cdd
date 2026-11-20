@@ -1,7 +1,9 @@
 """Application settings."""
 
 from pathlib import Path
+from urllib.parse import quote_plus
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _API_ROOT = Path(__file__).resolve().parents[2]
@@ -10,6 +12,30 @@ _DEFAULT_DEALS = _API_ROOT / "data" / "deals"
 
 # Dev-only: any port on loopback. Never enabled when app_env=production.
 _DEV_LOCALHOST_ORIGIN_RE = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+
+def _compose_databook_database_url(
+    *,
+    host: str,
+    port: int,
+    name: str,
+    user: str,
+    password: str,
+) -> str:
+    """Build a Postgres DSN from discrete deploy knobs."""
+    host = (host or "").strip()
+    name = (name or "").strip() or "agetic_cdd_databook"
+    if not host:
+        return ""
+    user = (user or "").strip()
+    password = password or ""
+    auth = ""
+    if user:
+        auth = quote_plus(user)
+        if password:
+            auth = f"{auth}:{quote_plus(password)}"
+        auth = f"{auth}@"
+    return f"postgresql://{auth}{host}:{int(port)}/{name}"
 
 
 class Settings(BaseSettings):
@@ -31,8 +57,16 @@ class Settings(BaseSettings):
     port: int = 4600
 
     database_url: str = f"sqlite:///{_DEFAULT_DB}"
-    # PostgreSQL 16 databook. Empty leaves the app database untouched.
+    # PostgreSQL databook DSN. Full URL wins when set (any env / secret manager).
+    # Empty + discrete DATABOOK_DB_* knobs → composed DSN. Empty leaves ontology off.
     databook_database_url: str = ""
+    # Discrete knobs for deploys that inject host/port/user/password separately.
+    # Used only when databook_database_url is empty.
+    databook_db_host: str = ""
+    databook_db_port: int = 5433
+    databook_db_name: str = "agetic_cdd_databook"
+    databook_db_user: str = ""
+    databook_db_password: str = ""
     # Series read path: ontology | file | dual. Phase 4 is in, so ontology is the default.
     # dual prefers ontology facts and may still mirror the file store on HITL.
     databook_ui_source: str = "ontology"
@@ -59,6 +93,22 @@ class Settings(BaseSettings):
     # When false (default), export still writes the file but marks it unreliable
     # and watermarks PPTX with UNRELIABLE.
     report_contract_strict: bool = False
+
+    @model_validator(mode="after")
+    def _resolve_databook_database_url(self) -> "Settings":
+        """Prefer full URL; otherwise compose from discrete deploy env vars."""
+        if str(self.databook_database_url or "").strip():
+            return self
+        composed = _compose_databook_database_url(
+            host=self.databook_db_host,
+            port=self.databook_db_port,
+            name=self.databook_db_name,
+            user=self.databook_db_user,
+            password=self.databook_db_password,
+        )
+        if composed:
+            self.databook_database_url = composed
+        return self
 
     @property
     def databook_source(self) -> str:

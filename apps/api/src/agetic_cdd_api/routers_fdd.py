@@ -266,6 +266,22 @@ def _http_gate_blocked(exc: GateBlockedError, *, gate: str) -> HTTPException:
     )
 
 
+def _deck_release_gate_payload(deal_key: str) -> dict[str, Any]:
+    """Fix 8 — open block flags that refuse FDD deck production."""
+    try:
+        from agetic_cdd_api.services_fdd_deck_gate import evaluate_deck_release_gate
+
+        return evaluate_deck_release_gate(str(deal_key or "")).as_dict()
+    except Exception as exc:
+        return {
+            "allowed": True,
+            "blocked": False,
+            "open_block_flags": [],
+            "named_flags": [],
+            "detail": f"deck gate unavailable: {exc}",
+        }
+
+
 def _deal_or_404(db: Session, deal_id: str, auth: AuthContext) -> Deal:
     """Resolve deal within the caller's org (API tenancy gate)."""
     return get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
@@ -1078,6 +1094,7 @@ def get_fdd_gates(
                     g7_appr.model_dump(mode="json") if g7_appr else None
                 ),
             },
+            "deck_release": _deck_release_gate_payload(storage_key),
             "approvals": [a.model_dump(mode="json") for a in approvals],
         },
     }

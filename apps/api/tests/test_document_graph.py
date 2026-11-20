@@ -103,6 +103,10 @@ def test_format_set_extracts_text_and_cells_and_ignores_rename(tmp_path: Path) -
     assert pointers["see CIM p1"] == page_block["id"]
     assert pointers["see sheet Revenue"] == sheet["id"]
     assert page_block["usable_as_source"] is True
+    # Fix 7 — scanned/OCR PDF blocks carry a page-normalized bbox.
+    bbox = (page_block.get("locator") or {}).get("bbox")
+    assert bbox is not None and len(bbox) == 4
+    assert all(0.0 <= float(x) <= 1.0 for x in bbox)
     assert scan["document_type"] == "deal_strategy"
     assert scan["period"] is None
     assert workbook["document_type"] == "financial"
