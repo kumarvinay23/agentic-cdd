@@ -1802,7 +1802,7 @@ export type ReportPreviewSlide = {
   agenda_items?: Array<{ num: string; title: string; blurb: string }>;
   meta_rows?: string[][];
   table?: string[][];
-  kpis?: Array<{ value: string; label: string }>;
+  kpis?: Array<{ value: string; label: string; detail?: string }>;
   chart?: {
     categories: string[];
     series: Array<{ name: string; values: number[] }>;
@@ -1811,12 +1811,31 @@ export type ReportPreviewSlide = {
   columns?: Array<{ heading: string; items: string[]; left?: number }>;
   page?: string;
   number?: string;
+  // FDD SlideSpec-backed preview (matches downloaded PPTX chrome).
+  chrome?: "fdd" | string;
+  layout?: string;
+  banner?: string;
+  headline?: string;
+  table_title?: string;
+  table_basis?: string;
+  footnotes?: string[];
+  source?: string;
+  evidence_tier?: string;
+  completeness_state?: string;
 };
 
 export type ReportPreviewPayload = {
   success: boolean;
   report_type: string;
   format?: "xlsx" | "docx" | "pdf" | "pptx" | string;
+  preview_mode?: string;
+  chrome?: {
+    family?: string;
+    project_label?: string;
+    basis_short?: string;
+    currency?: string;
+    display_scale?: string;
+  };
   // xlsx
   sheets?: string[];
   active_sheet?: string;

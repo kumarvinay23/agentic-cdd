@@ -2801,6 +2801,49 @@ def validate_section_draft(
         )
     )
 
+    # 2b) Fix 4 — every number binds to a fact_id and matches it
+    try:
+        from agetic_cdd_api.services_fdd_narrative_bind import bind_text
+
+        bind_faults: list[str] = []
+        stamped: list[CommentarySentence] = []
+        for sent in draft.sentences:
+            result = bind_text(sent.text, store, pptx=False)
+            bind_faults.extend(result.faults)
+            stamped.append(
+                sent.model_copy(
+                    update={"fact_ids": list(dict.fromkeys(result.fact_ids))[:12]}
+                )
+            )
+        title_bind = bind_text(draft.action_title, store, pptx=False)
+        bind_faults.extend(title_bind.faults)
+        body_bind = bind_text(draft.body, store, pptx=False)
+        bind_faults.extend(body_bind.faults)
+        draft = draft.model_copy(update={"sentences": stamped})
+        checks.append(
+            CommentaryCheckResult(
+                check_id="narrative_fact_bind",
+                passed=not bind_faults,
+                message=(
+                    "Narrative numbers bound to fact_ids"
+                    if not bind_faults
+                    else "; ".join(bind_faults[:6])
+                ),
+                blocking=True,
+                severity="S1",
+            )
+        )
+    except Exception as exc:
+        checks.append(
+            CommentaryCheckResult(
+                check_id="narrative_fact_bind",
+                passed=False,
+                message=f"narrative bind failed: {exc}",
+                blocking=False,
+                severity="S2",
+            )
+        )
+
     # 3) Action title ≤ 1 token
     title_tokens = find_tokens(draft.action_title)
     checks.append(

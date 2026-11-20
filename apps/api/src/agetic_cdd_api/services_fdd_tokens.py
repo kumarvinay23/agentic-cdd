@@ -306,8 +306,24 @@ def _cell_is_money(cell: ExhibitCell) -> bool:
 def format_cell_display(cell: ExhibitCell) -> str:
     if cell.display:
         return cell.display
-    num = format_fdd_number(cell.value)
     unit = display_unit_for_cell(cell)
+    # Fix 3 — percent/pp go through the central renderer (no raw fraction artefacts).
+    if unit in {"%", "pp"} or _cell_is_percent(cell):
+        from agetic_cdd_api.services_fdd_format import format_percent, format_pp
+
+        if unit == "pp":
+            return format_pp(cell.value)
+        # Prefer 2-dp accounting style when value is already in points (|v|>1.5),
+        # matching legacy "(1.91)%" exhibit display; fractions use 1-dp percent.
+        try:
+            mag = abs(float(cell.value)) if cell.value is not None else 0.0
+        except (TypeError, ValueError):
+            mag = 0.0
+        if mag <= 1.5:
+            return format_percent(cell.value)
+        num = format_fdd_number(cell.value)
+        return f"{num}%" if num not in {"—", ""} else num
+    num = format_fdd_number(cell.value)
     # Keep % / pp glued to the figure so brackets read as "(1.91)%", not a bare label.
     if unit in {"%", "pp"} and num not in {"—", ""}:
         return f"{num}{unit}"
@@ -322,23 +338,14 @@ def format_cell_display_pptx(
     prose: bool = True,
 ) -> str:
     """PPTX-facing cell display — converts store M → $k / $m for money cells."""
-    if _cell_is_percent(cell):
-        return format_cell_display(cell)
-    if _cell_is_money(cell):
-        cell_store = _infer_money_store_scale(
-            cell.value,
-            cell_scale=getattr(cell, "scale", None),
-            fallback=store_scale or "M",
-        )
-        if str(cell_store).lower() in {"%", "pp", "pct", "percent"}:
-            return format_cell_display(cell)
-        return format_pptx_money(
-            cell.value,
-            store_scale=cell_store,
-            display_scale=display_scale,
-            prose=prose,
-        )
-    return format_cell_display(cell)
+    from agetic_cdd_api.services_fdd_format import format_cell
+
+    return format_cell(
+        cell,
+        store_scale=store_scale,
+        display_scale=display_scale,
+        prose=prose,
+    )
 
 
 def display_unit_for_cell(cell: ExhibitCell | None) -> str:
@@ -635,7 +642,9 @@ _PERIOD_LABEL_RE = re.compile(
     r"|\bQ[1-4]\b"
     r"|\bLTM\b"
     r"|\bYTD\b"
-    r"|\bR-\d+\b"  # request ids (R-12)
+    r"|\bR-?\d{1,3}\b"  # request ids (R-12 / R01)
+    r"|\bF\d{1,3}\b"  # finding ids (F01)
+    r"|\bC\d{1,3}\b"  # claim ids (C01)
     r"|\breq_[a-z0-9]+\b"  # internal request ids
     r"|\bqoe:[A-Za-z0-9_.:-]+\b"
     r"|\bSEC-[A-Z]+\b"

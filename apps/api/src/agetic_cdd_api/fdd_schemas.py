@@ -180,9 +180,20 @@ CLAIMS_VALUE_TOLERANCE = 0.005  # 0.5%
 # Absolute floor must stay tight so small EBITDA gaps (0.572 vs 0.565) contradict.
 CLAIMS_ABS_TOLERANCE = 0.005
 
+# Fix 6 — closed verdict list for agent → document claim tests.
+ClaimVerdict = Literal[
+    "agrees",
+    "contradicted",
+    "false_gap",
+    "wrong_line",
+    "wrong_period",
+    "unverifiable",
+    "pending",
+]
+
 
 class ClaimsLedgerEntry(BaseModel):
-    """Agent → claim tested against databook (Phase 3 / R2 / D3)."""
+    """Agent assertion tested against a document source location (Fix 6 / Phase 3)."""
 
     claim_id: str
     source_agent: str | None = None
@@ -194,10 +205,17 @@ class ClaimsLedgerEntry(BaseModel):
     unit: str | None = None
     databook_fact_id: str | None = None
     databook_value: float | None = None
-    test_result: Literal["agrees", "contradicted", "unverifiable", "pending"] = "pending"
+    # Legacy alias kept in sync with ``verdict`` for one release.
+    test_result: ClaimVerdict = "pending"
+    # Fix 6 — Subject = agent assertion; Target = document + source location.
+    subject: str = ""
+    target_document: str = ""
+    target_location: str | None = None
+    verdict: ClaimVerdict = "pending"
     cited_pages: list[str] = Field(default_factory=list)
     narrative_ok: bool = False  # qualitative: True only when cited_pages present
-    failed: bool = False  # convenience: contradicted/unverifiable or uncited qualitative
+    failed: bool = False  # convenience: failed verdicts for reliability
+    self_comparison: bool = False  # True when subject provenance == target fact
 
 
 class ModuleReliability(BaseModel):
@@ -225,6 +243,10 @@ class ClaimsLedgerDoc(BaseModel):
     contradicted: int = 0
     unverifiable: int = 0
     pending: int = 0
+    false_gap: int = 0
+    wrong_line: int = 0
+    wrong_period: int = 0
+    self_comparisons_dropped: int = 0
     unreliable_modules: list[str] = Field(default_factory=list)
     modules: list[ModuleReliability] = Field(default_factory=list)
     claims: list[ClaimsLedgerEntry] = Field(default_factory=list)
@@ -656,6 +678,8 @@ class CommentarySentence(BaseModel):
     tag: CommentaryTag
     text: str  # may contain {{ex:…}} tokens
     citation: str | None = None  # exhibit / document / request id
+    # Fix 4 — every figure in text must cite matching fact_ids.
+    fact_ids: list[str] = Field(default_factory=list)
 
 
 class CommentaryLimitation(BaseModel):
@@ -869,6 +893,9 @@ class RequestListItem(BaseModel):
     metric_key: str | None = None
     fiscal_year: int | None = None
     suggested_filenames: list[str] = Field(default_factory=list)
+    # Fix 5 — join to findings register when the request protects a finding.
+    finding_id: str | None = None
+    display_id: str | None = None
 
 
 class RequestListDoc(BaseModel):
@@ -887,10 +914,12 @@ class ClaimGap(BaseModel):
     fiscal_year: int | None = None
     claimed_value: float | None = None
     databook_value: float | None = None
-    test_result: Literal["contradicted", "unverifiable"]
+    test_result: ClaimVerdict
     text: str = ""
     suggested_filenames: list[str] = Field(default_factory=list)
     request_id: str | None = None
+    target_document: str = ""
+    target_location: str | None = None
 
 
 class EvidencePassDoc(BaseModel):
@@ -949,7 +978,7 @@ class FindingSource(str, Enum):
 
 
 class Finding(BaseModel):
-    """Structured diligence finding card (report + IC deck)."""
+    """Diligence finding record (Fix 5 / ontology GOV-03 shape)."""
 
     finding_id: str
     section_id: str | None = None
@@ -960,15 +989,30 @@ class Finding(BaseModel):
     ask_management: str | None = None
     evidence_refs: list[str] = Field(default_factory=list)
     source: FindingSource = FindingSource.CLAIM
+    # Fix 5 — register fields shared by ES, protections, and requests.
+    display_id: str = ""  # stable F01… across slides
+    area: str = ""
+    quantified_effect: str = ""
+    tier_or_grade: str = ""
+    protection: str = ""
+    mechanism: Literal[
+        "price", "SPA", "covenant", "escrow", "condition", "information", ""
+    ] = ""
+    fact_ids: list[str] = Field(default_factory=list)
+    flag_ids: list[str] = Field(default_factory=list)
+    request_ref: str | None = None
+    slide_ref: str | None = None
 
 
 class FindingsDoc(BaseModel):
-    """Persisted findings ledger for one FDD run."""
+    """Persisted findings register for one FDD run (Fix 5)."""
 
     run_id: str
     deal_slug: str
     updated_at: str
     findings: list[Finding] = Field(default_factory=list)
+    # Declared population of display_ids that may appear on ES / protections.
+    population: list[str] = Field(default_factory=list)
     counts: dict[str, int] = Field(default_factory=dict)
     version: str = "1.0.0"
 
@@ -1104,6 +1148,39 @@ class SlideTable(BaseModel):
     evidence_tier: str | None = None
 
 
+class ExhibitContractRow(BaseModel):
+    """One additive row in a slide exhibit (concept or dimension member)."""
+
+    concept: str
+    label: str = ""
+    # Numeric values by period key (``2024``, ``FY2024``, …) in store units.
+    values: dict[str, float] = Field(default_factory=dict)
+    fact_ids: dict[str, str] = Field(default_factory=dict)
+
+
+class ExhibitContract(BaseModel):
+    """Fix 2 — declarative slide exhibit: rows must foot to ``total_concept``.
+
+    The ontology defines databook tabs; this object is the missing slide-level
+    contract. Renderer / planner refuse to draw a matrix that does not foot.
+    """
+
+    contract_id: str
+    total_concept: str
+    periods: list[str] = Field(default_factory=list)
+    dimension: str | None = None
+    rows: list[ExhibitContractRow] = Field(default_factory=list)
+    total_values: dict[str, float] = Field(default_factory=dict)
+    total_fact_ids: dict[str, str] = Field(default_factory=dict)
+    abs_tol: float = 0.005
+    rel_tol: float = 0.005
+    require_all_rows: bool = False
+    footing_status: Literal["pending", "ok", "failed", "skipped"] = "pending"
+    footing_detail: str = ""
+    # soft = keep matrix visible with held chrome; hard = refuse-draw stub (Fix 2 default).
+    hold_mode: Literal["hard", "soft"] = "hard"
+
+
 class TocEntry(BaseModel):
     number: str
     title: str
@@ -1144,6 +1221,15 @@ class SlideSpec(BaseModel):
     page_no: int | None = None
     figure_ids: list[str] = Field(default_factory=list)
     footnotes: list[str] = Field(default_factory=list)
+    # Fix 4 — fact_ids cited by headline/observations after narrative bind.
+    narrative_fact_ids: list[str] = Field(default_factory=list)
+    narrative_bind_faults: list[str] = Field(default_factory=list)
+    # Fix 2 — optional footing contract; failed contracts must not draw a matrix.
+    exhibit_contract: ExhibitContract | None = None
+    # Fix 8 — completeness instead of silent holes; blocked when schedule has open block flags.
+    completeness_state: Literal["complete", "held", "blocked", "empty"] = "complete"
+    completeness_detail: str = ""
+    schedule_ids: list[str] = Field(default_factory=list)
     # cover
     deal_name: str = ""
     engagement: str = "Financial due diligence"

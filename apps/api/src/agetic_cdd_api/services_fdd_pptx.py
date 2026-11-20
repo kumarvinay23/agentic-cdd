@@ -155,6 +155,16 @@ def _solid_fill(shape, color: RGBColor) -> None:
 
 def _chrome_header(slide, spec: SlideSpec, chrome: PptxChrome) -> None:
     banner = (spec.banner or "").strip().upper() or "FDD"
+    # Fix 8 — surface completeness on the banner when not complete.
+    # Soft-held stream exhibits keep a visible matrix — never paint · HELD.
+    state = str(getattr(spec, "completeness_state", None) or "complete").strip().lower()
+    hold_mode = str(
+        getattr(getattr(spec, "exhibit_contract", None), "hold_mode", "") or ""
+    ).lower()
+    if state and state != "complete" and not (
+        state == "held" and hold_mode == "soft"
+    ):
+        banner = f"{banner} · {state.upper()}"
     _add_textbox(
         slide,
         _MARGIN_L,
@@ -262,10 +272,12 @@ def _add_table_title(
     next_top = Emu(int(top) + int(title_h))
     if table.basis:
         basis_h = Inches(0.18)
+        raw_basis = str(table.basis).replace("÷", "/").replace("·", ",")
+        raw_basis = raw_basis.replace("M2 GP /", "M2 gross profit /")
         basis_text = (
-            table.basis
-            if table.basis.lower().startswith("basis")
-            else f"Basis: {table.basis}"
+            raw_basis
+            if raw_basis.lower().startswith("basis")
+            else f"Basis: {raw_basis}"
         )
         _add_textbox(
             slide,
@@ -566,7 +578,24 @@ def _layout_section_table_obs(slide, spec: SlideSpec, chrome: PptxChrome) -> Non
     left_w = Inches(8.06)
     right_l = Inches(8.81)
     right_w = Inches(4.08)
-    table = spec.table or SlideTable(headers=["Item", "Value"], rows=[])
+    # Fix 8 — never paint a silent empty grid; show completeness stub instead.
+    table = spec.table
+    if table is None or not list(table.rows or []):
+        state = str(getattr(spec, "completeness_state", None) or "empty")
+        detail = str(getattr(spec, "completeness_detail", None) or "No figures for this exhibit")
+        try:
+            from agetic_cdd_api.services_fdd_deck_gate import held_completeness_table
+
+            table = held_completeness_table(
+                title=(spec.table.title if spec.table is not None else "Exhibit"),
+                state=state if state in {"complete", "held", "blocked", "empty"} else "empty",
+                detail=detail,
+            )
+        except Exception:
+            table = SlideTable(
+                headers=["Item", "Status"],
+                rows=[["Completeness", state], ["Detail", detail[:180]]],
+            )
     grid_top = _BODY_TOP
     if table.title or table.basis:
         grid_top = _add_table_title(
@@ -770,6 +799,31 @@ def _layout_simple_table(
 def render_slide(prs: Presentation, spec: SlideSpec, chrome: PptxChrome | None = None):
     """Append one layout slide to ``prs`` and return the slide."""
     chrome = chrome or PptxChrome()
+    # Fix 2 — never paint a numeric matrix whose exhibit contract failed footing.
+    try:
+        from agetic_cdd_api.services_fdd_exhibit_contract import (
+            held_table_for_failed_contract,
+            slide_may_draw_matrix,
+        )
+
+        if (
+            not slide_may_draw_matrix(spec)
+            and spec.table is not None
+            and spec.exhibit_contract is not None
+        ):
+            held = held_table_for_failed_contract(
+                spec.exhibit_contract,
+                title=spec.table.title or "Exhibit held",
+            )
+            spec = spec.model_copy(
+                update={
+                    "headline": "Exhibit held — totals do not foot",
+                    "table": held,
+                    "kpis": [],
+                }
+            )
+    except Exception:
+        pass
     blank = prs.slide_layouts[6] if len(prs.slide_layouts) > 6 else prs.slide_layouts[5]
     slide = prs.slides.add_slide(blank)
     layout = spec.layout

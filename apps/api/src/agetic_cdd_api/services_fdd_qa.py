@@ -589,6 +589,14 @@ def _check_commentary(deal_slug: str, run_id: str) -> tuple[list[QaCheckResult],
 
     # Typed figures
     typed: list[Issue] = []
+    bind_issues: list[Issue] = []
+    store = None
+    try:
+        from agetic_cdd_api.services_fdd_store import load_exhibit_store
+
+        store = load_exhibit_store(deal_slug, run_id)
+    except Exception:
+        store = None
     for sec in commentary.sections:
         blob = "\n".join([sec.action_title, sec.body] + [s.text for s in sec.sentences])
         faults = assert_no_raw_numeric_literals(blob)
@@ -603,6 +611,25 @@ def _check_commentary(deal_slug: str, run_id: str) -> tuple[list[QaCheckResult],
                     suffix=f"{sec.section_id}:{f}",
                 )
             )
+        # Fix 4 — narrative numbers must cite matching fact_ids.
+        if store is not None:
+            try:
+                from agetic_cdd_api.services_fdd_narrative_bind import assert_narrative_bound
+
+                for sent in sec.sentences:
+                    for fault in assert_narrative_bound(sent.text, store, pptx=False):
+                        bind_issues.append(
+                            _open_issue(
+                                check_id="narrative_fact_bind",
+                                severity="S1",
+                                message=f"{sec.section_id}: {fault}",
+                                origin_stage=RunStage.P6,
+                                section_id=sec.section_id,
+                                suffix=f"bind:{sec.section_id}:{fault[:24]}",
+                            )
+                        )
+            except Exception:
+                pass
     for fault in commentary.typed_figure_faults:
         typed.append(
             _open_issue(
@@ -628,6 +655,24 @@ def _check_commentary(deal_slug: str, run_id: str) -> tuple[list[QaCheckResult],
             ),
             origin_stage=RunStage.P6,
             issue_ids=[i.issue_id for i in typed],
+        )
+    )
+    bind_by_id = {i.issue_id: i for i in bind_issues}
+    bind_issues = list(bind_by_id.values())
+    issues.extend(bind_issues)
+    checks.append(
+        _new_check(
+            "narrative_fact_bind",
+            passed=not bind_issues,
+            message=(
+                "Narrative numbers bound to fact_ids"
+                if not bind_issues
+                else f"{len(bind_issues)} narrative-bind fault(s)"
+            ),
+            origin_stage=RunStage.P6,
+            issue_ids=[i.issue_id for i in bind_issues],
+            blocking=bool(bind_issues),
+            severity="S1" if bind_issues else "S3",
         )
     )
 

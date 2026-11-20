@@ -500,6 +500,17 @@ def build_cash_bs_pack(deal_slug: str) -> CashBsPack:
             elif cap.lower() == "dividends payable":
                 # SoCF change — keep for paid inference only.
                 pack.dividend_paid["Jul-26"] = abs(val) if val is not None else None
+            elif cap.lower() in {"accounts receivable", "trade receivables"} and val is not None:
+                # SoCF working-capital line (negative = AR increase).
+                chg = float(val)
+                if abs(chg) >= 100:
+                    chg /= 1_000_000.0
+                ar25 = pack.ar.get(2025)
+                if ar25 is not None and "Jul-26" not in pack.ar:
+                    pack.ar["Jul-26"] = float(ar25) - chg
+                    pack.notes.append(
+                        f"Jul-26 AR rolled from Dec-25 ({ar25:.3f}m) − SoCF AR ({chg:.3f}m)"
+                    )
             elif cap == "Loans payable, net" and val is not None:
                 # SoCF financing change (negative = repayment).
                 chg = float(val)
@@ -571,34 +582,21 @@ def build_cash_bs_pack(deal_slug: str) -> CashBsPack:
     pack.rent_fy25 = _fy_balance(rows, ("Rent", "Rent Expense", "Occupancy"), 2025)
 
     docs = _deals_documents(deal_slug)
-    # Lease PDFs in the data room — annual rent only when the document states it.
+    # Fix 7 — lease PDFs via lease reader (bbox + honest PARTIAL, never silent blank).
     if docs is not None:
-        for path in docs.glob("*.pdf"):
-            if "lease" not in path.name.lower():
-                continue
-            try:
-                from pypdf import PdfReader
+        try:
+            from agetic_cdd_api.services_lease_reader import extract_evidenced_rent_m
 
-                text = "\n".join((p.extract_text() or "") for p in PdfReader(str(path)).pages[:8])
-                m = re.search(
-                    r"(?i)(?:annual(?:ly)?|per year|yearly)\s*(?:rent|base rent)?[^\d$]{0,24}"
-                    r"\$\s*([\d,]+(?:\.\d+)?)",
-                    text,
-                )
-                if m is None:
-                    m = re.search(
-                        r"(?i)\$\s*([\d,]+(?:\.\d+)?)\s*(?:per year|/year|annually)",
-                        text,
-                    )
-                if m:
-                    raw = float(m.group(1).replace(",", ""))
-                    pack.evidenced_lease_rent_m = (
-                        raw / 1_000_000.0 if raw >= 100 else raw / 1000.0 if raw >= 1 else raw
-                    )
-                    pack.evidenced_lease_label = path.name[:40]
+            for path in docs.glob("*.pdf"):
+                if "lease" not in path.name.lower():
+                    continue
+                rent_m, label, _bbox = extract_evidenced_rent_m(path)
+                if rent_m is not None:
+                    pack.evidenced_lease_rent_m = float(rent_m)
+                    pack.evidenced_lease_label = label or path.name[:40]
                     break
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     # USDA grant (CIM) + matching = FPEP total project cost − grant.
     if docs is not None:

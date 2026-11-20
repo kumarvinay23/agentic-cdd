@@ -369,7 +369,17 @@ def preview_report(
     elif export_fmt == "pdf":
         payload = preview_pdf(filepath)
     elif export_fmt == "pptx":
-        payload = preview_pptx(filepath)
+        # FDD Report/Deck: preview from SlideSpec (same source as PPTX), not CDD scrape.
+        payload = None
+        if is_fdd_pptx_only(report_type):
+            try:
+                from agetic_cdd_api.report_preview import preview_fdd_report
+
+                payload = preview_fdd_report(deal.slug, filepath)
+            except Exception:
+                payload = None
+        if payload is None:
+            payload = preview_pptx(filepath)
     else:
         raise HTTPException(
             status_code=400,

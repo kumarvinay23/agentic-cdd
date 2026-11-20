@@ -39,10 +39,15 @@ dkey = lambda d: tuple(sorted(d.items()))
 class SourceLocation:
     location_id: str; doc_id: str; sheet_or_page: str; cell_range: str; row_label_as_read: str; column_label_as_read: str
     value_as_read: str; extraction_method: str; transform_steps: list = field(default_factory=list)
+    # Fix 7 — page-normalized PDF/OCR box [x0, y0, x1, y1] in 0..1 when known.
+    bbox: list[float] | None = None
 
-def _loc(locs, doc_id, sheet, rng, rowlab, collab, val, steps=None, method="STATEMENT_READER"):
+def _loc(locs, doc_id, sheet, rng, rowlab, collab, val, steps=None, method="STATEMENT_READER", bbox=None):
     lid = "loc-" + uuid.uuid4().hex[:10]
-    locs[lid] = SourceLocation(lid, doc_id, sheet, rng, str(rowlab), str(collab), str(val), method, list(steps or []))
+    locs[lid] = SourceLocation(
+        lid, doc_id, sheet, rng, str(rowlab), str(collab), str(val), method, list(steps or []),
+        bbox=list(bbox) if bbox else None,
+    )
     return lid
 
 # ------------------------------------------------------------------ READ 1: row kind from the formula
@@ -601,6 +606,31 @@ def _file_facts(path, row, onto, currency, scale, fye_month, deal_id):
     locs: dict[str, SourceLocation] = {}
     logs: list[dict[str, Any]] = []
     items: list[dict[str, Any]] = []
+    doc_type = str(row.get("doc_type") or "").strip()
+    # Fix 7 — lease / contract PDFs use the lease reader (bbox + honest status).
+    if doc_type in {"LEASE_AGREEMENT", "LEASE_SCHEDULE"} or (
+        path.suffix.lower() == ".pdf" and "lease" in path.name.lower()
+    ):
+        try:
+            from agetic_cdd_api.services_lease_reader import read_lease_document
+
+            found, lease_locs = read_lease_document(
+                path,
+                doc_id=str(row.get("doc_id") or ""),
+                currency=currency,
+            )
+            locs.update(lease_locs)
+            if found:
+                return found, locs, []
+            _note_skip(
+                deal_id,
+                row,
+                "PARTIAL — lease PDF readable but contractual rent not extracted",
+            )
+            return None, locs, []
+        except Exception as exc:
+            _note_skip(deal_id, row, f"FAILED — lease read: {exc}")
+            return None, locs, []
     if is_non_statement_document(row.get("doc_type")):
         _note_skip(deal_id, row, "non-statement document type")
         return None, locs, []
@@ -773,18 +803,27 @@ def _persist_location(loc: SourceLocation) -> None:
     from agetic_cdd_api.services_databook_migrate import psql
 
     steps = _steps(loc.transform_steps)
+    bbox_sql = _bbox_sql(getattr(loc, "bbox", None))
     sql = (
         "INSERT INTO source_location ("
         "location_id, doc_id, sheet_or_page, cell_range, row_label_as_read, column_label_as_read, "
-        "value_as_read, extraction_method, transform_steps"
+        "value_as_read, extraction_method, transform_steps, bbox"
         ") VALUES ("
         f"{_sql(loc.location_id)}, {_sql(loc.doc_id)}, {_sql(loc.sheet_or_page)}, {_sql(loc.cell_range)}, "
         f"{_sql(loc.row_label_as_read)}, {_sql(loc.column_label_as_read)}, {_sql(loc.value_as_read)}, "
-        f"{_sql(loc.extraction_method)}, {steps}) ON CONFLICT (location_id) DO NOTHING;"
+        f"{_sql(loc.extraction_method)}, {steps}, {bbox_sql}"
+        ") ON CONFLICT (location_id) DO NOTHING;"
     )
     result = psql(url, sql)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "source location write failed")
+
+
+def _bbox_sql(bbox: list[float] | None) -> str:
+    if not bbox or len(bbox) != 4:
+        return "NULL"
+    nums = ", ".join(f"{float(x):.6f}" for x in bbox[:4])
+    return f"ARRAY[{nums}]::numeric[]"
 
 
 def _document_exists(url: str, doc_id: str) -> bool:

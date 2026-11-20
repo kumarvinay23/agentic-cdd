@@ -407,6 +407,180 @@ function PptxBars({
   );
 }
 
+function FddSlideFrame({
+  slide,
+  chrome,
+}: {
+  readonly slide: ReportPreviewSlide;
+  readonly chrome?: ReportPreviewPayload["chrome"];
+}) {
+  const kind = slide.kind || "content";
+  const banner = slide.banner || slide.eyebrow || "";
+  const headline = slide.headline || slide.title || "";
+  const subtitle =
+    slide.subtitle ||
+    [chrome?.project_label, chrome?.basis_short].filter(Boolean).join(" | ");
+  const hasObs = Boolean(slide.bullets && slide.bullets.length > 0);
+  const hasTable = Boolean(slide.table && slide.table.length > 0);
+  const hasKpis = Boolean(slide.kpis && slide.kpis.length > 0);
+  const splitBody = hasTable && hasObs;
+
+  if (kind === "cover" || slide.layout === "cover") {
+    return (
+      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg bg-[#14213D] text-white shadow-md">
+        <div className="flex h-full flex-col justify-center px-10 py-8">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#0F7C80]">
+            Financial due diligence
+          </p>
+          <h2 className="mt-4 text-[34px] font-bold leading-tight">{headline}</h2>
+          {slide.subtitle ? (
+            <p className="mt-2 text-[15px] text-white/85">{slide.subtitle}</p>
+          ) : null}
+          {(slide.paragraphs || []).slice(0, 4).map((p) => (
+            <p key={p} className="mt-2 max-w-2xl text-[13px] text-white/75">
+              {p}
+            </p>
+          ))}
+          <p className="mt-auto pt-8 text-[10px] uppercase tracking-wide text-white/60">
+            Strictly private and confidential — draft, subject to change
+          </p>
+        </div>
+        <div className="absolute bottom-3 right-5 text-[11px] font-semibold text-white/70">
+          {slide.page}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg border border-[#D0D7DE] bg-white shadow-md">
+      <div className="flex items-start justify-between px-5 pt-3">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#0F7C80]">
+          {banner || "FDD REPORT"}
+        </p>
+        {subtitle ? (
+          <p className="max-w-[55%] text-right text-[10px] font-medium text-[#7B8794]">
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="px-5 pt-1">
+        <h2 className="text-[17px] font-bold leading-snug text-[#14213D]">{headline}</h2>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-10 pt-3">
+        {hasKpis ? (
+          <div
+            className="mb-3 grid gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(slide.kpis!.length, 5)}, minmax(0, 1fr))`,
+            }}
+          >
+            {slide.kpis!.map((kpi) => (
+              <div
+                key={`${kpi.label}-${kpi.value}`}
+                className="rounded border border-[#D0D7DE] bg-[#EEF2F6] px-2 py-2"
+              >
+                <p className="text-[15px] font-bold leading-none text-[#14213D]">{kpi.value}</p>
+                <p className="mt-1 text-[9px] leading-snug text-[#7B8794]">{kpi.label}</p>
+                {kpi.detail ? (
+                  <p className="mt-0.5 text-[9px] text-[#7B8794]">{kpi.detail}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className={`grid min-h-0 flex-1 gap-3 ${splitBody ? "grid-cols-[1.55fr_1fr]" : "grid-cols-1"}`}>
+          <div className="min-h-0 overflow-hidden">
+            {slide.table_title ? (
+              <p className="mb-1 text-[11px] font-semibold text-[#14213D]">{slide.table_title}</p>
+            ) : null}
+            {slide.table_basis ? (
+              <p className="mb-1 text-[9px] text-[#7B8794]">Basis: {slide.table_basis}</p>
+            ) : null}
+            {hasTable ? (
+              <div className="max-h-full overflow-auto rounded border border-[#D0D7DE]">
+                <table className="min-w-full border-collapse text-left text-[10px]">
+                  <tbody>
+                    {slide.table!.map((row, ri) => (
+                      <tr
+                        key={`fdd-t-${ri}`}
+                        className={
+                          ri === 0
+                            ? "bg-[#14213D] text-white"
+                            : ri % 2
+                              ? "bg-[#F5F7FA]"
+                              : "bg-white"
+                        }
+                      >
+                        {row.map((cell, ci) => (
+                          <td
+                            key={`fdd-c-${ri}-${ci}`}
+                            className="border border-[#D0D7DE] px-2 py-1 align-top"
+                          >
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            {!hasTable && (slide.paragraphs || []).length > 0 ? (
+              <div className="space-y-1.5 text-[12px] text-[#374151]">
+                {(slide.paragraphs || []).slice(0, 8).map((p, idx) => (
+                  <p key={`fdd-p-${idx}`}>{p}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {hasObs ? (
+            <div className="min-h-0 overflow-auto rounded border border-[#D0D7DE] bg-[#F5F7FA] p-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-[#14213D]">
+                Observations
+              </p>
+              <ul className="mt-1.5 space-y-1.5 text-[11px] text-[#374151]">
+                {slide.bullets!.map((b, idx) => (
+                  <li key={`fdd-bu-${idx}`} className="flex gap-2">
+                    <span className="mt-[6px] h-[2px] w-2.5 shrink-0 bg-[#0F7C80]" />
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+              {(slide.footnotes || []).length > 0 ? (
+                <div className="mt-2 border-t border-[#D0D7DE] pt-1.5 text-[9px] text-[#7B8794]">
+                  {slide.footnotes!.slice(0, 2).map((fn, idx) => (
+                    <p key={`fdd-fn-${idx}`}>{fn}</p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between border-t border-[#D0D7DE] bg-white px-5 py-1.5">
+        <p className="max-w-[70%] truncate text-[9px] text-[#7B8794]">
+          {slide.source ? `Source: ${slide.source}` : "Source: Diligence analysis"}
+        </p>
+        <div className="flex items-center gap-3">
+          {slide.evidence_tier ? (
+            <span className="rounded bg-[#B7791F] px-1.5 py-0.5 text-[9px] font-bold text-white">
+              Evidence {slide.evidence_tier}
+            </span>
+          ) : null}
+          <p className="text-[11px] font-semibold text-[#14213D]">{slide.page}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PptxSlideFrame({
   slide,
   reportType,
@@ -681,10 +855,14 @@ function PptxPreview({
   slides,
   slideCount,
   reportType,
+  chrome,
+  previewMode,
 }: {
   readonly slides: ReportPreviewSlide[];
   readonly slideCount?: number;
   readonly reportType: string;
+  readonly chrome?: ReportPreviewPayload["chrome"];
+  readonly previewMode?: string;
 }) {
   if (!slides.length) {
     return (
@@ -695,11 +873,18 @@ function PptxPreview({
     );
   }
 
+  const useFdd =
+    reportType === "fdd_report" ||
+    reportType === "fdd_deck" ||
+    previewMode === "fdd_slidespec" ||
+    chrome?.family === "fdd" ||
+    slides.some((s) => s.chrome === "fdd");
+
   return (
     <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#e8eaed] shadow-sm">
       <div className="flex items-center justify-between border-b border-[#d1d5db] bg-[#fafbfc] px-4 py-2">
         <p className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-          Deck preview
+          {useFdd ? "FDD report preview" : "Deck preview"}
         </p>
         <p className="text-[11px] text-text-secondary">
           {slideCount || slides.length} slides ·{" "}
@@ -709,7 +894,11 @@ function PptxPreview({
       <div className="max-h-[min(78vh,980px)] space-y-4 overflow-auto p-4">
         {slides.map((slide) => (
           <div key={`slide-${slide.index}`} className="mx-auto w-full max-w-4xl">
-            <PptxSlideFrame slide={slide} reportType={reportType} />
+            {useFdd ? (
+              <FddSlideFrame slide={slide} chrome={chrome} />
+            ) : (
+              <PptxSlideFrame slide={slide} reportType={reportType} />
+            )}
           </div>
         ))}
       </div>
@@ -743,6 +932,8 @@ export function DealReports({
   const [previewBlocks, setPreviewBlocks] = useState<ReportPreviewBlock[]>([]);
   const [previewSlides, setPreviewSlides] = useState<ReportPreviewSlide[]>([]);
   const [previewSlideCount, setPreviewSlideCount] = useState<number | undefined>(undefined);
+  const [previewChrome, setPreviewChrome] = useState<ReportPreviewPayload["chrome"]>(undefined);
+  const [previewMode, setPreviewMode] = useState<string | undefined>(undefined);
   const [previewFormat, setPreviewFormat] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string>("");
@@ -794,6 +985,8 @@ export function DealReports({
           setPreviewBlocks([]);
           setPreviewSlides([]);
           setPreviewSlideCount(undefined);
+          setPreviewChrome(undefined);
+          setPreviewMode(undefined);
           setPreviewSheets([]);
           setActiveSheet("");
           setPreviewRows([]);
@@ -821,6 +1014,8 @@ export function DealReports({
         );
         const fmt = data.format || (data.slides?.length ? "pptx" : data.blocks ? "docx" : "xlsx");
         setPreviewFormat(fmt);
+        setPreviewChrome(data.chrome);
+        setPreviewMode(data.preview_mode);
         setPdfPreviewUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
           return "";
@@ -1264,6 +1459,8 @@ export function DealReports({
               slides={previewSlides}
               slideCount={previewSlideCount}
               reportType={selectedReport.report_type}
+              chrome={previewChrome}
+              previewMode={previewMode}
             />
           ) : previewFormat === "docx" || selectedReport.export === "docx" ? (
             <DocxPreview blocks={previewBlocks} />

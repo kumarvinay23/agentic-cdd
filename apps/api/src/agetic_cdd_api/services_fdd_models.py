@@ -859,7 +859,7 @@ def _cell(
         figure_type=figure_type,
         evidence_tier=EvidenceTier.B,
         status=status,
-        basis_label=basis_label or f"{model_id} · {MODELS_VERSION}",
+        basis_label=basis_label or f"{model_id}, {MODELS_VERSION}",
         model_id=model_id,
         model_version=MODELS_VERSION,
     )
@@ -925,7 +925,7 @@ def build_trading_exhibit(
                     status=_worst_status(ln.status for ln in hit),
                     model_id="M1",
                     figure_type=FigureType.REPORTED,
-                    basis_label=f"M1 historical trading · FY{y}",
+                    basis_label=f"M1 historical trading, FY{y}",
                 )
             )
 
@@ -955,7 +955,7 @@ def build_trading_exhibit(
                         ),
                         model_id="M1",
                         figure_type=FigureType.CALCULATED,
-                        basis_label=f"M1 gross profit ÷ revenue · FY{y}",
+                        basis_label=f"M1 gross profit / revenue, FY{y}",
                     )
                 )
                 series["gross_margin"][y] = (m, rev_hit + gp[1])
@@ -979,7 +979,7 @@ def build_trading_exhibit(
                         status=_worst_status(ln.status for ln in gm_hit),
                         model_id="M1",
                         figure_type=FigureType.REPORTED,
-                        basis_label=f"M1 historical trading · FY{y}",
+                        basis_label=f"M1 historical trading, FY{y}",
                     )
                 )
                 series["gross_margin"][y] = (m, gm_hit)
@@ -1003,7 +1003,7 @@ def build_trading_exhibit(
                         ),
                         model_id="M1",
                         figure_type=FigureType.CALCULATED,
-                        basis_label=f"M1 EBITDA ÷ revenue · FY{y}",
+                        basis_label=f"M1 EBITDA / revenue, FY{y}",
                     )
                 )
                 series["ebitda_margin"][y] = (m, rev_hit + eb[1])
@@ -1027,7 +1027,7 @@ def build_trading_exhibit(
                         status=_worst_status(ln.status for ln in em_hit),
                         model_id="M1",
                         figure_type=FigureType.REPORTED,
-                        basis_label=f"M1 historical trading · FY{y}",
+                        basis_label=f"M1 historical trading, FY{y}",
                     )
                 )
                 series["ebitda_margin"][y] = (m, em_hit)
@@ -1064,7 +1064,7 @@ def build_trading_exhibit(
                     ),
                     model_id="M1",
                     figure_type=FigureType.CALCULATED,
-                    basis_label=f"M1 ({canon} FY{curr} − FY{prior}) ÷ |FY{prior}|",
+                    basis_label=f"M1 ({canon} FY{curr} − FY{prior}) / |FY{prior}|",
                 )
             )
 
@@ -1150,7 +1150,7 @@ def build_balance_sheet_exhibit(
                     status=ln.status,
                     model_id="M8",
                     figure_type=FigureType.REPORTED,
-                    basis_label=f"M8 balance sheet · FY{y}",
+                    basis_label=f"M8 balance sheet, FY{y}",
                 )
             )
     if not cells:
@@ -1216,7 +1216,7 @@ def build_nwc_exhibit(
                 metric_key=component_key,
                 status=_worst_status(ln.status for ln in hit),
                 model_id="M5",
-                basis_label=f"M5 NWC component · FY{y}",
+                basis_label=f"M5 NWC component, FY{y}",
             )
         )
 
@@ -1351,7 +1351,7 @@ def build_net_debt_exhibit(
                 metric_key=metric_key,
                 status=_worst_status(ln.status for ln in hit),
                 model_id="M6",
-                basis_label=f"M6 net debt component · FY{y}",
+                basis_label=f"M6 net debt component, FY{y}",
             )
         )
 
@@ -1585,7 +1585,7 @@ def build_margin_exhibit(
                 value=r_tot,
                 hit=r_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M2 revenue · FY{y}",
+                basis=f"M2 revenue, FY{y}",
             )
         if g_tot is not None:
             gp[y] = (g_tot, g_hit)
@@ -1596,7 +1596,7 @@ def build_margin_exhibit(
                 value=g_tot,
                 hit=g_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M2 gross profit · FY{y}",
+                basis=f"M2 gross profit, FY{y}",
             )
         elif r_tot is not None and cogs_tot is not None:
             # Derive GP = revenue − COGS when GP not reported
@@ -1610,7 +1610,7 @@ def build_margin_exhibit(
                 value=derived,
                 hit=hit,
                 figure_type=FigureType.CALCULATED,
-                basis=f"M2 revenue − COGS · FY{y}",
+                basis=f"M2 revenue − COGS, FY{y}",
             )
         if cogs_tot is not None:
             _add(
@@ -1620,7 +1620,7 @@ def build_margin_exhibit(
                 value=abs(float(cogs_tot)),
                 hit=cogs_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M2 COGS · FY{y}",
+                basis=f"M2 COGS, FY{y}",
             )
         elif r_tot is not None and y in gp:
             derived_cogs = float(r_tot) - float(gp[y][0])
@@ -1632,7 +1632,7 @@ def build_margin_exhibit(
                 value=derived_cogs,
                 hit=hit,
                 figure_type=FigureType.CALCULATED,
-                basis=f"M2 revenue − gross profit · FY{y}",
+                basis=f"M2 revenue − gross profit, FY{y}",
             )
 
         # Gross margin % — prefer GP÷revenue from levels on this exhibit so G3
@@ -1674,7 +1674,7 @@ def build_margin_exhibit(
                 value=e_tot,
                 hit=e_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M2 EBITDA · FY{y}",
+                basis=f"M2 EBITDA, FY{y}",
             )
         em_val: float | None = None
         em_hits: list[_Line] = []
@@ -1714,7 +1714,7 @@ def build_margin_exhibit(
                 value=mix_tot,
                 hit=mix_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M2 concentration · FY{y}",
+                basis=f"M2 concentration, FY{y}",
                 unit_scale="%",
             )
 
@@ -1770,7 +1770,7 @@ def build_margin_exhibit(
                     value=round(gm_val, 4),
                     hit=gm_hits,
                     figure_type=gm_fig,
-                    basis=f"M2 gross margin · FY{y} (monthly pack)",
+                    basis=f"M2 gross margin, FY{y} (monthly pack)",
                     unit_scale="%",
                 )
             notes.append("gm_series_locked_to_pack")
@@ -1793,7 +1793,7 @@ def build_margin_exhibit(
                     value=round(yoy, 4),
                     hit=[*rev[curr][1], *rev[prior][1]],
                     figure_type=FigureType.CALCULATED,
-                    basis=f"M2 (rev FY{curr} − FY{prior}) ÷ |FY{prior}|",
+                    basis=f"M2 (rev FY{curr} − FY{prior}) / |FY{prior}|",
                     unit_scale="%",
                 )
         from agetic_cdd_api.services_fdd_sources import classify_source
@@ -1990,7 +1990,7 @@ def build_costs_exhibit(
                 value=r_tot,
                 hit=r_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M3 revenue · FY{y}",
+                basis=f"M3 revenue, FY{y}",
             )
 
         if c_tot is not None:
@@ -2003,7 +2003,7 @@ def build_costs_exhibit(
                 value=c_abs,
                 hit=c_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M3 COGS · FY{y}",
+                basis=f"M3 COGS, FY{y}",
             )
         elif r_tot is not None:
             # Derive COGS from revenue − GP when GP is on the fact table
@@ -2025,7 +2025,7 @@ def build_costs_exhibit(
                     value=derived,
                     hit=hit,
                     figure_type=FigureType.CALCULATED,
-                    basis=f"M3 revenue − gross profit · FY{y}",
+                    basis=f"M3 revenue − gross profit, FY{y}",
                 )
 
         if s_tot is not None:
@@ -2038,7 +2038,7 @@ def build_costs_exhibit(
                 value=s_abs,
                 hit=s_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M3 SG&A · FY{y}",
+                basis=f"M3 SG&A, FY{y}",
             )
 
         if l_tot is not None:
@@ -2051,7 +2051,7 @@ def build_costs_exhibit(
                 value=l_abs,
                 hit=l_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M3 labour · FY{y}",
+                basis=f"M3 labour, FY{y}",
             )
 
         if h_tot is not None:
@@ -2063,7 +2063,7 @@ def build_costs_exhibit(
                 value=float(h_tot),
                 hit=h_hit,
                 figure_type=FigureType.REPORTED,
-                basis=f"M3 headcount · FY{y}",
+                basis=f"M3 headcount, FY{y}",
                 unit_scale="FTE",
             )
 
@@ -2107,7 +2107,7 @@ def build_costs_exhibit(
                     value=round(pct, 4),
                     hit=hit,
                     figure_type=FigureType.CALCULATED,
-                    basis=f"{basis} · FY{y}",
+                    basis=f"{basis}, FY{y}",
                     unit_scale="%",
                 )
 
@@ -2121,7 +2121,7 @@ def build_costs_exhibit(
                     value=round(rph, 4),
                     hit=hit,
                     figure_type=FigureType.CALCULATED,
-                    basis=f"M3 revenue ÷ headcount · FY{y}",
+                    basis=f"M3 revenue / headcount, FY{y}",
                 )
 
     # YoY on cost lines (newest vs prior)
@@ -2147,7 +2147,7 @@ def build_costs_exhibit(
                 value=round(yoy, 4),
                 hit=[*series[curr][1], *series[prior][1]],
                 figure_type=FigureType.CALCULATED,
-                basis=f"M3 ({key.replace('_yoy', '')} FY{curr} − FY{prior}) ÷ |FY{prior}|",
+                basis=f"M3 ({key.replace('_yoy', '')} FY{curr} − FY{prior}) / |FY{prior}|",
                 unit_scale="%",
             )
             notes.append(f"{key}:FY{prior}->{curr}:{yoy:+.2f}%")
@@ -2274,7 +2274,7 @@ def build_cash_conversion_exhibit(
             hit=ocf_hit,
             metric_key="operating_cash_flow",
             figure_type=FigureType.REPORTED,
-            basis=f"M7 operating cash flow · FY{y}",
+            basis=f"M7 operating cash flow, FY{y}",
         )
     else:
         notes.append(f"ocf_missing_fy{y}")
@@ -2290,7 +2290,7 @@ def build_cash_conversion_exhibit(
             hit=capex_hit,
             metric_key="capex",
             figure_type=FigureType.REPORTED,
-            basis=f"M7 capex (absolute spend) · FY{y}",
+            basis=f"M7 capex (absolute spend), FY{y}",
         )
     else:
         notes.append(f"capex_missing_fy{y}")
@@ -2303,7 +2303,7 @@ def build_cash_conversion_exhibit(
             hit=ebitda_hit,
             metric_key="ebitda",
             figure_type=FigureType.REPORTED,
-            basis=f"M7 EBITDA reference · FY{y}",
+            basis=f"M7 EBITDA reference, FY{y}",
         )
 
     if ocf is not None and capex_spend is not None:
@@ -2315,7 +2315,7 @@ def build_cash_conversion_exhibit(
             hit=[*ocf_hit, *capex_hit],
             metric_key="free_cash_flow",
             figure_type=FigureType.CALCULATED,
-            basis=f"M7 FCF = OCF − |capex| · FY{y}",
+            basis=f"M7 FCF = OCF − |capex|, FY{y}",
         )
     elif ocf is not None and capex_spend is None:
         notes.append("fcf_held_capex_missing")
@@ -2329,7 +2329,7 @@ def build_cash_conversion_exhibit(
             hit=[*ocf_hit, *ebitda_hit],
             metric_key="cash_conversion",
             figure_type=FigureType.CALCULATED,
-            basis=f"M7 OCF ÷ EBITDA · FY{y}",
+            basis=f"M7 OCF / EBITDA, FY{y}",
             unit_scale="%",
         )
     elif ocf is not None and ebitda is None:
@@ -2350,7 +2350,7 @@ def build_cash_conversion_exhibit(
             hit=[*ocf_hit, *capex_hit, *ebitda_hit],
             metric_key="fcf_conversion",
             figure_type=FigureType.CALCULATED,
-            basis=f"M7 FCF ÷ EBITDA · FY{y}",
+            basis=f"M7 FCF / EBITDA, FY{y}",
             unit_scale="%",
         )
 
