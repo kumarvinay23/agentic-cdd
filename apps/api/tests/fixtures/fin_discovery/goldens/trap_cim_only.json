@@ -1,0 +1,29 @@
+{
+  "id": "trap_cim_only",
+  "kind": "trap_no_promote",
+  "company": "Horizon Co",
+  "deal_name": "Horizon",
+  "description": "Only alternative is a CIM — must not auto-promote; no false promote.",
+  "expected_files": ["FIN_empty.xlsx"],
+  "files": [
+    {
+      "filename": "FIN_empty.xlsx",
+      "doc_type": "FIN_MGMT_ACCOUNTS",
+      "sheets": ["Blank"],
+      "role": "expected_empty"
+    },
+    {
+      "filename": "CIM_Project_Horizon.xlsx",
+      "doc_type": "CORPORATE_DOCS",
+      "sheets": ["Overview", "Market Sizing"],
+      "role": "trap_cim",
+      "cdl_category": "deal_strategy"
+    }
+  ],
+  "assert": {
+    "must_not_auto_promote": ["CIM_Project_Horizon.xlsx"],
+    "expect_skip_reason_prefix": "risk:",
+    "expect_recovered": false,
+    "expect_false_promote": false
+  }
+}

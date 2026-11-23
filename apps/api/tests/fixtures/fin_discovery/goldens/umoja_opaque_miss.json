@@ -1,0 +1,37 @@
+{
+  "id": "umoja_opaque_miss",
+  "kind": "miss_recoverable",
+  "company": "Umoja Health",
+  "deal_name": "Umoja Health",
+  "description": "Gate 2 expects an empty FIN_* pack; opaque hist workbook should rank #1 and auto-promote.",
+  "expected_files": ["QoE_pack.xlsx"],
+  "files": [
+    {
+      "filename": "QoE_pack.xlsx",
+      "doc_type": "FIN_QOE_REPORT",
+      "sheets": ["Summary"],
+      "role": "expected_empty"
+    },
+    {
+      "filename": "Umoja_Pack_v3.xlsx",
+      "doc_type": "CORPORATE_DOCS",
+      "sheets": ["P&L", "Balance Sheet", "Cash Flow"],
+      "role": "gold_target",
+      "cdl_category": "financial"
+    },
+    {
+      "filename": "CIM_Project_Horizon.xlsx",
+      "doc_type": "CORPORATE_DOCS",
+      "sheets": ["Overview", "Market"],
+      "role": "trap_cim",
+      "cdl_category": "deal_strategy"
+    }
+  ],
+  "assert": {
+    "top1_filename": "Umoja_Pack_v3.xlsx",
+    "gold_promote_filename": "Umoja_Pack_v3.xlsx",
+    "must_not_auto_promote": ["CIM_Project_Horizon.xlsx"],
+    "expect_recovered": true,
+    "expect_false_promote": false
+  }
+}

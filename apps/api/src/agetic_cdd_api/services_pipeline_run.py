@@ -287,10 +287,23 @@ def execute_pipeline_keys(db: Session, *, org_id: str, deal_id: str, agent_keys:
         raise
 
 
-def execute_pipeline_keys_background(*, org_id: str, deal_id: str, agent_keys: list[str]) -> None:
+def execute_pipeline_keys_background(
+    *,
+    org_id: str,
+    deal_id: str,
+    agent_keys: list[str],
+    llm_override: object | None = None,
+) -> None:
+    """Background worker; re-applies request LLM override (contextvars don't cross threads)."""
+    from agetic_cdd_api.services_llm import LlmOverride, use_llm_override
+
     db = SessionLocal()
     try:
-        execute_pipeline_keys(db, org_id=org_id, deal_id=deal_id, agent_keys=agent_keys)
+        override = llm_override if isinstance(llm_override, LlmOverride) else None
+        with use_llm_override(override):
+            execute_pipeline_keys(
+                db, org_id=org_id, deal_id=deal_id, agent_keys=agent_keys
+            )
     finally:
         db.close()
 

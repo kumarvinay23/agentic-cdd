@@ -47,6 +47,7 @@ markers = [
     "diq_sequence: DIQ side-by-side Document Workspace validation sequence",
     "fts_scale: FTS re-ingest and retrieval scale tests (100+ files)",
     "retrieval_benchmark: 20-prompt FTS + passage recall benchmark matrix",
+    "fin_discovery_eval: Gate-2-miss fin discovery golden VDR recovery/false-promote suite",
     "live_web: opt into live web research (no stub)",
     "databook_ship: P7 golden databooks + trap suite ship gate (H-1…H-7)",
     "fdd_ship: Phase 9 FDD goldens/traps + Phase G PPTX structural parity",

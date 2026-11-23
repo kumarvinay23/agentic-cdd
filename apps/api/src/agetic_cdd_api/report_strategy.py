@@ -79,12 +79,6 @@ _NOISE_MARKERS = (
     "vehicle os (moveos) linux-based",
 )
 _NOISE_PREFIX_RE = re.compile(r"^0\s+\d+\s+")
-_META_FINDING_RE = re.compile(
-    r"^(target|deal\s*/\s*strategy|sector|industry)\s*:|"
-    r"\d+\s+file\(s\)|"
-    r"^deal\s*/\s*strategy\b",
-    re.I,
-)
 
 
 def _resolve_agent(ctx: BuildContext, key: str) -> dict[str, Any]:
@@ -199,7 +193,9 @@ def _is_noisy(text: str) -> bool:
 
 
 def _is_meta_finding(text: str) -> bool:
-    return bool(_META_FINDING_RE.search((text or "").strip()))
+    from agetic_cdd_api.services_metric_hygiene import is_polluted_insight
+
+    return is_polluted_insight(text)
 
 
 def _signal_line(
@@ -429,7 +425,7 @@ def _add_para(
 
 def _add_bullets(doc: Document, items: list[str]) -> None:
     for item in items:
-        sig = _signal_line(item, max_chars=400) or _clean_prose(item, 280)
+        sig = _signal_line(item, max_chars=400)
         if not sig:
             continue
         p = doc.add_paragraph(style="List Bullet")
@@ -555,7 +551,11 @@ def _estimate_content_pages(enabled_kinds: list[str]) -> dict[str, str]:
 
 
 def _add_insight(doc: Document, text: str) -> None:
-    sig = _signal_line(text, max_chars=420) or _clean_prose(text, 420)
+    from agetic_cdd_api.services_metric_hygiene import is_polluted_insight
+
+    if is_polluted_insight(text):
+        return
+    sig = _signal_line(text, max_chars=420)
     if not sig:
         return
     p = doc.add_paragraph()
@@ -820,7 +820,7 @@ def _compose_executive_summary(doc: Document, ctx: BuildContext) -> None:
 
     narrative = ics_spec.get("verdict_narrative") or ics_spec.get("value_creation_thesis")
     if isinstance(narrative, str) and narrative.strip():
-        sig = _signal_line(narrative, max_chars=900) or _clean_prose(narrative, 900)
+        sig = _signal_line(narrative, max_chars=900)
         if sig:
             _add_para(doc, sig)
 

@@ -326,7 +326,13 @@ def released_to_pl_lines(release: DatabookRelease) -> list[dict[str, Any]]:
         else:
             line["unit"] = ""
 
-    return [by_metric[k] for k in _ordered_metric_keys(by_metric.keys(), first_seen=first_seen)]
+    lines = [by_metric[k] for k in _ordered_metric_keys(by_metric.keys(), first_seen=first_seen)]
+    try:
+        from agetic_cdd_api.services_metric_hygiene import quarantine_pl_line_scale
+
+        return quarantine_pl_line_scale(lines)
+    except Exception:
+        return lines
 
 
 def promoted_to_pl_lines(metrics: list[PromotedMetric]) -> list[dict[str, Any]]:

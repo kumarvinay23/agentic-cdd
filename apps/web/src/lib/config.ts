@@ -68,6 +68,14 @@ export const ENDPOINTS = {
     `/api/v1/portfolios/${id}/cdd/databook/rows/${encodeURIComponent(rowId)}/remap`,
   cddDatabookAccept: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/conflicts/accept`,
   cddDatabookReread: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/reread`,
+  cddFinDiscoveryCandidates: (id: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/fin-discovery/candidates`,
+  cddFinDiscoveryAccept: (id: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/fin-discovery/accept`,
+  cddFinDiscoveryReject: (id: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/fin-discovery/reject`,
+  cddFinDiscoveryAudit: (id: string) =>
+    `/api/v1/portfolios/${id}/cdd/databook/fin-discovery/audit`,
   cddDatabookValidationPack: (id: string) => `/api/v1/portfolios/${id}/cdd/databook/validation-pack`,
   cddDatabookCrop: (id: string, cropRef: string) =>
     `/api/v1/portfolios/${id}/cdd/databook/crops/${encodeURIComponent(cropRef)}`,

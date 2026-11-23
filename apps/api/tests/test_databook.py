@@ -3029,6 +3029,134 @@ def test_doubtful_release_omits_numeric_values() -> None:
     assert [(f["family"], f["value"]) for f in facts] == [("ebitda", 0.572)]
 
 
+def test_ops_kpi_prefers_released_databook_over_polluted_agent() -> None:
+    """Headline Revenue / EBITDA / GM must use released databook, not agent scale junk."""
+    from agetic_cdd_api.report_ops_dashboard import MetricFact, derive_kpi_scorecard
+
+    facts = [
+        # Released databook (canonical USD M)
+        MetricFact(
+            family="revenue",
+            label="Revenue",
+            value=11.741,
+            year=2024,
+            agent_key="databook",
+            agent_name="Databook",
+        ),
+        MetricFact(
+            family="revenue",
+            label="Revenue",
+            value=13.282,
+            year=2025,
+            agent_key="databook",
+            agent_name="Databook",
+        ),
+        MetricFact(
+            family="ebitda",
+            label="EBITDA",
+            value=1.115,
+            year=2024,
+            agent_key="databook",
+            agent_name="Databook",
+        ),
+        MetricFact(
+            family="ebitda",
+            label="EBITDA",
+            value=0.572,
+            year=2025,
+            agent_key="databook",
+            agent_name="Databook",
+        ),
+        MetricFact(
+            family="gross_margin",
+            label="Gross Margin",
+            value=0.304388,
+            year=2025,
+            agent_key="databook",
+            agent_name="Databook",
+        ),
+        # Polluted agent series (raw $ / zeros) — must not win headlines
+        MetricFact(
+            family="revenue",
+            label="Revenue",
+            value=0.0,
+            year=2023,
+            agent_key="historical_performance",
+            agent_name="Historical",
+        ),
+        MetricFact(
+            family="revenue",
+            label="Revenue",
+            value=19059.49,
+            year=2024,
+            agent_key="historical_performance",
+            agent_name="Historical",
+        ),
+        MetricFact(
+            family="revenue",
+            label="Revenue",
+            value=0.0,
+            year=2025,
+            agent_key="historical_performance",
+            agent_name="Historical",
+        ),
+        MetricFact(
+            family="ebitda",
+            label="EBITDA",
+            value=-32131.95,
+            year=2025,
+            agent_key="historical_performance",
+            agent_name="Historical",
+        ),
+        MetricFact(
+            family="gross_margin",
+            label="Gross Margin",
+            value=0.304388,
+            year=2025,
+            agent_key="historical_performance",
+            agent_name="Historical",
+        ),
+    ]
+    pl_lines = [
+        {
+            "line_item": "Revenue",
+            "fy2024_value": 11.741,
+            "fy2024_period_type": "actual",
+            "fy2025_value": 13.282,
+            "fy2025_period_type": "actual",
+        },
+        {
+            "line_item": "EBITDA",
+            "fy2024_value": 1.115,
+            "fy2024_period_type": "actual",
+            "fy2025_value": 0.572,
+            "fy2025_period_type": "actual",
+        },
+        {
+            "line_item": "Gross Margin",
+            "fy2025_value": 0.304388,
+            "fy2025_period_type": "actual",
+        },
+    ]
+    kpis = derive_kpi_scorecard(facts, pl_lines)
+    by_name = {k.name: k for k in kpis}
+
+    yoy = by_name["Revenue Growth (YoY)"]
+    assert "FY2025" in str(yoy.latest)
+    assert "-100" not in str(yoy.latest)
+    assert "13.0%" in str(yoy.yoy) or "13.1%" in str(yoy.yoy) or "13%" in str(yoy.yoy)
+
+    ebitda = by_name["EBITDA"]
+    assert "0.572" in str(ebitda.latest) or "0.57" in str(ebitda.latest)
+    assert "32131" not in str(ebitda.latest)
+    assert "FY2025" in str(ebitda.latest)
+
+    gm = by_name["Gross Margin"]
+    # Ratio 0.304 → percent points ~30.4 (not 0.304%)
+    assert "30.4" in str(gm.latest) or "30.4388" in str(gm.latest)
+    assert not str(gm.latest).startswith("0.304")
+
+
 def test_ops_kpi_prefers_near_term_not_plan_horizon() -> None:
     from agetic_cdd_api.report_ops_dashboard import MetricFact, derive_kpi_scorecard
 

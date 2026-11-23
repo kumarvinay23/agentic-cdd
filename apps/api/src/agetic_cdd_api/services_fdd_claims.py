@@ -551,6 +551,33 @@ def _scale_mismatch(claimed: float, book: float) -> bool:
     return hi >= 1000.0 and hi / max(lo, 1e-12) >= 50.0
 
 
+# Material diligence magnitude ($M typical). Below this, both sides are dust.
+_ZERO_CLAIM_BOOK_FLOOR = 0.05
+# Claimed dust relative to book (e.g. 0.001 vs 13.28) still counts as a zero claim.
+_ZERO_CLAIM_REL_MAX = 0.02
+
+
+def is_zero_claim_false_gap(claimed: float, book: float) -> bool:
+    """True when the agent asserts ~0 while the databook has a material figure.
+
+    These are empty-cell / unparsed stubs, not real pack-vs-databook disagreements.
+    Classifying them as ``false_gap`` (and skipping RFIs) stops full-year gaps like
+    ``Reconcile FY2025 Revenue (gap 13.282)`` when the claim was ``Revenue = 0``.
+    """
+    try:
+        c = abs(float(claimed))
+        b = abs(float(book))
+    except (TypeError, ValueError):
+        return False
+    if b < _ZERO_CLAIM_BOOK_FLOOR:
+        return False
+    if c <= 1e-12:
+        return True
+    if c >= _ZERO_CLAIM_BOOK_FLOOR:
+        return False
+    return c <= max(1e-12, _ZERO_CLAIM_REL_MAX * b)
+
+
 def _is_self_comparison(claim: ClaimsLedgerEntry, fact: FddFact | None) -> bool:
     """True when the agent assertion is the same databook fact restated."""
     if fact is None or not fact.fact_id:
@@ -735,6 +762,8 @@ def evaluate_financial_claim(
             return _stamp_claim(claim, verdict="agrees", failed=False, fact=fact)
         if _scale_mismatch(float(claim.claimed_value), float(fact.value)):
             return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
+        if is_zero_claim_false_gap(float(claim.claimed_value), float(fact.value)):
+            return _stamp_claim(claim, verdict="false_gap", failed=True, fact=fact)
         return _stamp_claim(claim, verdict="contradicted", failed=True, fact=fact)
 
     if fact.value is None:
@@ -753,6 +782,8 @@ def evaluate_financial_claim(
         return stamped
     if _scale_mismatch(float(claim.claimed_value), float(fact.value)):
         return _stamp_claim(claim, verdict="unverifiable", failed=True, fact=fact)
+    if is_zero_claim_false_gap(float(claim.claimed_value), float(fact.value)):
+        return _stamp_claim(claim, verdict="false_gap", failed=True, fact=fact)
     stamped = _stamp_claim(claim, verdict="contradicted", failed=True, fact=fact)
     if not stamped.target_document:
         return stamped.model_copy(
@@ -865,6 +896,9 @@ def _append_claim_requests(
             # Empty/missing book cell (0) vs material claimed — not a real gap.
             if b < 1e-9 and c >= 0.1:
                 return True
+            # Empty/zero agent claim vs material databook — false gap (Test6/Umoja).
+            if is_zero_claim_false_gap(float(claimed), float(book)):
+                return True
             if c < 1e-9 and b >= 1000.0:
                 return True
             lo, hi = (c, b) if c <= b else (b, c)
@@ -899,7 +933,10 @@ def _append_claim_requests(
     seen = {(_input_key_str(i.input_key), i.title) for i in items}
 
     for claim in claims:
-        verdict = str(getattr(claim, "verdict", None) or claim.test_result or "")
+        # Prefer a closed verdict; legacy rows may only set test_result.
+        verdict = str(getattr(claim, "verdict", None) or "").strip()
+        if not verdict or verdict == "pending":
+            verdict = str(claim.test_result or "").strip()
         # wrong_period is a ledger classification for open/plan years — not a
         # client RFI (those titles were leaking "(wrong period)" across the deck).
         if claim.kind != "financial" or verdict not in {
@@ -959,6 +996,10 @@ def _append_claim_requests(
                 metric_key=claim.metric_key,
                 fiscal_year=claim.fiscal_year,
                 suggested_filenames=suggested,
+                claimed_value=(
+                    float(claimed) if claimed is not None else None
+                ),
+                databook_value=float(book) if book is not None else None,
             )
         )
         added = True

@@ -1,0 +1,366 @@
+===== Test6_Market_Intel_Deck (2).pptx slides=25 =====
+
+--- slide 1 ---
+INVESTMENT DUE DILIGENCE · MARKET INTELLIGENCE
+Market Intel Deck
+Investment Due Diligence — Compost Crew
+Positioning matrices, market maps and competitive battlecards
+DOCUMENT
+Market Intelligence Deck
+TARGET
+Compost Crew
+SECTOR
+Organics & Composting
+REPORT DATE
+23 November 2026
+STRICTLY PRIVATE & CONFIDENTIAL · PREPARED FOR INVESTMENT COMMITTEE
+01 / 25
+
+--- slide 2 ---
+DOCUMENT OVERVIEW
+Agenda
+Four IC-facing chapters mapped from the 17-section storyline.
+01
+Key Findings
+Executive snapshot of the deal-level conclusions
+02
+Market Analysis
+Market definition, sizing, growth, pricing and demand drivers
+03
+Competitive Landscape
+Competitors, positioning, differentiation and SWOT analysis
+04
+Summary
+Final position and primary risks for the Investment Committee
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Agenda · Investment Due Diligence · © DiligenceIQ
+02 / 25
+
+--- slide 3 ---
+01
+SECTION 01
+Key Findings
+Executive snapshot of the deal-level conclusions
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+03 / 25
+
+--- slide 4 ---
+SECTION 01
+Key Findings — Compost Crew
+Executive snapshot of in-scope drivers, verdict and primary competitive threat
+1
+IN-SCOPE DRIVERS
+Organics waste collection services, compostable product supplies ('Key Compostables'), and processed compost products (DOC: [2], DOC:…
+2
+OUT-OF-SCOPE
+Outside primary geography focus (Washington D.C. metropolitan area (including Maryland and Northern Virginia) and Philadelphia (DOC: 2026…
+3
+ENGAGEMENT RATIONALE
+Metro Region’s closed-loop composting leader Long-standing, recurring relationships with 25,000+ municipal, commercial and residential…
+4
+VERDICT
+Bottom-up: Information request: bottom-up market size (not stated in the data room)
+5
+RELATIVE STRENGTH
+Share not calculable / unassessed on matched basis
+6
+PRIMARY COMP. THREAT
+Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 01 · Key Findings · Investment Due Diligence · © DiligenceIQ
+04 / 25
+
+--- slide 5 ---
+WORKFLOW ANALYSIS
+Key Findings — the diligence agents' read
+Conclusions carried over from this deal's completed workflow analysis.
+DILIGENCE WORKFLOW READ
+—  service: Organics waste collection services, compostable product supplies ('Key Compostables'), and processed compost products (DOC: [2], DOC: [5]). (from the Market Definition agent)
+—  Bottom-up: Information request: bottom-up market size (not stated in the data room) (from the Market Volume & Growth agent)
+—  Test UNTESTED: Information request: advantage claim to test (not stated in the data room) (from the Competitive Differentiation agent)
+—  S: EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572. Revenue FY2025 +13% YoY (same-basis). ( ). [historical_performance] (from the SWOT Analysis agent)
+—  Customer doing nothing / in-housing (substitute) (from the Competitor Identification agent)
+Source: 2026 Commercial Sales Proposal.pptx, 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, TAM_SAM_ SOM Data.xlsx, City of College Park_2026 Climate and Energy Leadersahip Awards Letter.pdf, 4_2_2 Equipment List__Please see CIM P46.txt
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 01 · Key Findings · Investment Due Diligence · © DiligenceIQ
+05 / 25
+
+--- slide 6 ---
+02
+SECTION 02
+Market Analysis
+Market definition, sizing, growth, pricing and demand drivers
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+06 / 25
+
+--- slide 7 ---
+SECTION 02
+2.1 MARKET DEFINITION: Market perimeter & definition
+Defining the boundaries of where Compost Crew operates and competes.
+Insight Snapshot: Organics waste collection services, compostable product supplies ('Key Compostables'), and processed compost products (DOC: [2], DOC: [5]).
+Parameter | Scope | Source
+Primary Market | Organics waste collection services, compostable product supplies ('Key Compostables'), and processed compost products (DOC: [2], DOC: [5]). | market_definition
+Adjacent / segments | Organics & Composting adjacencies | market_definition
+Geographic Focus | Washington D.C. metropolitan area (including Maryland and Northern Virginia) and Philadelphia (DOC: 2026 Commercial Sales Proposal.pptx, DOC: 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, DOC: City of College Park_2026 Climate and Energy Leadersahip Awards Letter.pdf) | market_definition
+In-Scope Drivers | 2 segment purchase map(s) | market_definition
+Out-of-Scope | Non-core segments outside Organics & Composting primary focus | market_definition
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+07 / 25
+Workflow: Market Definition · Buying Behavior · Customer Segmentation  ·  Not re-derived in deck UI
+
+--- slide 8 ---
+2.2 TAM / SAM / SOM estimation
+Structured sizing from market_volume_and_growth.
+TAM
+1,546.2 USD M
+Combined Residential+Commercial TOTAL · Current
+SAM
+463.9 USD M
+Combined Residential+Commercial TOTAL · Current
+SOM
+139.2 USD M
+Combined Residential+Commercial TOTAL · Current
+Derived shares & growth
+• SAM / TAM share: 30.0%
+• SOM / SAM capture: 30.0%
+• CAGR observations: 
+• Penetration: 
+• 30% CAGR over 5 years (FY2025–FY2030) (DOC: 2026-08-31_securities-ledger.xlsx, DOC: 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, DOC: 2_3_1 Financial Projections__Please see Investor Workbook.txt) — multi-year rate from endpoints, not a one-year label
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+08 / 25
+Workflow: Market Volume & Growth · Market Definition  ·  Not re-derived in deck UI
+
+--- slide 9 ---
+2.3 Market taxonomy, segmentation & boundaries
+• Concentration unassessed — ledger requested; risk rating withheld
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+09 / 25
+Workflow: Market Definition · Customer Segmentation · Buying Behavior  ·  Not re-derived in deck UI
+
+--- slide 10 ---
+2.4 Historical trajectory & growth rate
+Insight Snapshot: Bottom-up: Information request: bottom-up market size (not stated in the data room)
+Volume / growth notes
+• 30% CAGR over 5 years (FY2025–FY2030) (DOC: 2026-08-31_securities-ledger.xlsx, DOC: 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, DOC: 2_3_1 Financial Projections__Please see Investor Workbook.txt) — multi-year rate from endpoints, not a one-year label
+Growth levers / share
+• EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572. Revenue FY2025 +13% YoY (same-basis). ( ).
+Company financials (released databook)
+Line | FY values | Status
+EBITDA | FY2023=-0.744; FY2024=1.115; FY2025=0.5717606999 | mixed
+EBITDA Margin † | FY2023=-9.88; FY2027=1.8; FY2028=3.71; FY2029=9. | doubtful
+Gross Margin | FY2023=20.37; FY2024=31.78; FY2025=30.44; FY2026 | mixed
+Revenue † | FY2026=14.3; FY2027=18.066000000000003; FY2028=2 | doubtful
+YoY Growth | missing | missing
+† Doubtful — provisional released value, not final. mixed = partial year coverage (not a silent final).
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+10 / 25
+Workflow: Market Volume & Growth · Growth Opportunities · Historical Performance · Market Share Strategy  ·  Not re-derived in deck UI
+
+--- slide 11 ---
+2.5 CAGR benchmarking & market lifecycle
+CAGR %
+market_volume_and_growth
+Penetration
+observed / projected
+Lifecycle read
+—
+from CAGR & notes
+• Bottom-up: Information request: bottom-up market size (not stated in the data room)
+• Market: 30% CAGR over 5 years (FY2025–FY2030) (DOC: 2_3_2 Assumption Supporting Projections__Please see Investor Workbook.txt, DOC: 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, DOC: TAM_SAM_ SOM Data.xlsx) — multi-year rate from endpoints, not a one-year label
+• Company: Information request: company historical growth from accounting records (not stated in the data room)
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+11 / 25
+Workflow: Market Volume & Growth  ·  Not re-derived in deck UI
+
+--- slide 12 ---
+2.6 Pricing power, competitive position & margin
+• Great for break rooms, lounges, conference rooms and more Empty weekly (or less) Delight employees and drive engagement Celebrate impact with real-time data Compost Crew offers Mill as a premium option for organics programs.
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+12 / 25
+Workflow: Market Pricing · Competitive Differentiation  ·  Not re-derived in deck UI
+
+--- slide 13 ---
+2.7 Macro & structural demand drivers
+Insight Snapshot: 40 lbs) 5lb bag Farm Feast® Organizations Retail Local Government Commercial WHO’S COMPOSTING WITH US?
+Structural drivers
+• 40 lbs) 5lb bag Farm Feast® Organizations Retail Local Government Commercial WHO’S COMPOSTING WITH US?
+Regional / cycle risks
+• —
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+13 / 25
+Workflow: Demand Drivers · Market Risk  ·  Not re-derived in deck UI
+
+--- slide 14 ---
+2.8 Sustainability, cyclicality & demand verdict
+Insight Snapshot: Rank —: Information request: ranked driver (not stated in the data room)
+• Rank —: Information request: ranked driver (not stated in the data room)
+• 1 non-repeating item(s)
+• Revenue
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+14 / 25
+Workflow: Demand Drivers · ESG & Sustainability · Revenue Quality  ·  Not re-derived in deck UI
+
+--- slide 15 ---
+03
+SECTION 03
+Competitive Landscape
+Competitors, positioning, differentiation and SWOT analysis
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+15 / 25
+
+--- slide 16 ---
+3.1 Direct & adjacent competitor universe
+• Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+16 / 25
+Workflow: Competitor Identification  ·  Not re-derived in deck UI
+
+--- slide 17 ---
+3.2 Competitive positioning matrix
+Share vs price / NPS proxy grid from competitor_identification.
+• Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+17 / 25
+Workflow: Competitor Identification · Competitive Differentiation  ·  Not re-derived in deck UI
+
+--- slide 18 ---
+3.3 Competitive capability matrix & barriers
+Capabilities / differentiators
+• Test UNTESTED: Information request: advantage claim to test (not stated in the data room)
+• Claim: Information request: advantage claimed for this business (not stated in the data room)
+Gaps / barriers / moat signals
+• —
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+18 / 25
+Workflow: Competitive Differentiation · Market Risk  ·  Not re-derived in deck UI
+
+--- slide 19 ---
+3.4 Core strategic differentiators & moat
+Insight Snapshot: 1 run-category(ies) mapped
+• 1 run-category(ies) mapped
+• Metro Region’s closed-loop composting leader Long-standing, recurring relationships with 25,000+ municipal, commercial and residential active locations Multi-dimensional organic growth strategy provid
+• 6 A double-bottom line business featuring steady growth and profitability while making a significant positive impact to society and the planet All figures as of June 30, 2026 ACCELERATION Closed Serie
+• Expand and Cross-sell Increase program participation, reduce contamination, and generate new sales with products, training, service increases, and more.
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+19 / 25
+Workflow: Competitive Differentiation · IP & Technology · Strategic Direction  ·  Not re-derived in deck UI
+
+--- slide 20 ---
+3.5 Competitive battlecards
+Top competitors from competitor_identification.
+• Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+20 / 25
+Workflow: Competitor Identification · Market Share Strategy · Competitive Differentiation  ·  Not re-derived in deck UI
+
+--- slide 21 ---
+3.6 Differentiation verdict & market share
+Insight Snapshot: Share not calculable / unassessed on matched basis
+• Share is not calculable on a matched numerator/denominator basis — unassessed, not a leadership or weakness finding.
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+21 / 25
+Workflow: Market Share Strategy · Competitive Differentiation · Growth Opportunities  ·  Not re-derived in deck UI
+
+--- slide 22 ---
+3.7 SWOT summary matrix
+Strengths
+• EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572. Revenue FY2025 +13% YoY (same-basis). ( ). [historical_performance]
+• Market perimeter set on 4/4 axes (Washington D.C. metropolitan area (including Maryland and Northern Virginia) and Philadelphia (DOC: 2026-08-31_securities-ledger.xlsx, DOC: 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, DOC: 2_3_1 Financial Projections__Please see Investor Workbook.txt)…
+Weaknesses
+• Covenant position [internal_risk]
+• Creditor days vs terms (Information request: Overdue trade creditors; Information request: Capex creditors) [internal_risk]
+• Distributions while earnings weak [internal_risk]
+• Workforce / safety: Safety / incidents [esg_and_sustainability]
+Opportunities
+• Market growth ~30% (stated / endpoint series). [market_volume_and_growth]
+Threats
+• Information request: facility name from loan docs / ledger N/A (data room did not provide it) [capital_structure]
+• Information request: largest contract value or last-downturn volume [market_risk]
+• Identified competitive set includes 1 peer(s): Customer doing nothing / in-housing. [competitor_identification]
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+22 / 25
+Workflow: SWOT Analysis  ·  Not re-derived in deck UI
+
+--- slide 23 ---
+04
+SECTION 04
+Summary
+Final position and primary risks for the Investment Committee
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+23 / 25
+
+--- slide 24 ---
+CLOSING SUMMARY
+Market Intel Deck — Summary
+Final consolidated position for the Investment Committee.
+DEAL POSITION
+—  Market Definition: Organics waste collection services, compostable product supplies ('Key Compostables'), and processed compost products (DOC: [2], DOC:…
+—  Market Verdict: Bottom-up: Information request: bottom-up market size (not stated in the data room)
+—  Relative Strength: Share not calculable / unassessed on matched basis
+—  Primary Comp. Threat: Customer doing nothing / in-housing (substitute)
+—  Recommendation: Share not calculable / unassessed on matched basis
+END OF MARKET INTEL DECK · COMPOST CREW · STRICTLY PRIVATE & CONFIDENTIAL
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 04 · Summary · Investment Due Diligence · © DiligenceIQ
+24 / 25
+
+--- slide 25 ---
+Appendix — Methodology & sources
+Market figures from agents; company financials from released databook only (G1).
+Agent | Code | Slug | Sources
+Market Definition | DD-02 | market_definition | 2026 Commercial Sales Proposal.pptx, 2026-08-31_summary_cap_intermedia
+Market Volume & Growth | DD-01 | market_volume_and_growth | TAM_SAM_ SOM Data.xlsx, 2026-08-31_summary_cap_intermediate_cap_detail
+Market Pricing | DD-17 | market_pricing | 2026 Commercial Sales Proposal.pptx, 2026-08-31_summary_cap_intermedia
+Demand Drivers | DD-03 | demand_drivers | 2026 Commercial Sales Proposal.pptx, 2_3_2 Assumption Supporting Proje
+Competitor Identification | DD-04 | competitor_identification | 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, City of Col
+Competitive Differentiation | DD-06 | competitive_differentiation | 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, City of Col
+Market Share Strategy | DD-05 | market_share_strategy | 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, City of Col
+SWOT Analysis | DD-07 | swot_analysis | 2026 Commercial Sales Proposal.pptx, 2026-08-31_summary_cap_intermedia
+Released databook — company financial history
+Line | FY values | Unit | Status
+EBITDA | FY2023=-0.744; FY2024=1.115; FY2025=0.5717606999999999; FY2026=0.4392539000000001; FY2027=0.325; FY2028=0.907; FY2029=3.551; FY2030=7.557 | USD M | M | mixed
+EBITDA Margin † | FY2023=-9.88; FY2027=1.8; FY2028=3.71; FY2029=9.86; FY2030=15.06 | % | doubtful
+Gross Margin | FY2023=20.37; FY2024=31.78; FY2025=30.44; FY2026=31.21; FY2027=36.02; FY2028=38.63; FY2029=39.61; FY2030=40.6 | % | mixed
+Revenue † | FY2026=14.3; FY2027=18.066000000000003; FY2028=24.478999999999996; FY2029=36.01499999999999; FY2030=50.168 | USD M | doubtful
+YoY Growth | missing | — | missing
+Accounts Payable | FY2022=0.06653664999999999; FY2023=0.28338178; FY2024=0.33579663; FY2025=0.49646971999999995 | M | proven
+† Doubtful — provisional released value, not final. mixed = partial year coverage (not a silent final).
+MARKET INTEL DECK · Compost Crew
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 04 · Appendix · Investment Due Diligence · © DiligenceIQ
+25 / 25
+Workflow: Market Definition · Market Volume & Growth · Market Pricing · Demand Drivers  ·  Not re-derived in deck UI

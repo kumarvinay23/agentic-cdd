@@ -6,7 +6,14 @@ from types import SimpleNamespace
 from openpyxl import Workbook
 
 from agetic_cdd_api.services_ontology import load_ontology
-from agetic_cdd_api.services_statement_reader import read_excel, read_pdf, read_room, read_statement_grid, store_lines
+from agetic_cdd_api.services_statement_reader import (
+    preferred_workbook_sheets,
+    read_excel,
+    read_pdf,
+    read_room,
+    read_statement_grid,
+    store_lines,
+)
 
 _MONTHS = [
     dt.datetime(2025, 1, 31),
@@ -172,6 +179,67 @@ def test_gate5_fin_opaque_workbook_stores_revenue(tmp_path) -> None:
         if row["concept_id"] == "fin.pl.revenue" and row["status"] == "SELECTED"
     ]
     assert sorted(revenue) == [10, 11, 12, 13]
+
+
+def test_preferred_sheets_limits_excel_read(tmp_path) -> None:
+    """Fin-discovery suggested_sheet should skip non-preferred statement tabs."""
+    path = tmp_path / "multi.xlsx"
+    book = Workbook()
+    noise = book.active
+    noise.title = "Overview"
+    noise["A1"] = "ignore"
+    pl = book.create_sheet("PL")
+    for index, month in enumerate(_MONTHS, start=2):
+        pl.cell(1, index, month)
+    pl["A2"] = "Revenue"
+    for index, value in enumerate([10, 11, 12, 13, 14, 15], start=2):
+        pl.cell(2, index, value)
+    pl["A3"] = "Gross profit"
+    for index, value in enumerate([4, 4, 5, 5, 6, 6], start=2):
+        pl.cell(3, index, value)
+    other = book.create_sheet("OtherPL")
+    for index, month in enumerate(_MONTHS, start=2):
+        other.cell(1, index, month)
+    other["A2"] = "Revenue"
+    for index, value in enumerate([90, 91, 92, 93, 94, 95], start=2):
+        other.cell(2, index, value)
+    other["A3"] = "Gross profit"
+    for index, value in enumerate([1, 1, 1, 1, 1, 1], start=2):
+        other.cell(3, index, value)
+    book.save(path)
+
+    onto = load_ontology()
+    locs: dict = {}
+    logs: list = []
+    facts = read_excel(
+        path,
+        "doc-pref-sheet",
+        onto,
+        "USD",
+        locs,
+        scale=1,
+        fye_month=12,
+        logs=logs,
+        preferred_sheets=["PL"],
+    )
+    revenue = [
+        f.value
+        for f in facts
+        if f.concept_id == "fin.pl.revenue" and f.status == "SELECTED"
+    ]
+    assert sorted(revenue) == [10, 11, 12, 13, 14, 15]
+    assert 90 not in revenue
+    pref_events = [e for e in logs if e.get("event") == "sheet_preference"]
+    assert pref_events and pref_events[0]["mode"] == "preferred"
+    assert pref_events[0]["selected"] == ["PL"]
+
+    # Unknown hint falls back to all statement sheets.
+    selected, mode = preferred_workbook_sheets(
+        [SimpleNamespace(title="PL"), SimpleNamespace(title="BS")],
+        ["Missing"],
+    )
+    assert mode == "all"
+    assert len(selected) == 2
 
 
 def test_non_statement_sheet_is_declined(tmp_path) -> None:

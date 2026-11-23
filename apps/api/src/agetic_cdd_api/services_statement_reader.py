@@ -419,15 +419,73 @@ def basis_for_document(doc_type: str | None, basis_default: str | None) -> str:
     return "ACTUAL"
 
 
-def read_excel(path, doc_id, onto, currency, locs, scale=1, fye_month=12, logs=None, items_out=None, basis: str = "ACTUAL"):
-    """Read statement sheets through the grid. Non-statement tabs (TAM/ESG/cap table, …) are skipped."""
+def preferred_workbook_sheets(
+    worksheets: list[Any],
+    preferred_sheets: list[str] | tuple[str, ...] | None,
+) -> tuple[list[Any], str]:
+    """Select worksheets for a preferred-sheet hint.
+
+    Returns ``(sheets, mode)`` where mode is ``preferred`` when at least one
+    requested sheet exists, else ``all`` (caller still applies non-statement skips).
+    """
+    sheets = list(worksheets or [])
+    names = [str(n).strip() for n in (preferred_sheets or []) if str(n).strip()]
+    if not names or not sheets:
+        return sheets, "all"
+    by_lower = {str(ws.title).lower(): ws for ws in sheets}
+    selected: list[Any] = []
+    seen: set[int] = set()
+    for name in names:
+        ws = by_lower.get(name.lower())
+        if ws is None:
+            continue
+        key = id(ws)
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(ws)
+    if selected:
+        return selected, "preferred"
+    return sheets, "all"
+
+
+def read_excel(
+    path,
+    doc_id,
+    onto,
+    currency,
+    locs,
+    scale=1,
+    fye_month=12,
+    logs=None,
+    items_out=None,
+    basis: str = "ACTUAL",
+    preferred_sheets: list[str] | tuple[str, ...] | None = None,
+):
+    """Read statement sheets through the grid. Non-statement tabs (TAM/ESG/cap table, …) are skipped.
+
+    When ``preferred_sheets`` is set and at least one name matches, only those
+    sheets are read (discovery / promote hint). Missing hints fall back to all tabs.
+    """
     import openpyxl
 
     values = openpyxl.load_workbook(path, data_only=True)
     formulas = openpyxl.load_workbook(path, data_only=False)
     facts: list[Fact] = []
     try:
-        for sheet in values.worksheets:
+        target_sheets, sheet_mode = preferred_workbook_sheets(
+            list(values.worksheets), preferred_sheets
+        )
+        if logs is not None and preferred_sheets:
+            logs.append(
+                {
+                    "event": "sheet_preference",
+                    "preferred_sheets": list(preferred_sheets),
+                    "mode": sheet_mode,
+                    "selected": [str(ws.title) for ws in target_sheets],
+                }
+            )
+        for sheet in target_sheets:
             if is_non_statement_sheet(sheet.title):
                 continue
             try:
@@ -602,7 +660,35 @@ def _should_store(fact) -> bool:
     return fact.status in _CHOSEN or fact.status == "COMPARATIVE"
 
 
-def _file_facts(path, row, onto, currency, scale, fye_month, deal_id):
+def _preferred_sheets_from_row(
+    row: dict[str, Any] | None,
+    preferred_sheets: list[str] | tuple[str, ...] | None = None,
+) -> list[str] | None:
+    """Resolve sheet hints from an explicit arg or register-row fields."""
+    if preferred_sheets:
+        names = [str(n).strip() for n in preferred_sheets if str(n).strip()]
+        return names or None
+    if not isinstance(row, dict):
+        return None
+    raw = row.get("preferred_sheets")
+    if isinstance(raw, (list, tuple)):
+        names = [str(n).strip() for n in raw if str(n).strip()]
+        if names:
+            return names
+    single = str(row.get("suggested_sheet") or "").strip()
+    return [single] if single else None
+
+
+def _file_facts(
+    path,
+    row,
+    onto,
+    currency,
+    scale,
+    fye_month,
+    deal_id,
+    preferred_sheets: list[str] | tuple[str, ...] | None = None,
+):
     locs: dict[str, SourceLocation] = {}
     logs: list[dict[str, Any]] = []
     items: list[dict[str, Any]] = []
@@ -647,9 +733,20 @@ def _file_facts(path, row, onto, currency, scale, fye_month, deal_id):
         _note_skip(deal_id, row, skip)
         return None, locs, []
     basis = basis_for_document(row.get("doc_type"), row.get("basis_default"))
+    sheets = _preferred_sheets_from_row(row, preferred_sheets)
     try:
         found = read_excel(
-            path, row["doc_id"], onto, currency, locs, scale, fye_month, logs, items, basis=basis
+            path,
+            row["doc_id"],
+            onto,
+            currency,
+            locs,
+            scale,
+            fye_month,
+            logs,
+            items,
+            basis=basis,
+            preferred_sheets=sheets,
         )
     except Exception as exc:
         _note_skip(deal_id, row, f"workbook read failed: {exc}")

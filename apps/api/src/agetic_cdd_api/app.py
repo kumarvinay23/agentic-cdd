@@ -51,7 +51,14 @@ _cors_kwargs: dict = {
     "allow_origins": settings.cors_origin_list,
     "allow_credentials": True,
     "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    "allow_headers": ["Authorization", "Content-Type", "Accept"],
+    "allow_headers": [
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Agetic-LLM-Provider",
+        "X-Agetic-LLM-Model",
+        "X-Agetic-LLM-API-Key",
+    ],
 }
 if settings.cors_origin_regex:
     _cors_kwargs["allow_origin_regex"] = settings.cors_origin_regex
@@ -68,12 +75,17 @@ app.include_router(fdd_router, prefix=settings.api_prefix)
 
 @app.get("/api/v1/health")
 async def health() -> dict:
+    from agetic_cdd_api.services_llm import llm_status
+
     return {
         "ok": True,
         "service": "agetic-cdd-api",
         "version": __version__,
         "product": "DiligenceIQ",
         "wave": "W5",
+        "llm": llm_status(),
+        "fin_discovery_on_gate2_miss": bool(settings.fin_discovery_on_gate2_miss),
+        "deep_dive_llm": bool(settings.deep_dive_llm),
     }
 
 

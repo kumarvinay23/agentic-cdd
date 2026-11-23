@@ -1,0 +1,1532 @@
+
+--- page 1 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+1
+INVESTMENT DUE DILIGENCE · INVESTMENT COMMITTEE MEMORANDUM
+IC Memo
+Investment Due Diligence — Compost Crew
+Valuation range · risk assessment · go/no-go recommendation · 100-day plan
+Document
+Investment Committee Memorandum
+Target
+Compost Crew
+Sector
+Organics & Composting
+Scope
+Risk · Valuation · Synthesis
+Report Date
+23 November 2026
+Prepared By
+DiligenceIQ
+Document Reference
+IC-MEMO / FY26-Q4 / 001
+Classification
+IC — Voting Members
+STRICTLY PRIVATE & CONFIDENTIAL. This document has been prepared for the exclusive use of the
+Investment Committee. Distribution, reproduction or disclosure to any third party is prohibited without prior
+written consent.
+
+
+--- page 2 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+2
+Basis of Preparation
+This Investment Committee Memorandum for Compost Crew (sector: Organics & Composting) aggregates
+Verdict Store and Deep Dive workflow outputs. Figures are taken from deal financials and VDR-backed agent
+specs; nothing is re-derived in this builder.
+Insight: Workflow coverage: 47 agent output(s) available · 37 VDR document(s) in the deal room · sector
+resolved as Organics & Composting.
+Preparation principles
+  Prefer Final Verdict agents (valuation_modeling, ic_synthesis, recommendation, trading_comps,
+precedent_transactions, execution_risk) over thin RAG narratives.
+ Each section closes with a Diligence Workflow Read citing named agents and a provenance footer (“Not
+re-derived here”).
+ CONFIRMED attributes are backed by structured Verdict/Deep Dive fields; ASSUMED marks interpolated or
+missing fields.
+ Sensitivity is inferred from DCF scenarios and recommendation returns when a dedicated
+sensitivity_analysis store is absent.
+ Sector and legal-entity labels are taken from deal metadata when set; otherwise inferred from Foundation /
+market agent corpus (never hard-coded per deal).
+ Audience: IC voting members. Classification: Strictly Private & Confidential.
+Document map
+ Part
+Sections
+Primary decision use
+1.0 Risk & Opportunity
+1.1–1.4
+Underwrite external & internal risk; growth & synergy upside
+2.0 Valuation
+2.1–2.3
+DCF / comps / precedents; sensitivity; bid range
+3.0 Executive Synthesis
+3.1–3.3
+Go/No-Go, CPs, 100-day plan, sourcing
+Data-room inventory (cited basis)
+Primary VDR files available to this build. Section-level provenance lists the subset actually cited by each workflow
+agent.
+#
+Document
+Role
+1
+2026 Commercial Sales Proposal.pptx
+VDR
+2
+2026-08-31_securities-ledger.xlsx
+VDR
+3
+2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx
+VDR
+4
+2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+VDR
+5
+2_3_1 Financial Projections__Please see Investor Workbook.txt
+VDR
+6
+2_3_2 Assumption Supporting Projections__Please see Investor Workbook.txt
+VDR
+7
+4280-2 Compost Crew FY25 FPEP.pdf
+VDR
+8
+4_2_2 Equipment List__Please see CIM P46.txt
+VDR
+9
+CC - 12354 Parking Lease.pdf
+VDR
+10
+CC - Depreciation Schedule as on 07_31_2026.xlsx
+VDR
+11
+CC_CIM_JPC_FINAL_090126.pptx
+VDR
+12
+CC_Investor_Workbook_EXTERNAL.xlsx
+VDR
+
+
+--- page 3 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+3
+#
+Document
+Role
+13
+CC_Teaser_JPC_FINAL_090526.pdf
+VDR
+14
+City of College Park_2026 Climate and Energy Leadersahip Awards Letter.pdf
+VDR
+15
+Completed 2c2i Baseline Metrics Compost Crew.xlsx
+VDR
+16
+Compost Crew Impact Metric -2024.xlsx
+VDR
+17
+Compost Crew Monthly Financials 23YTD26.xlsx
+VDR
+18
+Copy of Titan Hospitality.pptx
+VDR
+19
+Current Map 2.png
+VDR
+20
+Current Map with Markers.png
+VDR
+21
+Current Map.png
+VDR
+22
+Edmonston Grant Contract - Fully Executed_NR233A750005C012 - Apr 2023 _1.pdf
+VDR
+23
+MD_NOVA_ZIP Expansion Analysis_Final_10_22_2025.xlsx
+VDR
+24
+Multi-Family Proposal Deck.pptx
+VDR
+
+
+--- page 4 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+4
+Table of Contents
+Also included in the body: Basis of Preparation and part divider pages (soft TOC — not separately numbered as primary
+section entries).
+Basis of Preparation
+1.0 Risk & Opportunity ...................... 05
+ 1.1 Market Risk ............................. 06
+1.2 Internal Risk ........................... 10
+1.3 Growth Opportunities .................... 14
+1.4 Synergies ............................... 17
+2.0 Valuation ............................... 19
+ 2.1 Valuation Model ......................... 20
+2.2 Sensitivity Analysis .................... 24
+2.3 Final Valuation Range ................... 27
+3.0 Executive Synthesis ..................... 29
+ 3.1 Executive Summary ....................... 30
+3.2 Final Recommendation .................... 33
+3.3 Appendices & Sourcing ................... 35
+
+
+--- page 5 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+5
+
+
+--- page 6 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+6
+01
+Risk & Opportunity
+Aggregating market and internal risks, growth opportunities and synergies.
+ DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+
+
+--- page 7 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+7
+1.1 Market Risk
+External-environment exposure assessment for Compost Crew (Organics & Composting).
+1.1.3 Risk flags
+  Information request: monthly early-warning indicator
+1.1.4 Market volume context
+ Metric
+Value
+Attribute
+TAM
+1,546.2 USD M
+CONFIRMED
+SAM
+463.9 USD M
+CONFIRMED
+SOM
+139.2 USD M
+CONFIRMED
+CAGR %
+CONFIRMED
+Penetration %
+CONFIRMED
+ 30% CAGR over 5 years (FY2025–FY2030) (DOC: 2026-08-31_securities-ledger.xlsx, DOC: 2_2_1
+Revenue by Service Line__Please see Investor Workbook.txt, DOC: 2_3_1 Financial Projections__Please
+see Investor Workbook.txt) — multi-year rate from endpoints, not a one-year label
+1.1.6 Demand drivers
+  Rank —: Information request: ranked driver (not stated in the data room)
+1.1.7 Market perimeter & framing
+Organics waste collection services, compostable product supplies ('Key Compostables'), and processed compost
+products (DOC: [2], DOC: [5]).; Commercial businesses (restaurants, offices, institutions), municipal government
+entities (including Washington D.C. and MD/VA municipalities), residential subscribers, and buyers of
+compostable products (DOC: [2], DOC: [5]).
+  service: Organics waste collection services, compostable product supplies ('Key Compostables'), and
+processed compost products (DOC: [2], DOC: [5]).
+ customer_types: Commercial businesses (restaurants, offices, institutions), municipal government entities
+(including Washington D.C. and MD/VA municipalities), residential…
+ geography: Washington D.C. metropolitan area (including Maryland and Northern Virginia) and Philadelphia
+(DOC: 2026 Commercial Sales Proposal.pptx, DOC:
+2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, DOC: City of College Park_2026 Climate
+and Energy Leadersahip Awards Letter.pdf)
+ value_chain_stage: Total evidenced common equity/option shares: 1,662,176 (1,661,465 + 310 + 150 + 150
++ 101). Soil Amendments Current 1,661,465 (99.96% of common); Collection…
+ Approval gate: pending_approval · blocks downstream=True
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Market Risk: reviewed workflow output (Market Risk).
+ Market Volume & Growth: Bottom-up: Information request: bottom-up market size (not stated in the data
+room)
+ Market Volume & Growth: Market: 30% CAGR over 5 years (FY2025–FY2030) (DOC: 2_3_2 Assumption
+Supporting Projections__Please see Investor Workbook.txt, DOC: 4_2_2 Equipment List__Please see CIM
+P46.txt, DOC: 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx) — multi-year rate from
+endpoints, not a one-year label
+ Market Volume & Growth: Company: Information request: company historical growth from accounting
+records (not stated in the data room)
+ Competitive Differentiation: Test UNTESTED: Information request: advantage claim to test (not stated in the
+data room)
+
+
+--- page 8 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+8
+ Competitive Differentiation: Claim: Information request: advantage claimed for this business (not stated in
+the data room)
+ Customer Segmentation: Concentration unassessed — ledger requested; risk rating withheld
+ Buying Behavior: 2 segment purchase map(s)
+ Buying Behavior: Seasonality not asserted — data thin
+ Capital Structure: Schedule incomplete — leverage withheld
+Source: this deal's diligence workflow output — the Market Risk, Market Volume & Growth, Competitive Differentiation,
+Customer Segmentation, Buying Behavior… agents. Not re-derived here. That analysis cites: 2_3_2 Assumption
+Supporting Projections__Please see Investor Workbook.txt, 4_2_2 Equipment List__Please see CIM P46.txt, CC -
+12354 Parking Lease.pdf, CC - Depreciation Schedule as on 07_31_2026.xlsx….
+
+
+--- page 9 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+9
+1.2 Internal Risk
+Operating, technology and human-capital exposure.
+Insight Snapshot
+Insight: Internal risk posture from operational and technology agents.
+Item
+What the workflow found
+Agent
+Source document(s)
+rating Activities Net income
+(loss)
+maturity 1.0/5; -143869.55 -140597
+Internal Risk
+2_3_1 Financial
+Projections__Please see
+Investor Workbook.txt,
+Compost Crew Monthly
+Financials
+23YTD26.xlsx…
+Information request:
+operational risks evidenced in
+incidents / KPI / downtime
+records
+Operational Risk
+2_2_1 Revenue by
+Service Line__Please
+see Investor
+Workbook.txt, 2026-08-3
+1_securities-ledger.xlsx
+…
+1.2.1 Technical risk register
+  Governance/control: Systems maturity — rating Activities Net income (loss)
+1.2.2 Scalability notes
+  Low maturity: rating Activities Net income (loss) (1/5).
+1.2.3 Key-person / retention
+Overall human capital risk: 2/10 · key persons: 0 · high flight risk: 0.
+  Foundation · F-06: Management assessment for Compost Crew: 0 named executives from opened packs; 0
+key-person dependencies flagged; 0 confirmed vacancies, 0 capability gaps, 1 information gaps (miss…
+1.2.4 Customer stickiness signals
+  Same-pop · GRR Information request: gross revenue retention for the bridge period on the logos population,
+with new customers excluded from the numerator (not stated in the data room) · NRR Information request: net
+revenue retention for the bridge period on the logos population, with new customers excluded from the
+numerator (not stated in the data room)
+1.2.5 Data / KPI integrity
+  The risk register is drawn from records (incidents, downtime, rework, quality failures, safety events, staff
+turnover, system outages, permit/licence conditions) — not from a generic risk taxonomy.
+ Each risk is sized: how often it has occurred, what it cost, and what it would do to EBITDA if it recurred at
+that rate.
+ Controls in place are recorded with whether each has been **tested**. An untested control is not mitigation.
+ Risks already reflected in historical results are separated from risks that would be new or larger under the
+plan (higher volume, new geography, new service).
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Internal Risk: 1 observed control weakness(es)
+ Internal Risk: 0 tested / 1 untested control(s)
+ Internal Risk: 5 register row(s)
+ Operational Risk: 1 priced / protection risk(s)
+ Customer Stickiness: Same-pop · GRR Information request: gross revenue retention for the bridge period on
+the logos population, with new customers excluded from the numerator (not stated in the data room) · NRR
+
+
+--- page 10 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+10
+Information request: net revenue retention for the bridge period on the logos population, with new customers
+excluded from the numerator (not stated in the data room)
+ Appendices: Claims: 60
+ Appendices: Sources: 38
+ Appendices: Citation: supports=3 unverified=37
+ Capital Structure: Schedule incomplete — leverage withheld
+ Capital Structure: 1 schedule gap(s)
+Source: this deal's diligence workflow output — the Internal Risk, Operational Risk, Customer Stickiness, Appendices,
+Capital Structure… agents. Not re-derived here. That analysis cites: 2_3_1 Financial Projections__Please see Investor
+Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt,
+Please see 2_1_1 Financial Statements for Cash Flow Statements.txt….
+
+
+--- page 11 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+11
+1.3 Growth Opportunities
+Organic and inorganic upside levers.
+1.3.1 Market growth notes
+  Options are ranked by net value, payback and feasibility (with evidence and size). Success probabilities are
+not assigned without a basis. Buyer-funded options are called out.
+1.3.3 Adjacent workflow signals
+  Share not calculable / unassessed on matched basis
+ Movement · Information request: company whose share movement is measured (not stated in the data
+room): Information request: share delta in percentage points (pp) (not stated in the data room)
+ EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572. Revenue FY2025
++13% YoY (same-basis). ( ).
+ Realised: Information request: realised net price after discounts, credits, surcharges (not stated in the data
+room)
+ Comp: organics programs. Uses
+ Comp: for organics programs. Uses
+ Bottom-up: Information request: bottom-up market size (not stated in the data room)
+ Market: 30% CAGR over 5 years (FY2025–FY2030) (DOC: 2_3_2 Assumption Supporting
+Projections__Please see Investor Workbook.txt, DOC: 4_2_2 Equipment List__Please see CIM P46.txt, DOC:
+2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx) — multi-year rate from endpoints, not a
+one-year label
+ Company: Information request: company historical growth from accounting records (not stated in the data
+room)
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Growth Opportunities: reviewed workflow output (Growth Opportunities).
+ Cost Structure: 5 information gap(s)
+ Historical Performance: EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M
+0.572. Revenue FY2025 +13% YoY (same-basis). ( ).
+ Market Share Strategy: Share not calculable / unassessed on matched basis
+ Market Share Strategy: Movement · Information request: company whose share movement is measured (not
+stated in the data room): Information request: share delta in percentage points (pp) (not stated in the data
+room)
+ Market Volume & Growth: Bottom-up: Information request: bottom-up market size (not stated in the data
+room)
+ Market Volume & Growth: Market: 30% CAGR over 5 years (FY2025–FY2030) (DOC: 2_3_2 Assumption
+Supporting Projections__Please see Investor Workbook.txt, DOC: 4_2_2 Equipment List__Please see CIM
+P46.txt, DOC: 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx) — multi-year rate from
+endpoints, not a one-year label
+ Market Volume & Growth: Company: Information request: company historical growth from accounting
+records (not stated in the data room)
+ Operational Risk: 1 priced / protection risk(s)
+ Market Pricing: Realised: Information request: realised net price after discounts, credits, surcharges (not
+stated in the data room)
+Source: this deal's diligence workflow output — the Growth Opportunities, Cost Structure, Historical Performance,
+Market Share Strategy, Market Volume & Growth… agents. Not re-derived here. That analysis cites: 2_3_2 Assumption
+Supporting Projections__Please see Investor Workbook.txt, 4_2_2 Equipment List__Please see CIM P46.txt, CC -
+12354 Parking Lease.pdf, CC - Depreciation Schedule as on 07_31_2026.xlsx….
+
+
+--- page 12 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+12
+1.4 Synergies
+Cost-out, revenue-up and integration value-creation themes.
+Insight Snapshot
+Insight: No named acquirer — synergies cannot be underwritten
+Theme
+Agent
+Source document(s)
+Attribute
+No named acquirer — synergies cannot be
+underwritten
+Synergies
+4_2_2 Equipment
+List__Please see CIM
+P46.txt, CC_CIM_JPC_F
+INAL_090126.pptx…
+CONFIRMED
+Hypothesis: Compost Crew operates six decentralized
+composting sites in Maryland,… — Compost Crew
+operates six decentralized composting sites in
+Maryland, including these examples: 50 UTICA
+PROJECT…
+Synergies
+4_2_2 Equipment
+List__Please see CIM
+P46.txt, CC_CIM_JPC_F
+INAL_090126.pptx…
+CONFIRMED
+1.4.1 Synergy notes
+  Synergies cannot be underwritten — no named acquirer.
+ Compost Crew operates six decentralized composting sites in Maryland, including these examples: 50
+UTICA PROJECT Overview Fully-owned state-of-the art compost facility in Frederick County Permitted for
+20k tons of food scraps annually Under development and partially operational –
+ Synergies stay out of the stand-alone valuation. They belong in a separate layer the committee can remove.
+ Unverified synergies are excluded from Final Valuation Range until bottom-up amounts and a named buyer
+are evidenced.
+ Reconcile Growth Opportunities and the stand-alone forecast so organic upside is not double-counted as
+buyer synergy.
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Synergies: No named acquirer — cannot underwrite
+ Synergies: 1 hypothesis theme(s)
+Source: this deal's diligence workflow output — the Synergies agents. Not re-derived here. That analysis cites: 4_2_2
+Equipment List__Please see CIM P46.txt, CC_CIM_JPC_FINAL_090126.pptx, Please see CIM P39.txt, Please see
+CIM P46.txt….
+
+
+--- page 13 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+13
+
+
+--- page 14 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+14
+02
+Valuation
+DCF, comps, precedents, sensitivity and recommended valuation band.
+ DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+
+
+--- page 15 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+15
+2.1 Valuation Model
+DCF, trading comps and precedent triangulation.
+Insight Snapshot
+Insight: Valuation model from Verdict Store.
+2.1.4 Trading comps
+ Metric
+Value
+Notes
+Peer median EV/Rev
+Nonex
+EV/EBITDA Nonex
+Peer median growth / GM
+None%
+GM None%
+ Deep Dive · market_definition: Market Definition for Co: perimeter on service, customer type, geography and
+value-chain stage from operating footprint (4/4 axes evidenced). Downstream market agents blocked unti…
+ Deep Dive · historical_performance: EBITDA was already positive in FY2024. QBO/workbook accounts
+extract. 8 period(s) from accounts. 0 CIM gap(s)
+2.1.5 Precedent transactions
+Precedent transaction set thin or missing — triangulation relies more on DCF/comps.
+  Foundation · F-05: Compost Crew is a US-based organics waste collection, processing, and compostables
+supply business operating primarily across Maryland, Northern Virginia, and Washington D.C. The…
+ Uses compensation_alignment: Compensation Adjustment Table for Compost Crew (missing bind · 0
+source(s) · extract=stores · health_gaps=0). Foundation · F-06: Management assessment for Compost Crew:
+0 named executives from opened…
+2.1.6 Company / historical context
+  Sells: Organics waste collection services, compostable product supplies ('Key Compostables'), and
+processed compost products (DOC: [2], DOC: [5]).
+ Legal entity: Compost Crew (Maryland corporation / entity structure implied by MD state exemption filings)
+ Total evidenced common equity/option shares: 10,202,561 (10,000,010 + 200,000 + 2,070 + 481).
+ Service lines evidenced: 5
+ EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572. Revenue FY2025
++13% YoY (same-basis). ( ).
+ DCF is not supported until the Cash Flow agent's EBITDA-to-cash bridge is ready — do not invent forecast
+cash flows.
+ Precedent median 2024x
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Valuation Model: Precedents median 2024x
+ Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+ Historical Performance: EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M
+0.572. Revenue FY2025 +13% YoY (same-basis). ( ).
+ Company Background: Sells: Organics waste collection services, compostable product supplies ('Key
+Compostables'), and processed compost products (DOC: [2], DOC: [5]).
+ Company Background: Legal entity: Compost Crew (Maryland corporation / entity structure implied by MD
+state exemption filings)
+ Company Background: Total evidenced common equity/option shares: 10,202,561 (10,000,010 + 200,000 +
+2,070 + 481).
+ Market Pricing: Realised: Information request: realised net price after discounts, credits, surcharges (not
+stated in the data room)
+
+
+--- page 16 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+16
+ Market Pricing: Comp: organics programs. Uses
+ Market Pricing: Comp: for organics programs. Uses
+Source: this deal's diligence workflow output — the Valuation Model, Historical Performance, Company Background,
+Market Pricing agents. Not re-derived here. That analysis cites: Compost Crew Monthly Financials 23YTD26.xlsx,
+2026-08-31_securities-ledger.xlsx, CC_Investor_Workbook_EXTERNAL.xlsx, Completed 2c2i Baseline Metrics
+Compost Crew.xlsx….
+
+
+--- page 17 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+17
+2.2 Sensitivity Analysis
+Key value drivers and scenario sensitivity.
+Insight Snapshot
+Insight: Sensitivity inferred from DCF scenarios and recommendation returns (no separate sensitivity_analysis
+store on this deal).
+No scenario sensitivity data available in store.
+2.2.3 Operational / supply sensitivity
+  2 stage(s), 0 SPOF(s)
+ Supplier facts reconciled — no term conflicts
+2.2.4 IC interpretation
+Downside cases should be underwritten against subsidy / competitive / retention risks in Part 1. Upside cases
+assume software moat durability and milestone delivery under the Conditional Go structure.
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Valuation Model: Precedents median 2024x
+ Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+ Supply Chain Resilience: 2 stage(s), 0 SPOF(s)
+ Supply Chain Resilience: Supplier facts reconciled — no term conflicts
+Source: this deal's diligence workflow output — the Valuation Model, Supply Chain Resilience agents. Not re-derived
+here. That analysis cites: Compost Crew Monthly Financials 23YTD26.xlsx, 2026-08-31_securities-ledger.xlsx,
+CC_Investor_Workbook_EXTERNAL.xlsx, Completed 2c2i Baseline Metrics Compost Crew.xlsx….
+
+
+--- page 18 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+18
+2.3 Final Valuation Range
+Triangulated final valuation range and implied entry multiples.
+Insight Snapshot
+Insight: Stance: Proceed with diligence on stated conditions — not invest.
+2.3.3 Deal structure / bid posture
+Deal structure response to internal risk: Covenant position; Deal structure: confirm treatment of Information
+request: facility name from loan docs / ledger in sources & uses; Carry unsized risk with protection until sized:
+Information request: external risk for this business / g
+Recommended IC posture: underwrite within the triangulated band; stage capital against conditions precedent in
+Part 3; avoid IPO-implied entry without milestone protection.
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Valuation Model: Precedents median 2024x
+ Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+Source: this deal's diligence workflow output — the Valuation Model agents. Not re-derived here. That analysis cites:
+Compost Crew Monthly Financials 23YTD26.xlsx, 2026-08-31_securities-ledger.xlsx,
+CC_Investor_Workbook_EXTERNAL.xlsx, Completed 2c2i Baseline Metrics Compost Crew.xlsx….
+
+
+--- page 19 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+19
+
+
+--- page 20 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+20
+03
+Executive Synthesis
+IC snapshot, final recommendation, 100-day plan and sourcing.
+ DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+
+
+--- page 21 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+21
+3.1 Executive Summary
+Investment Committee snapshot — thesis, pillars, risks and verdict.
+Insight Snapshot
+Insight: Strategy assessment for Compost Crew. Investment stance: Proceed with diligence on stated
+conditions — not invest. Confidence: blocked.
+Dimension
+Detail
+Attribute
+Target
+Compost Crew
+CONFIRMED
+Sector
+Organics & Composting
+CONFIRMED
+Go / No-Go
+Proceed with diligence on stated conditions — not invest
+CONFIRMED
+Score
+—
+ASSUMED
+Confidence
+blocked
+CONFIRMED
+Label
+Proceed with diligence on stated conditions — not invest
+CONFIRMED
+3.1.2 Value-creation thesis
+Compost Crew is a US-based organics waste collection, processing, and compostables supply business
+operating primarily across Maryland, Northern Virginia, and Washington D.C. The company generates revenue
+by providing…
+3.1.3 Investment pillars
+ Pillar
+Detail
+Thesis driver
+D.C. Municipal Contract achieves projected option year scaling without price
+compression
+Thesis driver
+Commercial customer monthly logo retention remains above 98.5%
+Financial direction
+EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572.
+Revenue FY2025 +13% YoY (same-basis). ( ).
+3.1.4 Primary risks
+ Risk
+Probability
+Impact
+Mitigation
+Valuation range blocked —
+Earnings quality / declared
+earnings
+Unresolved
+Published price
+range / walk-away
+discipline
+Owner: Valuation lead
+Valuation range blocked — Net
+debt (capital structure)
+Unresolved
+Published price
+range / walk-away
+discipline
+Owner: Valuation lead
+Valuation range blocked —
+Working capital
+Unresolved
+Published price
+range / walk-away
+discipline
+Owner: Valuation lead
+Blocked workstream:
+revenue_quality
+Unresolved
+Signing readiness /
+price lock
+Owner: Deal team
+Blocked workstream:
+customer_stickiness
+Unresolved
+Signing readiness /
+price lock
+No retention metric and no cohort were
+evidenced, so persistence of revenue cannot be
+measured: GRR, NRR and logo…
+Blocked workstream:
+swot_analysis
+Unresolved
+Signing readiness /
+price lock
+PASS: 10 item(s) traced to upstream agents; no
+invented numbers. Open blocker(s) present —
+positive tone must not…
+3.1.5 Strengths
+  Thesis driver: D.C. Municipal Contract achieves projected option year scaling without price compression
+[deal_context_and_objectives]
+
+
+--- page 22 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+22
+ Thesis driver: Commercial customer monthly logo retention remains above 98.5%
+[deal_context_and_objectives]
+ Financial direction: EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572.
+Revenue FY2025 +13% YoY (same-basis). ( ). [historical_performance]
+3.1.6 Concerns
+  Valuation range blocked — Earnings quality / declared earnings — could change Published price range /
+walk-away discipline (owner: Valuation lead) [valuation_modeling]
+ Valuation range blocked — Net debt (capital structure) — could change Published price range / walk-away
+discipline (owner: Valuation lead) [valuation_modeling]
+ Valuation range blocked — Working capital — could change Published price range / walk-away discipline
+(owner: Valuation lead) [valuation_modeling]
+ Blocked workstream: revenue_quality — could change Signing readiness / price lock (owner: Deal team)
+[revenue_quality]
+ Blocked workstream: customer_stickiness — could change Signing readiness / price lock (owner: Deal
+team) [customer_stickiness]
+ Blocked workstream: swot_analysis — could change Signing readiness / price lock (owner: Deal team)
+[swot_analysis]
+3.1.7 Deal context
+  The Washington D.C. municipal contract serves as the key growth foundation, covering ~12,000 residential
+homes today with a 2,300-home waitlist and Contract potential: to expand to 30,000–60,000 homes by 2030; ,
+accounting for $3.00M (22.6%) of 2025 revenue. [$3.00M 2025 revenue / 22.6% mix].
+ Commercial segment ARR of $5.81M across 856 locations combined with non-D.C. municipal recurring
+revenues underpins high monthly customer logo retention (99.3% commercial, 98.6% residential in 2025).
+[$5.81M Commercial ARR / 99.3% monthly retention]
+ Transitioning organics processing in-house via the 20,000 ton/yr Utica facility coming online in 2027 and
+product monetization (Key Compostables / Farm Feast B2B/D2C) is projected to drive gross margin from
+32.4% in 2026P to 40.6% in 2030 and EBITDA margin from 1.80% in 2027 to 15.06% by 2030. [40.6% gross
+margin / 15.06% EBITDA margin by 2030]
+ Fact ledger: 21 evidenced / 21 rows
+ Sells: Organics waste collection services, compostable product supplies ('Key Compostables'), and
+processed compost products (DOC: [2], DOC: [5]).
+ Legal entity: Compost Crew (Maryland corporation / entity structure implied by MD state exemption filings)
+ Total evidenced common equity/option shares: 10,202,561 (10,000,010 + 200,000 + 2,070 + 481).
+ Service lines evidenced: 5
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Executive Summary: Stance: Proceed with diligence on stated conditions — not invest
+ Executive Summary: Depends: Thesis driver
+ Executive Summary: Depends: Thesis driver
+ Recommendation: Price: Reflect sized downside in price negotiation: Information request: largest contract
+value or last-downturn volume
+ Recommendation: CP: Condition precedent: complete testing of Information request: named controls in
+scope for testing
+ Recommendation: CP: Condition precedent: Information request: transaction consents, notifications, CPs,
+and indemnities
+ Historical Performance: EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M
+0.572. Revenue FY2025 +13% YoY (same-basis). ( ).
+ Deal Context & Objectives: The Washington D.C. municipal contract serves as the key growth foundation,
+covering ~12,000 residential homes today with a 2,300-home waitlist and Contract potential: to expand to
+30,000–60,000 homes by 2030; , accounting for $3.00M (22.6%) of 2025 revenue. [$3.00M 2025 revenue /
+
+
+--- page 23 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+23
+22.6% mix].
+ Deal Context & Objectives: Commercial segment ARR of $5.81M across 856 locations combined with
+non-D.C. municipal recurring revenues underpins high monthly customer logo retention (99.3% commercial,
+98.6% residential in 2025). [$5.81M Commercial ARR / 99.3% monthly retention]
+ Deal Context & Objectives: Transitioning organics processing in-house via the 20,000 ton/yr Utica facility
+coming online in 2027 and product monetization (Key Compostables / Farm Feast B2B/D2C) is projected to
+drive gross margin from 32.4% in 2026P to 40.6% in 2030 and EBITDA margin from 1.80% in 2027 to 15.06%
+by 2030. [40.6% gross margin / 15.06% EBITDA margin by 2030]
+Source: this deal's diligence workflow output — the Executive Summary, Recommendation, Historical Performance,
+Deal Context & Objectives, Appendices… agents. Not re-derived here. That analysis cites: MD_NOVA_ZIP Expansion
+Analysis_Final_10_22_2025.xlsx, CC_Investor_Workbook_EXTERNAL.xlsx, 2026 Commercial Sales Proposal.pptx,
+2026-08-31_securities-ledger.xlsx….
+
+
+--- page 24 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+24
+3.2 Final Recommendation
+Go/No-Go, conditions precedent and 100-day plan.
+Insight Snapshot
+Insight: Recommendation: Proceed with diligence on stated conditions — not invest. Confidence: blocked.
+Structure: Deal structure response to internal risk: Covenant position; Deal structure: confirm treatment of
+Information request: facility name from loan docs / ledger in sources & uses; Carry unsized risk…
+3.2.1 IC voting frame
+ Question
+Workflow answer
+Attribute
+Go / No-Go
+Proceed with diligence on stated conditions — not invest
+CONFIRMED
+Confidence
+blocked
+CONFIRMED
+Structure
+Deal structure response to internal risk: Covenant position;
+Deal structure: confirm treatment of Information request:
+facility name from loan docs / ledger in sources & uses;…
+CONFIRMED
+Base IRR / MOIC
+None% / Nonex
+CONFIRMED
+3.2.2 Conditions precedent
+  CP: Condition precedent: complete testing of Information request: named controls in scope for testing —
+owner: Security / compliance lead; test: Test report issued with no open critical findings for: Information
+request: named controls in scope for testing [internal_risk]
+ CP: Condition precedent: Information request: transaction consents, notifications, CPs, and indemnities —
+owner: Regulatory counsel; test: Evidence of clearance: Information request: transaction consents,
+notifications, CPs, and indemnities [regulatory_compliance]
+ CP: Resolve open SWOT blocker before decision lock: Covenant position [internal_risk] — owner: Deal
+team; test: Blocker cleared or carried with named protection: Covenant position [internal_risk] [swot_analysis]
+ CP: Resolve open SWOT blocker before decision lock: Creditor days vs terms (Information request: Overdue
+trade creditors; Information request: Capex cre — owner: Deal team; test: Blocker cleared or carried with
+named protection: Creditor days vs terms (Information request: Overdu
+ CP: Resolve open SWOT blocker before decision lock: Distributions while earnings weak [internal_risk] —
+owner: Deal team; test: Blocker cleared or carried with named protection: Distributions while earnings weak
+[internal_risk] [swot_analysis]
+ CP: Resolve open SWOT blocker before decision lock: Untested obligation: No NDA risk clauses extracted.
+[regulatory_compliance] — owner: Deal team; test: Blocker cleared or carried with named protection:
+Untested obligation: No NDA risk clauses extracted. [regulatory_compliance]
+ CP: Condition precedent: complete EBITDA→cash bridge before underwriting cash — owner: Cash Flow
+lead; test: ebitda_to_cash_bridge has ≥2 sourced lines [cash_flow]
+ CP: Open: resolve valuation blocker 'Earnings quality / declared earnings' before locking price — owner:
+Valuation lead; test: Blocker cleared: Earnings quality / declared earnings [valuation_modeling]
+3.2.3 100-day plan
+  Day 0–100: Control / systems remediation: Systems maturity — rating Activities Net income (loss)
+[internal_risk]
+3.2.6 Supporting commercial signals
+  Research design proposed — sentiment evidence thin
+ Test UNTESTED: Information request: advantage claim to test (not stated in the data room)
+ Claim: Information request: advantage claimed for this business (not stated in the data room)
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+
+
+--- page 25 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+25
+ Recommendation: Price: Reflect sized downside in price negotiation: Information request: largest contract
+value or last-downturn volume
+ Recommendation: CP: Condition precedent: complete testing of Information request: named controls in
+scope for testing
+ Recommendation: CP: Condition precedent: Information request: transaction consents, notifications, CPs,
+and indemnities
+ Valuation Model: Precedents median 2024x
+ Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+ Executive Summary: Stance: Proceed with diligence on stated conditions — not invest
+ Executive Summary: Depends: Thesis driver
+ Executive Summary: Depends: Thesis driver
+ Appendices: Claims: 60
+Source: this deal's diligence workflow output — the Recommendation, Valuation Model, Executive Summary,
+Appendices, Historical Performance… agents. Not re-derived here. That analysis cites: 2_3_2 Assumption Supporting
+Projections__Please see Investor Workbook.txt, 4_2_2 Equipment List__Please see CIM P46.txt, 2_3_1 Financial
+Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx….
+
+
+--- page 26 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+26
+3.3 Appendices & Sourcing
+Claim / evidence / calculation registers and citation check (or agent → source index when Appendices agent is absent).
+Insight Snapshot
+Insight: Appendices for Compost Crew. 60 claim(s). 38 evidence row(s). 5 calculation(s). 38 source(s). citation
+supports=3 unverified=37
+3.3.0 Claim register (Appendices agent)
+ Claim ID
+Text
+Category
+Locator
+SAM-01
+Covered: Deal / Strategy
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+SAM-02
+Covered: Market / Competition
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+SAM-03
+Covered: Customer
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+SAM-04
+Covered: Legal / ESG
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+SAM-05
+Covered: Financial
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+SAM-06
+Gap: Company / Management
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+DCAO-01
+Target: Compost Crew
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+DCAO-02
+The Washington D.C. municipal contract serves
+as the key growth foundation, cove
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+DCAO-03
+Commercial segment ARR of $5.81M across 856
+locations combined with non-D.C. mun
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+DCAO-04
+Transitioning organics processing in-house via
+the 20,000 ton/yr Utica facility
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+DCAO-05
+Fact ledger: 21 evidenced / 21 rows
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+DCAO-06
+VDR_PRIMARY
+2026 Commercial Sales
+Proposal.pptx
+CB-01
+Sells: Organics waste collection services,
+compostable product supplies ('Key Co
+VDR_PRIMARY
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_
+CB-02
+Legal entity: Compost Crew (Maryland
+corporation / entity structure implied by M
+VDR_PRIMARY
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_
+CB-03
+Total evidenced common equity/option shares:
+10,202,561 (10,000,010 + 200,000 +
+VDR_PRIMARY
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_
+CB-04
+Service lines evidenced: 5
+VDR_PRIMARY
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_
+CB-05
+VDR_PRIMARY
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_
+CB-INS
+Compost Crew is a US-based organics waste
+collection, processing, and compostabl
+VDR_PRIMARY
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_
+HP-01
+EBITDA was already positive in FY2024 (USD M
+1.135); latest FY2025 is USD M 0.57
+VDR_PRIMARY
+2_2_1 Revenue by Service
+Line__Please se
+HP-02
+8 accounting period(s) published
+VDR_PRIMARY
+2_2_1 Revenue by Service
+Line__Please se
+3.3.0b Citation check summary
+
+
+--- page 27 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+27
+ Claims checked: 40
+ Supports: 3; Unverified: 37; Does not support: 0
+ Sources linked: 9; Unlinked: 29
+ Availability is not verification — present in room ≠ reopened.
+3.3.1 Agent source index
+ Agent
+Code
+Slug
+Source document(s)
+Appendices
+FV-08
+appendices
+2026 Commercial Sales Proposal.pptx,
+2026-08-31_securities-ledger.xlsx, 2026-08
+-31_summary_cap_intermediate_cap_detai
+led_cap.xlsx
+Buying Behavior
+DD-09
+buying_behavior
+2026 Commercial Sales Proposal.pptx,
+2026-08-31_securities-ledger.xlsx, 2_2_1
+Revenue by Service Line__Please see
+Investor Workbook.txt
+Capital Structure
+DD-24
+capital_structure
+2_3_1 Financial Projections__Please see
+Investor Workbook.txt, Compost Crew
+Monthly Financials 23YTD26.xlsx, Please
+see 2_1_1 Financial Statements for BS.txt
+Cash Flow
+DD-24a
+cash_flow
+Please see 2_1_1 Financial Statements for
+Cash Flow Statements.txt, 2_3_1 Financial
+Projections__Please see Investor
+Workbook.txt, Compost Crew Monthly
+Financials 23YTD26.xlsx
+Cdd Deck
+cdd_deck
+Compost_Crew_CDD_Deck.pptx
+Company Background
+F-05
+company_background
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_22_2025.xlsx,
+CC_Investor_Workbook_EXTERNAL.xlsx,
+2026-08-31_securities-ledger.xlsx
+Compensation Alignment
+FV-02
+compensation_alignment
+Competitive Differentiation
+DD-06
+competitive_differentiation
+2026-08-31_summary_cap_intermediate_c
+ap_detailed_cap.xlsx, City of College
+Park_2026 Climate and Energy
+Leadersahip Awards Letter.pdf, Copy of
+Titan Hospitality.pptx
+Competitor Identification
+DD-04
+competitor_identification
+2026-08-31_summary_cap_intermediate_c
+ap_detailed_cap.xlsx, City of College
+Park_2026 Climate and Energy
+Leadersahip Awards Letter.pdf, Copy of
+Titan Hospitality.pptx
+Cost Structure
+DD-13
+cost_structure
+2_3_1 Financial Projections__Please see
+Investor Workbook.txt, Compost Crew
+Monthly Financials 23YTD26.xlsx, Please
+see 2_1_1 Financial Statements for BS.txt
+Customer Satisfaction
+DD-12
+customer_satisfaction
+2026 Commercial Sales Proposal.pptx, 202
+6-08-31_summary_cap_intermediate_cap_
+detailed_cap.xlsx, City of College
+Park_2026 Climate and Energy
+Leadersahip Awards Letter.pdf
+Customer Segmentation
+DD-08
+customer_segmentation
+2026 Commercial Sales Proposal.pptx
+Customer Stickiness
+DD-11
+customer_stickiness
+2026 Commercial Sales Proposal.pptx,
+2026-08-31_securities-ledger.xlsx, 2_2_1
+Revenue by Service Line__Please see
+Investor Workbook.txt
+Deal Context & Objectives
+deal_context_and_objectiv
+es
+2026 Commercial Sales Proposal.pptx,
+2026-08-31_securities-ledger.xlsx, 2026-08
+-31_summary_cap_intermediate_cap_detai
+led_cap.xlsx
+
+
+--- page 28 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+28
+Agent
+Code
+Slug
+Source document(s)
+Demand Drivers
+DD-03
+demand_drivers
+2026 Commercial Sales Proposal.pptx,
+2_3_2 Assumption Supporting
+Projections__Please see Investor
+Workbook.txt, 4_2_2 Equipment
+List__Please see CIM P46.txt
+ESG & Sustainability
+F-ESG
+esg_and_sustainability
+Edmonston Grant Contract - Fully
+Executed_NR233A750005C012 - Apr 2023
+_1.pdf, No pending or scheduled threatened
+litigation.txt, 4280-2 Compost Crew FY25
+FPEP.pdf
+Execution Risk
+FV-01
+execution_risk
+Export Consistency
+export_consistency
+Growth Opportunities
+DD-01b
+growth_opportunities
+2_3_2 Assumption Supporting
+Projections__Please see Investor
+Workbook.txt, 4_2_2 Equipment
+List__Please see CIM P46.txt, CC - 12354
+Parking Lease.pdf
+Historical Performance
+DD-23
+historical_performance
+2_2_1 Revenue by Service Line__Please
+see Investor Workbook.txt, 2_3_1 Financial
+Projections__Please see Investor
+Workbook.txt, Compost Crew Monthly
+Financials 23YTD26.xlsx
+Ic Brief
+ic_brief
+company_background, execution_risk,
+fdd_facts
+Ic Memo
+ic_memo
+Compost_Crew_IC_Memo.pdf
+Executive Summary
+FV-06
+ic_synthesis
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_22_2025.xlsx,
+CC_Investor_Workbook_EXTERNAL.xlsx,
+2026 Commercial Sales Proposal.pptx
+Internal Risk
+DD-21
+internal_risk
+2_3_1 Financial Projections__Please see
+Investor Workbook.txt, Compost Crew
+Monthly Financials 23YTD26.xlsx, Please
+see 2_1_1 Financial Statements for BS.txt
+IP & Technology
+F-IP
+ip_and_technology
+CC - Depreciation Schedule as on
+07_31_2026.xlsx, OG Loan Schedules.xlsx,
+4280-2 Compost Crew FY25 FPEP.pdf
+Management Quality
+F-06
+management_quality
+MD_NOVA_ZIP Expansion
+Analysis_Final_10_22_2025.xlsx,
+CC_Investor_Workbook_EXTERNAL.xlsx,
+2026-08-31_securities-ledger.xlsx
+Market Definition
+DD-02
+market_definition
+2026 Commercial Sales Proposal.pptx, 202
+6-08-31_summary_cap_intermediate_cap_
+detailed_cap.xlsx, City of College
+Park_2026 Climate and Energy
+Leadersahip Awards Letter.pdf
+Market Intel Deck
+market_intel_deck
+Compost_Crew_Market_Intel_Deck.pptx
+Market Pricing
+DD-17
+market_pricing
+2026 Commercial Sales Proposal.pptx, 202
+6-08-31_summary_cap_intermediate_cap_
+detailed_cap.xlsx, 2_3_2 Assumption
+Supporting Projections__Please see
+Investor Workbook.txt
+Market Risk
+DD-20
+market_risk
+2_3_2 Assumption Supporting
+Projections__Please see Investor
+Workbook.txt, 4_2_2 Equipment
+List__Please see CIM P46.txt, CC - 12354
+Parking Lease.pdf
+
+
+--- page 29 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+29
+Agent
+Code
+Slug
+Source document(s)
+Market Share Strategy
+DD-05
+market_share_strategy
+2026-08-31_summary_cap_intermediate_c
+ap_detailed_cap.xlsx, City of College
+Park_2026 Climate and Energy
+Leadersahip Awards Letter.pdf, Copy of
+Titan Hospitality.pptx
+Market Volume & Growth
+DD-01
+market_volume_and_growt
+h
+TAM_SAM_ SOM Data.xlsx, 2026-08-31_s
+ummary_cap_intermediate_cap_detailed_c
+ap.xlsx, 2_3_2 Assumption Supporting
+Projections__Please see Investor
+Workbook.txt
+Operational Risk
+DD-19
+operational_risk
+2_2_1 Revenue by Service Line__Please
+see Investor Workbook.txt,
+2026-08-31_securities-ledger.xlsx, 2_3_1
+Financial Projections__Please see Investor
+Workbook.txt
+Operations Dashboard
+operations_dashboard
+Compost_Crew_Operations_Dashboard.xls
+x
+Precedent Transactions
+FV-04
+precedent_transactions
+Recommendation
+FV-07
+recommendation
+2_3_2 Assumption Supporting
+Projections__Please see Investor
+Workbook.txt, 4_2_2 Equipment
+List__Please see CIM P46.txt, 2_3_1
+Financial Projections__Please see Investor
+Workbook.txt
+Regulatory Compliance
+F-04
+regulatory_compliance
+Edmonston Grant Contract - Fully
+Executed_NR233A750005C012 - Apr 2023
+_1.pdf, No pending or scheduled threatened
+litigation.txt
+Revenue Quality
+DD-09b
+revenue_quality
+2_2_1 Revenue by Service Line__Please
+see Investor Workbook.txt,
+2026-08-31_securities-ledger.xlsx, 2_3_1
+Financial Projections__Please see Investor
+Workbook.txt
+Scope & Methodology
+scope_and_methodology
+2026 Commercial Sales Proposal.pptx,
+2026-08-31_securities-ledger.xlsx, 2026-08
+-31_summary_cap_intermediate_cap_detai
+led_cap.xlsx
+Strategic Direction
+F-01
+strategic_direction
+4_2_2 Equipment List__Please see CIM
+P46.txt,
+CC_CIM_JPC_FINAL_090126.pptx, Please
+see CIM P39.txt
+Strategy Report
+strategy_report
+Compost_Crew_Strategy_Report.docx
+Supplier Dependence
+DD-22
+supplier_dependence
+CC - Depreciation Schedule as on
+07_31_2026.xlsx, OG Loan Schedules.xlsx,
+CC_CIM_JPC_FINAL_090126.pptx
+Supply Chain Resilience
+DD-14
+supply_chain_resilience
+2026-08-31_securities-ledger.xlsx, 2_2_1
+Revenue by Service Line__Please see
+Investor Workbook.txt, 2_3_1 Financial
+Projections__Please see Investor
+Workbook.txt
+SWOT Analysis
+DD-07
+swot_analysis
+2026 Commercial Sales Proposal.pptx, 202
+6-08-31_summary_cap_intermediate_cap_
+detailed_cap.xlsx, City of College
+Park_2026 Climate and Energy
+Leadersahip Awards Letter.pdf
+Synergies
+DD-06b
+synergies
+4_2_2 Equipment List__Please see CIM
+P46.txt,
+CC_CIM_JPC_FINAL_090126.pptx, Please
+see CIM P39.txt
+
+
+--- page 30 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+30
+Agent
+Code
+Slug
+Source document(s)
+Trading Comps
+FV-03
+trading_comps
+Valuation Model
+FV-05
+valuation_modeling
+Compost Crew Monthly Financials
+23YTD26.xlsx,
+2026-08-31_securities-ledger.xlsx,
+CC_Investor_Workbook_EXTERNAL.xlsx
+3.3.1b Databook financial history (released)
+ Line
+FY values
+Unit
+Status
+EBITDA
+FY2023=-0.744; FY2024=1.115;
+FY2025=0.5717606999999999;
+FY2026=0.4392539000000001; FY2027=0.325;
+FY2028=0.907; FY2029=3.551; FY2030=7.557
+USD M | M
+mixed
+EBITDA Margin †
+FY2023=-9.88; FY2027=1.8; FY2028=3.71;
+FY2029=9.86; FY2030=15.06
+%
+doubtful
+Gross Margin
+FY2023=20.37; FY2024=31.78; FY2025=30.44;
+FY2026=31.21; FY2027=36.02; FY2028=38.63;
+FY2029=39.61; FY2030=40.6
+%
+mixed
+Revenue †
+FY2026=14.3; FY2027=18.066000000000003;
+FY2028=24.478999999999996;
+FY2029=36.01499999999999; FY2030=50.168
+USD M
+doubtful
+YoY Growth
+missing
+—
+missing
+Accounts Payable
+FY2022=0.06653664999999999;
+FY2023=0.28338178; FY2024=0.33579663;
+FY2025=0.49646971999999995
+M
+proven
+Accounts Receivable
+FY2022=0.6020540400000001;
+FY2023=0.9177724899999999;
+FY2024=1.20033662; FY2025=1.2225019
+M
+proven
+Capex
+FY2023=-1.14086844; FY2024=-0.59555795;
+FY2025=-0.43238471999999994;
+FY2026=-0.27149625
+M
+proven
+Cash
+FY2022=4.12679304; FY2023=2.98215356;
+FY2024=3.21951426; FY2025=2.6677822
+M
+proven
+Cost of Sales
+FY2023=6.0189878; FY2024=8.09682089;
+FY2025=9.32920466;
+FY2026=5.541230690000001
+M
+proven
+Current Assets
+FY2022=4.93995107; FY2023=4.08996611;
+FY2024=4.885106640000001;
+FY2025=4.28652244
+M
+proven
+Current Liabilities
+FY2022=0.52826336; FY2023=1.0469707;
+FY2024=1.0510183800000001;
+FY2025=1.1021384999999997
+M
+proven
+† Doubtful — provisional released value, not final. mixed = partial year coverage (not a silent final).
+3.3.2 Scope & methodology notes
+  Covered: Deal / Strategy
+ Covered: Market / Competition
+ Covered: Customer
+ Covered: Legal / ESG
+ Covered: Financial
+ Gap: Company / Management
+ Gap: Operations
+ Questions evidenced: 6/8
+3.3.3 Storyline coverage
+
+
+--- page 31 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+31
+Section
+Primary agents
+#
+1.1 Market Risk
+market_risk, market_volume_and_growth,
+competitive_differentiation, customer_segmentation…
+7
+1.2 Internal Risk
+internal_risk, operational_risk, customer_stickiness,
+appendices…
+7
+1.3 Growth Opportunities
+growth_opportunities, cost_structure, historical_performance,
+market_share_strategy…
+9
+1.4 Synergies
+synergies
+1
+2.1 Valuation Model
+valuation_model, final_valuation_range, historical_performance,
+company_background…
+6
+2.2 Sensitivity Analysis
+sensitivity_analysis, supply_chain_resilience
+2
+2.3 Final Valuation Range
+final_valuation_range, sensitivity_analysis, valuation_model
+3
+3.1 Executive Summary
+executive_summary, recommendations, historical_performance,
+deal_context_and_objectives…
+10
+3.2 Final Recommendation
+recommendations, final_valuation_range, executive_summary,
+appendices…
+8
+3.3 Appendices & Sourcing
+appendices, scope_and_methodology
+2
+3.3.4 Attribute legend
+ Attribute
+Meaning
+CONFIRMED
+Backed by a structured Verdict / Deep Dive / Foundation field present in this deal's stores.
+ASSUMED
+Interpolated, missing, or only weakly evidenced in agent output — treat as diligence gap.
+Not re-derived
+Figures shown as published by upstream agents; the IC Memo builder does not re-model.
+3.3.5 IC glossary (selected)
+  TAM / SAM / SOM — total / serviceable / obtainable market framing from market_volume_and_growth.
+ Football field — cross-method equity / EV band (DCF, trading comps, precedents).
+ WACC — discount rate used in DCF scenarios from valuation_modeling.
+ IRR / MOIC — returns under recommendation scenario set.
+ CP / 100-day plan — conditions precedent and post-close value-creation cadence from recommendation.
+ Sector label — Organics &amp; Composting (resolved from deal metadata or market/foundation corpus).
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Appendices: Claims: 60
+ Appendices: Sources: 38
+ Appendices: Citation: supports=3 unverified=37
+ Scope & Methodology: Covered: Deal / Strategy
+ Scope & Methodology: Covered: Market / Competition
+ Scope & Methodology: Covered: Customer
+Source: this deal's diligence workflow output — the Appendices, Scope & Methodology agents. Not re-derived here.
+That analysis cites: 2026 Commercial Sales Proposal.pptx, 2026-08-31_securities-ledger.xlsx,
+2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx, 2_2_1 Revenue by Service Line__Please see
+Investor Workbook.txt….
+
+
+--- page 32 ---
+Investment Committee Memo | Compost Crew
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+32
+IC attestation
+This memorandum for Compost Crew (Organics & Composting) is generated for Investment Committee
+voting members. It summarises Verdict Store and Deep Dive outputs available as of 23 November
+2026. Readers should cross-check material figures against source agent specs and the cited VDR
+documents before a final vote.
+Distribution control: Strictly Private & Confidential — DiligenceIQ deal workspace.

@@ -6,10 +6,21 @@ import json
 from collections.abc import Iterator
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+
+from agetic_cdd_api.llm_request import (
+    HEADER_API_KEY,
+    HEADER_MODEL,
+    HEADER_PROVIDER,
+    LlmOptionsBody,
+    merge_llm_overrides,
+    override_from_body,
+    override_from_headers,
+)
+from agetic_cdd_api.services_llm import llm_selection, use_llm_override
 
 from agetic_cdd_api.db import get_db
 from agetic_cdd_api.deps import AuthContext, get_current_auth
@@ -43,6 +54,11 @@ class PipelineRunBody(BaseModel):
     agent_key: str | None = None
     # Re-queue analysis agents from Data Ingestion onward (ignores next_phase).
     restart: bool = False
+    # Optional per-run LLM selection (overrides env for this pipeline job).
+    llm: LlmOptionsBody | None = None
+    llm_provider: str | None = Field(default=None, description="Alias for llm.provider")
+    llm_model: str | None = Field(default=None, description="Alias for llm.model")
+    llm_api_key: str | None = Field(default=None, description="Alias for llm.api_key")
 
 
 class ProfileConfirmBody(BaseModel):
@@ -130,7 +146,18 @@ def pipeline_run(
     body: PipelineRunBody | None = None,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
+    x_agetic_llm_provider: str | None = Header(default=None, alias=HEADER_PROVIDER),
+    x_agetic_llm_model: str | None = Header(default=None, alias=HEADER_MODEL),
+    x_agetic_llm_api_key: str | None = Header(default=None, alias=HEADER_API_KEY),
 ) -> dict:
+    header_ov = override_from_headers(
+        x_agetic_llm_provider=x_agetic_llm_provider,
+        x_agetic_llm_model=x_agetic_llm_model,
+        x_agetic_llm_api_key=x_agetic_llm_api_key,
+    )
+    body_ov = override_from_body(body, source="body")
+    llm_ov = merge_llm_overrides(header_ov, body_ov)
+
     payload = schedule_pipeline_run(
         db,
         org_id=auth.organization.id,
@@ -144,8 +171,15 @@ def pipeline_run(
         org_id=auth.organization.id,
         deal_id=deal_id,
         agent_keys=payload["agent_keys"],
+        llm_override=llm_ov,
     )
-    return {"success": True, "data": payload}
+    with_selection = dict(payload)
+    if llm_ov is not None:
+        with use_llm_override(llm_ov):
+            with_selection["llm"] = llm_selection()
+    else:
+        with_selection["llm"] = llm_selection()
+    return {"success": True, "data": with_selection}
 
 
 def _stream_phase_run(

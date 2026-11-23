@@ -624,6 +624,16 @@ class DatabookRereadBody(BaseModel):
     filename: str
 
 
+class FinDiscoveryAcceptBody(BaseModel):
+    filename: str
+    doc_type: str | None = None
+
+
+class FinDiscoveryRejectBody(BaseModel):
+    filename: str
+    reason: str | None = None
+
+
 @router.post("/portfolios/{deal_id}/cdd/databook/rows/{row_id}/correct")
 def cdd_databook_correct(
     deal_id: str,
@@ -854,3 +864,85 @@ def cdd_databook_reread(
     deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
     summary = reread_databook_document(db, deal, body.filename)
     return {"success": True, "data": summary.model_dump(mode="json")}
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/fin-discovery/candidates")
+def cdd_fin_discovery_candidates(
+    deal_id: str,
+    status_filter: str | None = Query("pending", alias="status"),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List Gate-2 fin-discovery HITL suggestions (default: pending only)."""
+    from agetic_cdd_api.services_fin_discovery_hitl import list_fin_discovery_hitl
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    data = list_fin_discovery_hitl(deal, status=status_filter)
+    return {"success": True, "data": data}
+
+
+@router.get("/portfolios/{deal_id}/cdd/databook/fin-discovery/audit")
+def cdd_fin_discovery_audit(
+    deal_id: str,
+    limit: int = Query(50, ge=1, le=500),
+    event: str | None = Query(None, description="Optional event filter, e.g. discovery_run"),
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List durable fin-discovery audit events (newest first)."""
+    from agetic_cdd_api.services_fin_discovery_audit import list_fin_discovery_audit
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    data = list_fin_discovery_audit(deal, limit=limit, event=event)
+    return {"success": True, "data": data}
+
+
+@router.post("/portfolios/{deal_id}/cdd/databook/fin-discovery/accept")
+def cdd_fin_discovery_accept(
+    deal_id: str,
+    body: FinDiscoveryAcceptBody,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Accept a skipped FIN discovery candidate → promote + sheet-aware reread."""
+    from agetic_cdd_api.services_fin_discovery_hitl import accept_fin_discovery_candidate
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    try:
+        data = accept_fin_discovery_candidate(
+            deal,
+            filename=body.filename,
+            db=db,
+            actor=auth.user.email,
+            doc_type=body.doc_type,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"success": True, "data": data}
+
+
+@router.post("/portfolios/{deal_id}/cdd/databook/fin-discovery/reject")
+def cdd_fin_discovery_reject(
+    deal_id: str,
+    body: FinDiscoveryRejectBody,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Reject a skipped FIN discovery candidate (no promote)."""
+    from agetic_cdd_api.services_fin_discovery_hitl import reject_fin_discovery_candidate
+
+    deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    try:
+        data = reject_fin_discovery_candidate(
+            deal,
+            filename=body.filename,
+            actor=auth.user.email,
+            reason=body.reason,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"success": True, "data": data}

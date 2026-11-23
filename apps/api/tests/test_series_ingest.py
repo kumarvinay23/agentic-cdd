@@ -169,6 +169,52 @@ def test_series_facts_make_gate_ok(deal_root: Path, monkeypatch: pytest.MonkeyPa
     assert gate.series_fact_count == 1
 
 
+def test_zero_only_series_does_not_pass_gate(
+    deal_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FIN discovery harden: all-zero mapped cells must not flip Gate 2 green."""
+    slug = "zero-only-series"
+    deal = SimpleNamespace(id=slug, slug=slug)
+    monkeypatch.setattr(
+        "agetic_cdd_api.settings.settings.databook_database_url",
+        "postgresql://unused",
+        raising=False,
+    )
+    with patch(
+        "agetic_cdd_api.services_deal_profile.published_databook",
+        return_value={"reporting_currency": "USD"},
+    ):
+        gate = assess_statement_series_ingest(
+            deal,
+            {
+                "facts": [
+                    {
+                        "concept_id": "fin.pl.revenue",
+                        "status": "SELECTED",
+                        "value": 0.0,
+                        "file_name": "empty_pack.xlsx",
+                    },
+                    {
+                        "concept_id": "fin.pl.ebitda",
+                        "status": "SELECTED",
+                        "value": 0,
+                        "file_name": "empty_pack.xlsx",
+                    },
+                ],
+                "rows": [
+                    {
+                        "file_name": "empty_pack.xlsx",
+                        "format": "xlsx",
+                        "doc_type": "FIN_MGMT_ACCOUNTS",
+                    }
+                ],
+            },
+        )
+    assert gate.ok is False
+    assert "zero_only_series_cells" in gate.reasons
+    assert gate.series_fact_count == 2
+
+
 def test_apply_raises_when_blocked(deal_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     slug = "raise-me"
     docs = deal_root / slug / "documents"

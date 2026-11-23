@@ -241,7 +241,9 @@ def _business_lines(agents: dict[str, dict[str, Any]], company: str) -> list[str
         # valuation earnings basis as fallback (still registered)
         val = _spec_of(agents.get("valuation_modeling"))
         earn = val.get("earnings_basis") if isinstance(val.get("earnings_basis"), dict) else {}
-        if earn.get("amount") is not None and not str(earn.get("amount")).startswith("Information"):
+        from agetic_cdd_api.services_metric_hygiene import earnings_basis_is_usable
+
+        if earnings_basis_is_usable(earn):
             earn_bits.append(
                 f"Earnings basis: {earn.get('metric')} {earn.get('amount')} "
                 f"{earn.get('unit')} ({earn.get('period')})"
@@ -506,7 +508,9 @@ def _thesis_points(agents: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     if len(rows) < 3:
         val = _spec_of(agents.get("valuation_modeling"))
         earn = val.get("earnings_basis") if isinstance(val.get("earnings_basis"), dict) else {}
-        if earn.get("amount") is not None:
+        from agetic_cdd_api.services_metric_hygiene import earnings_basis_is_usable
+
+        if earnings_basis_is_usable(earn):
             add(
                 "Earnings basis",
                 (

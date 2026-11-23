@@ -893,6 +893,10 @@ class RequestListItem(BaseModel):
     metric_key: str | None = None
     fiscal_year: int | None = None
     suggested_filenames: list[str] = Field(default_factory=list)
+    # Sticky RFI scrub: retain claim vs book so zero-claim / scale traps can be
+    # dropped on rewrite without re-parsing titles.
+    claimed_value: float | None = None
+    databook_value: float | None = None
     # Fix 5 — join to findings register when the request protects a finding.
     finding_id: str | None = None
     display_id: str | None = None

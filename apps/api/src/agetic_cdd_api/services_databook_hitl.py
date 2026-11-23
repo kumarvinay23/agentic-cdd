@@ -192,8 +192,17 @@ def vouch_fact(
     return _after(deal_id, action, fact_id)
 
 
-def reread_document(deal: Any, filename: str) -> dict[str, Any] | None:
-    """Rerun the statement reader for one registered file. Other documents stay."""
+def reread_document(
+    deal: Any,
+    filename: str,
+    *,
+    preferred_sheets: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, Any] | None:
+    """Rerun the statement reader for one registered file. Other documents stay.
+
+    ``preferred_sheets`` (fin-discovery hint) limits which workbook tabs are read
+    when at least one name matches; otherwise the full statement pass runs.
+    """
     from agetic_cdd_api.services_document_register import register_room
     from agetic_cdd_api.services_statement_reader import _file_facts, store_lines
     from agetic_cdd_api.services_vdr import documents_dir
@@ -212,6 +221,12 @@ def reread_document(deal: Any, filename: str) -> dict[str, Any] | None:
     published = published_databook(deal_id) or {}
     currency = str(published.get("reporting_currency") or "USD")
     year_end = str(published.get("fiscal_year_end") or "12-31")
+    sheets = [str(s).strip() for s in (preferred_sheets or []) if str(s).strip()]
+    if sheets:
+        row = dict(row)
+        row["preferred_sheets"] = sheets
+        if not row.get("suggested_sheet"):
+            row["suggested_sheet"] = sheets[0]
     found, locs, _items = _file_facts(
         documents_dir(deal) / name,
         row,
@@ -220,6 +235,7 @@ def reread_document(deal: Any, filename: str) -> dict[str, Any] | None:
         1,
         int(year_end.split("-")[0]),
         deal_id,
+        preferred_sheets=sheets or None,
     )
     stored = store_lines(found or [], locs, deal_id, doc_type=row.get("doc_type")) if found else []
     refreshed = _refresh(deal_id)
@@ -228,6 +244,7 @@ def reread_document(deal: Any, filename: str) -> dict[str, Any] | None:
         "doc_id": row["doc_id"],
         "file_name": name,
         "facts": len(stored),
+        "preferred_sheets": sheets or None,
         "flags": refreshed.get("flags") or [],
     }
 

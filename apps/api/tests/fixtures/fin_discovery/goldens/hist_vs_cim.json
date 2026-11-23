@@ -1,0 +1,36 @@
+{
+  "id": "hist_vs_cim",
+  "kind": "miss_recoverable",
+  "company": "Northwind Bio",
+  "deal_name": "Northwind Bio",
+  "description": "History mgmt accounts must beat CIM for top1 and auto-promote.",
+  "expected_files": ["FIN_empty_tb.xlsx"],
+  "files": [
+    {
+      "filename": "FIN_empty_tb.xlsx",
+      "doc_type": "FIN_TRIAL_BALANCE",
+      "sheets": ["TB"],
+      "role": "expected_empty"
+    },
+    {
+      "filename": "mgmt_accounts_hist.xlsx",
+      "doc_type": "CORPORATE_DOCS",
+      "sheets": ["IS", "BS", "CF"],
+      "role": "gold_target",
+      "cdl_category": "financial"
+    },
+    {
+      "filename": "CIM_Info_Memo.xlsx",
+      "doc_type": "CORPORATE_DOCS",
+      "sheets": ["Teaser"],
+      "role": "trap_cim"
+    }
+  ],
+  "assert": {
+    "top1_filename": "mgmt_accounts_hist.xlsx",
+    "gold_promote_filename": "mgmt_accounts_hist.xlsx",
+    "must_not_auto_promote": ["CIM_Info_Memo.xlsx"],
+    "expect_recovered": true,
+    "expect_false_promote": false
+  }
+}

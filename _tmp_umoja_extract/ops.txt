@@ -1,0 +1,180 @@
+
+--- sheet Executive Dashboard ---
+Operations Dashboard |  |  | 
+Umoja Health · Executive Dashboard · Strictly Private & Confidential |  |  | 
+Prepared by DiligenceIQ |  |  | 
+Executive Scorecard — Key Performance Indicators |  |  | 
+KPI | Latest (period) | YoY | RAG Status
+Workbook Contents |  |  | 
+Section | Coverage | Status | 
+01 — Customer Analysis | grounded in: customer segmentation, customer stickiness, customer satisfaction | Covered | 
+02 — Operational & Risk | grounded in: operational risk, supplier dependence, supply chain resilience, cost structure | Covered | 
+03 — Financial Analysis | grounded in: historical performance, revenue quality, cost structure, capital structure | Covered | 
+Diligence Workflow Analysis — findings from this deal's agents |  |  | 
+Agent | Finding | Source document(s) | Status
+Historical Performance | 1 accounts-vs-CIM gap(s) | Financials__VHP Income Statement _2023.pdf, Financials__VHP Income Statement _2024.pdf, Chief Financial Officer.docx | Monitor
+Operational Risk | 1 priced / protection risk(s) | Operations and Member Services Manager.png, 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf | Monitor
+Internal Risk | 3 key-person exposure(s) | Technology _ Capabilities__VHP SOC 2 Type 2 Final Audit Report 2024.pdf, Technology _ Capabilities__Architecture and Scalability.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note - Christopher Tapp Living Trust - signed.pdf | Monitor
+Internal Risk | 3 observed control weakness(es) | Technology _ Capabilities__VHP SOC 2 Type 2 Final Audit Report 2024.pdf, Technology _ Capabilities__Architecture and Scalability.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note - Christopher Tapp Living Trust - signed.pdf | Monitor
+Management Quality | CFO: Technology Hank Morton | Org Chart__Umoja Org Chart _ VHP.pdf, Org Chart__Umoja Org Chart _ VHP.xlsx, Team _ Human Resources__VHP Org Chart May 2025.pdf | Monitor
+Management Quality | CTO: Hugh Williams | Org Chart__Umoja Org Chart _ VHP.pdf, Org Chart__Umoja Org Chart _ VHP.xlsx, Team _ Human Resources__VHP Org Chart May 2025.pdf | Monitor
+Deal Context & Objectives | Equity plan scenario targets post-closing VHP shareholder minimum threshold of 7.26% and leadership team pool of 4.55% to 5.51% post-dilution. [7.26%] | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx, 1.25 VHP Target Medicaid States w PIPs _ VAS.xlsx | Monitor
+Deal Context & Objectives | Provider package pricing models establish baseline contract floors, such as Dr. Jon Williams' minimum annual contract spend of $4,800 ($1,200/quarter). [$4,800 / year] | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx, 1.25 VHP Target Medicaid States w PIPs _ VAS.xlsx | Monitor
+Capital Structure | 4 facility(ies) with balances | Business Model__INTERNAL Margins Sheet HCSC SSBCI 02.24.xlsx, Business Model__VHP Forecast Model 2025-2027 _6-10-2025.xlsx, Chief Financial Officer.docx | Monitor
+Capital Structure | Gross debt ~50.5 USD M | Business Model__INTERNAL Margins Sheet HCSC SSBCI 02.24.xlsx, Business Model__VHP Forecast Model 2025-2027 _6-10-2025.xlsx, Chief Financial Officer.docx | Monitor
+Cash Flow | 1 EBITDA→cash line(s) | Chief Financial Officer.docx, Financials__Supplemental Diligence Schedules _Expense Details.pdf, Financials__VHP Balance Sheet YE 2024.pdf | Monitor
+Cash Flow | Liquidity inputs incomplete (missing ≠ distress) | Chief Financial Officer.docx, Financials__Supplemental Diligence Schedules _Expense Details.pdf, Financials__VHP Balance Sheet YE 2024.pdf | Monitor
+
+--- sheet Customer Analysis ---
+Operations Dashboard |  | 
+Umoja Health · Customer Analysis · Strictly Private & Confidential |  | 
+Retention & Stickiness Metrics |  | 
+Metric | Value | Source
+
+--- sheet Operational & Risk ---
+Operations Dashboard |  |  | 
+Umoja Health · Operational & Risk · Strictly Private & Confidential |  |  | 
+Cash Flow & Liquidity |  |  | 
+Metric | Value |  | 
+EBITDA | 0 |  | 
+Diligence Workflow Analysis — findings from this deal's agents |  |  | 
+Agent | Finding | Source document(s) | Status
+Internal Risk | 3 key-person exposure(s) | Technology _ Capabilities__VHP SOC 2 Type 2 Final Audit Report 2024.pdf, Technology _ Capabilities__Architecture and Scalability.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note - Christopher Tapp Living Trust - signed.pdf | Monitor
+Internal Risk | 3 observed control weakness(es) | Technology _ Capabilities__VHP SOC 2 Type 2 Final Audit Report 2024.pdf, Technology _ Capabilities__Architecture and Scalability.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note - Christopher Tapp Living Trust - signed.pdf | Monitor
+Operational Risk | 1 priced / protection risk(s) | Operations and Member Services Manager.png, 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf | Monitor
+Supply Chain Resilience | 2 stage(s), 0 SPOF(s) | 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf, 2026-03-31 Umoja Supply Chain Solutions LLC - Board Member Agreement _Builders Fund_ _Fully Executed.pdf | Monitor
+Supply Chain Resilience | Supplier facts reconciled — no term conflicts | 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf, 2026-03-31 Umoja Supply Chain Solutions LLC - Board Member Agreement _Builders Fund_ _Fully Executed.pdf | Monitor
+Capital Structure | 4 facility(ies) with balances | Business Model__INTERNAL Margins Sheet HCSC SSBCI 02.24.xlsx, Business Model__VHP Forecast Model 2025-2027 _6-10-2025.xlsx, Chief Financial Officer.docx | Monitor
+Capital Structure | Gross debt ~50.5 USD M | Business Model__INTERNAL Margins Sheet HCSC SSBCI 02.24.xlsx, Business Model__VHP Forecast Model 2025-2027 _6-10-2025.xlsx, Chief Financial Officer.docx | Monitor
+
+--- sheet Financial Analysis ---
+Operations Dashboard |  |  |  | 
+Umoja Health · Financial Analysis · Strictly Private & Confidential |  |  |  | 
+Financial Series — Full Metric Grid |  |  |  | 
+Metric | 2022 | 2023 | 2024 | 2025
+Cogs | - | - | 8201.43 | -
+Cost of Sales | - | - | 8201.43 | -
+Cost Of Sales Usd | - | - | 8201.43 | -
+EBIT | - | 15845.89 | 36208.8 | 40076.33
+Net Income | -496314.61 | -220725.0100000009 | -129138.9600000023 | -21965.91999999904
+YoY Growth | - | - | -12.786847 | -33.777441
+Financial Series — Databook release (P0) |  |  |  | 
+Line Item | FY2029 | Unit | Status | 
+EBITDA | missing | M | doubtful | 
+EBITDA Margin | missing | % | doubtful | 
+Gross Margin | missing |  | missing | 
+Revenue | 0 |  | doubtful | 
+YoY Growth | missing |  | missing | 
+Accounts Payable | - | M | doubtful | 
+Accounts Receivable | - | M | doubtful | 
+Capex | doubtful † |  | doubtful | 
+Cash | - | M | doubtful | 
+Cost of Sales | - | M | doubtful | 
+Current Assets | - | M | doubtful | 
+Current Liabilities | - | M | doubtful | 
+Dividends | - | B | doubtful | 
+Gross Profit | missing |  | missing | 
+Inventory | - | M | doubtful | 
+Labor Cost | - | M | doubtful | 
+Long Term Liabilities | - |  | doubtful | 
+Net Income | - | M | doubtful | 
+Sga | - |  | doubtful | 
+Total Assets | - | M | doubtful | 
+Total Liabilities | - | M | doubtful | 
+† Doubtful — provisional, missing, or disagrees with Full Metric Grid. Trust Financial Series — Full Metric Grid for confirmed figures. Missing = no releasable evidence. |  |  |  | 
+Revenue & EBITDA Summary |  |  |  | 
+Period | Revenue | EBITDA | Rev Growth | EBITDA Margin
+FY2029 | 0 | - | - | -
+Capital Structure & Valuation Metrics |  |  |  | 
+Metric | Value |  |  | 
+
+--- sheet Source Data ---
+Operations Dashboard |  |  |  |  | 
+Umoja Health · Source Data · Strictly Private & Confidential |  |  |  |  | 
+Underlying Reference Data — provenance fact rows |  |  |  |  | 
+Metric | Fiscal Year | Value | Unit | Agent | Source
+Cogs | 2022 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Cogs | 2023 | 16820.35 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Cogs | 2024 | 8201.43 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Cogs | 2025 | 285577.11 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Cost of Sales | 2024 | 8201.43 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Cost Of Sales Usd | 2024 | 8201.43 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBIT | 2023 | 15845.89 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBIT | 2023 | 15845.89 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBIT | 2024 | 36208.8 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBIT | 2024 | 36208.8 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBIT | 2025 | 40076.33 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBIT | 2025 | 40076.33 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBITDA | 2023 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBITDA | 2024 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBITDA | 2025 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBITDA Margin | 2023 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBITDA Margin | 2024 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+EBITDA Margin | 2025 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2022 | -496314.61 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2022 | -496314.61 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2023 | -220725.0100000009 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2023 | -220725.0100000009 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2024 | -129138.9600000023 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2024 | -129138.9600000023 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2025 | -21965.91999999904 | USD | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Net Income | 2025 | -21965.91999999904 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Revenue | 2022 | 23677.66 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Revenue | 2029 | 0 | - | Databook | Umoja Operating Model 03.31.2026 v6.xlsx
+Revenue | 2029 | 0 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Yoy Growth | 2023 | 20209.314856 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+YoY Growth | 2024 | -12.786847 | % | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Yoy Growth (%) | 2024 | -12.786847 | % | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Yoy Growth | 2024 | -12.786847 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+YoY Growth | 2025 | -33.777441 | % | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Yoy Growth (%) | 2025 | -33.777441 | % | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Yoy Growth | 2025 | -33.777441 | - | Historical Performance | Financials__VHP Income Statement _2023.pdf
+Agent Catalog |  |  |  |  | 
+Agent | DD Code | Document | Sources | Coverage | Fact Count
+Appendices | - | Appendices | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx, 1.25 VHP Target Medicaid States w PIPs _ VAS.xlsx | missing | 4
+Buying Behavior | DD-09 | Concentration Risk Analysis | Current Customers Opportunities _ Costs _ Ctts.xlsx, Current Customers Opportunities _ Costs.xlsx, Customer Service Manager Jd.docx | full | 3
+Capital Structure | DD-24 | Intrinsic Value Statement (NPV) | Business Model__INTERNAL Margins Sheet HCSC SSBCI 02.24.xlsx, Business Model__VHP Forecast Model 2025-2027 _6-10-2025.xlsx, Chief Financial Officer.docx | full | 6
+Cash Flow | DD-24a | Cash Flow Profile | Chief Financial Officer.docx, Financials__Supplemental Diligence Schedules _Expense Details.pdf, Financials__VHP Balance Sheet YE 2024.pdf | full | 3
+Cdd Deck | - | - | Umoja_Health_CDD_Deck.pptx | full | 0
+Company Background | - | - | 2026-03-31 Amended and Restated Certificate of Incorporation - Umoja Supply Chain DE PBC _Executed and Filed.pdf, 2026-01-30 Umoja - Action by UWC in Lieu of the Organizational Meeting of the Board of Directors.pdf, 6.4 Management _ Employees__Umoja Leadership Team Bonus Plan 42021.pdf | full | 4
+Compensation Alignment | - | Compensation Adjustment Table | 2026-01-30 Umoja - Action by UWC in Lieu of the Organizational Meeting of the Board of Directors.pdf, 6.4 Management _ Employees__Umoja Health Salesperson Incentive Compensation Policy.pdf, 6.4 Management _ Employees__Umoja Leadership Team Bonus Plan 42021.pdf | full | 1
+Competitive Differentiation | DD-06 | Imitability Ladder Report | Dallas College Amendment to Fund Marketplace Supplier Services FINAL.docx _1.pdf, Growth _ Go-To-Market__Competitor Analysis 2024.xlsx, Growth _ Go-To-Market__Contracting Sample Workflow.pdf | full | 3
+Competitor Identification | DD-04 | Competitive Positioning Matrix | Growth _ Go-To-Market__Competitor Analysis 2024.xlsx, Competitor Analysis 2024.xlsx, Dallas College Amendment to Fund Marketplace Supplier Services FINAL.docx _1.pdf | full | 2
+Cost Structure | DD-13 | Economic Engine Efficiency | 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf, 2026-02-03 Umoja Invoice v1.pdf | full | 2
+Customer Satisfaction | DD-12 | Onboarding Failure Analysis | 6.4 Management _ Employees__Umoja Health Salesperson Incentive Compensation Policy.pdf, CalFoods Logistics_IN2509025828.pdf, Current Customers Opportunities _ Costs _ Ctts.xlsx | full | 2
+Customer Segmentation | DD-08 | Ideal Customer Profile (ICP) | Current Customers Opportunities _ Costs _ Ctts.xlsx, Current Customers Opportunities _ Costs.xlsx, Customer Service Manager Jd.docx | full | 2
+Customer Stickiness | DD-11 | Revenue Retention Table | 6.4 Management _ Employees__Umoja Health Salesperson Incentive Compensation Policy.pdf, CalFoods Logistics_IN2509025828.pdf, Current Customers Opportunities _ Costs _ Ctts.xlsx | full | 2
+Deal Context & Objectives | - | - | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx, 1.25 VHP Target Medicaid States w PIPs _ VAS.xlsx | - | 12
+Demand Drivers | DD-03 | Demand Drivers | PO 38621 Umoja Health _Weinberg Regional Food Bank.pdf, 2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between El Paso Healthcare and VHP.pdf | full | 3
+ESG & Sustainability | F-ESG | ESG & Sustainability | 1172555 Contract.pdf, 2025.11.20 Initial Legal DD List - Project Umber.pdf, Addendum Contract.pdf | full | 1
+Execution Risk | - | Human Capital Vulnerability Assessment | 2026-01-30 Umoja - Action by UWC in Lieu of the Organizational Meeting of the Board of Directors.pdf, 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 2026-01-30 Builders-Umoja - _1.5m Convertible Promissory Note Preferred Equity _fully executed_ v1.pdf | full | 1
+Export Consistency | - | - | - | - | 0
+Growth Opportunities | DD-01b | Growth Opportunities | 2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between El Paso Healthcare and VHP.pdf, 2021-02-02 Addendum between El Paso Healthcare and VHP.pdf | full | 2
+Historical Performance | DD-23 | Adjusted EBITDA Bridge | Financials__VHP Income Statement _2023.pdf, Financials__VHP Income Statement _2024.pdf, Chief Financial Officer.docx | full | 4
+Ic Brief | - | - | company_background, execution_risk, fdd_facts | - | 0
+Ic Memo | - | - | Umoja_Health_IC_Memo.pdf | full | 0
+Executive Summary | - | Executive Summary (IC Synthesis) | 2026-03-31 Amended and Restated Certificate of Incorporation - Umoja Supply Chain DE PBC _Executed and Filed.pdf, 2026-01-30 Umoja - Action by UWC in Lieu of the Organizational Meeting of the Board of Directors.pdf, 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx | missing | 5
+Internal Risk | DD-21 | Internal Risk | Technology _ Capabilities__VHP SOC 2 Type 2 Final Audit Report 2024.pdf, Technology _ Capabilities__Architecture and Scalability.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note - Christopher Tapp Living Trust - signed.pdf | full | 6
+IP & Technology | F-IP | Technology / IP baseline | Technology _ Capabilities__Architecture and Scalability.pdf, Technology _ Capabilities__Data base schema.png, Technology _ Capabilities__Infrastructure.pdf | full | 3
+Management Quality | - | - | Org Chart__Umoja Org Chart _ VHP.pdf, Org Chart__Umoja Org Chart _ VHP.xlsx, Team _ Human Resources__VHP Org Chart May 2025.pdf | full | 8
+Market Definition | DD-02 | Market Definition | Growth _ Go-To-Market__VHP _ Aetna LA Overview and Back-Up Slides _full deck_ 3.17.25.pdf, Dallas College Amendment to Fund Marketplace Supplier Services FINAL.docx _1.pdf, Growth _ Go-To-Market__Competitor Analysis 2024.xlsx | full | 6
+Market Intel Deck | - | - | Umoja_Health_Market_Intel_Deck.pptx | full | 0
+Market Pricing | DD-17 | Market Pricing | Dallas Community College Program Pricing 5.10.24.docx, 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx | full | 2
+Market Risk | DD-20 | Market Risk | 2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between El Paso Healthcare and VHP.pdf, 2021-02-02 Addendum between El Paso Healthcare and VHP.pdf | full | 2
+Market Share Strategy | DD-05 | Win/Loss Matrix | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx, 2022-09-27 Addendum between Jon Williams and VHP.pdf | full | 3
+Market Volume & Growth | DD-01 | Market Volume & Growth | Attachment 2 Sample Nutrition Assessment A.jpeg, Attachment 3 Sample Nutrition Assessment B.jpeg, Executive Vehicle Schedule.xlsx | full | 4
+Operational Risk | DD-19 | Billing Integrity Audit | Operations and Member Services Manager.png, 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf | full | 2
+Operations Dashboard | - | - | Umoja_Health_Operations_Dashboard.xlsx | full | 0
+Precedent Transactions | - | Precedent Transaction Analysis | Umoja - Builders Transaction - Subordination Agreement Short Form 26.01.29 - signed.pdf, Umoja - Builders Transaction - Subordination Agreement Short Form 26.01.29V2.pdf | full | 1
+Recommendation | - | Transaction Structure & Returns Summary | Umoja Term Sheet.pdf, 2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between El Paso Healthcare and VHP.pdf | full | 6
+Regulatory Compliance | F-04 | Regulatory Compliance | NDA_CW68419_-_CSMS-Virtual_Health_Partners_Inc_ND.pdf, 1172555 Contract.pdf, 2025.11.20 Initial Legal DD List - Project Umber.pdf | full | 3
+Revenue Quality | DD-09b | Revenue Persistence Analysis | 2021-09-14 Addendum between Dr. Kurian and VHP.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note - Andrews Road Group_ LLC - signed.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note - BEN WIRTSHAFTER - signed.pdf | full | 2
+Scope & Methodology | - | - | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx, 1.25 VHP Target Medicaid States w PIPs _ VAS.xlsx | - | 11
+Strategic Direction | - | - | Umoja Teaser for Lenders - Spring 2026.pdf, 2022-04-07 Addendum between Astera Cancer Care and VHP.pdf, 2022-05-18 Addendum between Auralia _ VHP.pdf | partial | 2
+Strategy Report | - | - | Umoja_Health_Strategy_Report.docx | full | 0
+Supplier Dependence | DD-22 | Vendor Concentration Risk Analysis | 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf, 2026-03-31 Umoja Supply Chain Solutions LLC - Board Member Agreement _Builders Fund_ _Fully Executed.pdf | full | 1
+Supply Chain Resilience | DD-14 | MRR Waterfall Narrative | 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh Williams.pdf, 2026-01-30 Umoja Supply Chain Solutions_ LLC - Member Consent re Conversion.pdf, 2026-03-31 Umoja Supply Chain Solutions LLC - Board Member Agreement _Builders Fund_ _Fully Executed.pdf | full | 3
+SWOT Analysis | DD-07 | Buyer's Perspective Analysis | Dallas College Amendment to Fund Marketplace Supplier Services FINAL.docx _1.pdf, Growth _ Go-To-Market__Competitor Analysis 2024.xlsx, Growth _ Go-To-Market__Contracting Sample Workflow.pdf | full | 8
+Synergies | DD-06b | Synergies | 2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between El Paso Healthcare and VHP.pdf, 2021-02-02 Addendum between El Paso Healthcare and VHP.pdf | full | 2
+Trading Comps | - | Valuation Benchmark Analysis | - | missing | 2
+Valuation Model | FV-05 | Valuation Range Overlap / Football Field | Chief Financial Officer.docx, Financials__Supplemental Diligence Schedules _Expense Details.pdf, Financials__VHP Balance Sheet YE 2024.pdf | missing | 4

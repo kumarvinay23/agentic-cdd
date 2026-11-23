@@ -89,9 +89,11 @@ def live_scores(packet: dict[str, Any]) -> dict[str, Any] | None:
     """
     if os.environ.get("AGETIC_CDD_CLOSE_SCORES", "").strip() != "1":
         return None
-    if not settings.gemini_api_key.strip():
-        raise MissingModelKey("model key is missing")
+    from agetic_cdd_api.services_llm import llm_api_key
     from agetic_cdd_api.services_gemini import generate_json
+
+    if not llm_api_key():
+        raise MissingModelKey("model key is missing")
 
     result = generate_json(
         system=(

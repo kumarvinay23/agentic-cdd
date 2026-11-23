@@ -1001,6 +1001,110 @@ export async function databookRereadRequest(
   });
 }
 
+export type FinDiscoveryHitlCandidate = {
+  id?: string;
+  filename: string;
+  status: string;
+  skip_reason?: string | null;
+  skip_reasons?: string[];
+  suggested_doc_type?: string | null;
+  confidence?: number | null;
+  suggested_sheet?: string | null;
+  preferred_sheets?: string[] | null;
+  risk_flags?: string[];
+  why?: string | null;
+  rank?: number | null;
+  rank_source?: string | null;
+};
+
+export type FinDiscoveryHitlQueue = {
+  deal_id: string;
+  updated_at?: string | null;
+  gate_summary?: string | null;
+  recovered?: boolean;
+  count: number;
+  candidates: FinDiscoveryHitlCandidate[];
+};
+
+export async function finDiscoveryCandidatesRequest(
+  accessToken: string,
+  dealId: string,
+  status: string = "pending",
+) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return apiRequest<ApiSuccess<FinDiscoveryHitlQueue>>(
+    `${ENDPOINTS.cddFinDiscoveryCandidates(dealId)}${qs}`,
+    { method: "GET", accessToken },
+  );
+}
+
+export async function finDiscoveryAcceptRequest(
+  accessToken: string,
+  dealId: string,
+  body: { filename: string; doc_type?: string },
+) {
+  return apiRequest<ApiSuccess<Record<string, unknown>>>(
+    ENDPOINTS.cddFinDiscoveryAccept(dealId),
+    {
+      method: "POST",
+      accessToken,
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function finDiscoveryRejectRequest(
+  accessToken: string,
+  dealId: string,
+  body: { filename: string; reason?: string },
+) {
+  return apiRequest<ApiSuccess<Record<string, unknown>>>(
+    ENDPOINTS.cddFinDiscoveryReject(dealId),
+    {
+      method: "POST",
+      accessToken,
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export type FinDiscoveryAuditEvent = {
+  event: string;
+  run_id?: string | null;
+  ts?: string;
+  deal_id?: string;
+  status?: string;
+  recovered?: boolean;
+  filename?: string;
+  actor?: string | null;
+  [key: string]: unknown;
+};
+
+export type FinDiscoveryAuditList = {
+  deal_id: string;
+  count: number;
+  total: number;
+  run_count: number;
+  hitl_count: number;
+  recovered_runs: number;
+  events: FinDiscoveryAuditEvent[];
+};
+
+export async function finDiscoveryAuditRequest(
+  accessToken: string,
+  dealId: string,
+  opts?: { limit?: number; event?: string },
+) {
+  const params = new URLSearchParams();
+  if (opts?.limit != null) params.set("limit", String(opts.limit));
+  if (opts?.event) params.set("event", opts.event);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest<ApiSuccess<FinDiscoveryAuditList>>(
+    `${ENDPOINTS.cddFinDiscoveryAudit(dealId)}${qs}`,
+    { method: "GET", accessToken },
+  );
+}
+
 export type PipelineAgent = {
   agentName: string;
   agent_key: string;
@@ -1096,15 +1200,43 @@ export async function pipelineRequest(accessToken: string, dealId: string) {
   });
 }
 
+export type LlmRequestOptions = {
+  provider?: "gemini" | "openai" | "anthropic" | string;
+  model?: string;
+  api_key?: string;
+};
+
 export async function pipelineRunRequest(
   accessToken: string,
   dealId: string,
-  body: { phase_id?: string; agent_key?: string; restart?: boolean } = {},
+  body: {
+    phase_id?: string;
+    agent_key?: string;
+    restart?: boolean;
+    llm?: LlmRequestOptions;
+    llm_provider?: string;
+    llm_model?: string;
+    llm_api_key?: string;
+  } = {},
 ) {
-  return apiRequest<ApiSuccess<{ queued: boolean; phase_id?: string; agent_keys: string[]; restart?: boolean }>>(
-    ENDPOINTS.pipelineRun(dealId),
-    { method: "POST", accessToken, body: JSON.stringify(body) },
-  );
+  return apiRequest<
+    ApiSuccess<{
+      queued: boolean;
+      phase_id?: string;
+      agent_keys: string[];
+      restart?: boolean;
+      llm?: {
+        provider?: string;
+        model?: string;
+        configured?: boolean;
+        source?: string;
+      };
+    }>
+  >(ENDPOINTS.pipelineRun(dealId), {
+    method: "POST",
+    accessToken,
+    body: JSON.stringify(body),
+  });
 }
 
 export type PipelinePhaseStreamHandlers = {

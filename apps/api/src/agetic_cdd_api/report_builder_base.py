@@ -517,6 +517,14 @@ def sanitize_report_prose(
         return t
     company = company or _REPORT_COMPANY.get()
     cite_sources = sources if sources is not None else _REPORT_SOURCES.get()
+    try:
+        from agetic_cdd_api.services_metric_hygiene import scrub_insight_text
+
+        t = scrub_insight_text(t)
+    except Exception:
+        pass
+    if not t:
+        return t
     t = strip_corporate_boilerplate(t)
     t = strip_unsupported_entity_suffixes(t, company=company)
     # Keep ledger Job Titles when present in the text; do not invent them.
@@ -934,6 +942,51 @@ class ReportBuilder(ABC):
             yield _evt("workflows", f"workflow output found: {wf['count']} agent(s)",
                        level="info", workflows={"ran": True, **wf})
 
+            # 1b. Cross-pack consistency + IC brief (soft — never blocks export)
+            consistency_summary: dict[str, Any] | None = None
+            try:
+                from agetic_cdd_api.services_export_consistency import (
+                    run_export_consistency,
+                )
+                from agetic_cdd_api.services_ic_brief import build_ic_brief
+
+                consistency = run_export_consistency(self.deal_slug)
+                consistency_summary = {
+                    "ok": consistency.ok,
+                    "issue_count": consistency.issue_count,
+                    "high_count": consistency.high_count,
+                    "moderate_count": consistency.moderate_count,
+                }
+                level = "warning" if consistency.high_count else "info"
+                yield _evt(
+                    "consistency",
+                    (
+                        f"export consistency: {consistency.issue_count} issue(s) "
+                        f"({consistency.high_count} high)"
+                        if consistency.issue_count
+                        else "export consistency: packs aligned on core KPIs"
+                    ),
+                    level=level,
+                    **consistency_summary,
+                )
+                brief = build_ic_brief(
+                    self.deal_slug,
+                    consistency=consistency,
+                    polish_llm=False,
+                )
+                yield _evt(
+                    "ic_brief",
+                    f"IC brief: {brief.headline[:120]}",
+                    level="info",
+                    go_no_go=brief.go_no_go,
+                    risk_count=len(brief.top_risks),
+                    open_count=len(brief.open_items),
+                )
+            except Exception:
+                logger.exception(
+                    "export consistency / IC brief skipped for %s", self.deal_slug
+                )
+
             # 2. ingest & profile (resolve company metadata before start event)
             ingest = self.ingest_data_room()
             profile = self.build_profile()
@@ -967,6 +1020,9 @@ class ReportBuilder(ABC):
 
             # 7. sources (reuse early prefetch)
             sources = early_sources if early_sources else self.build_sources()
+            if consistency_summary:
+                sources = dict(sources or {})
+                sources["export_consistency"] = consistency_summary
             self.ctx.sources = sources
 
             # 8. export

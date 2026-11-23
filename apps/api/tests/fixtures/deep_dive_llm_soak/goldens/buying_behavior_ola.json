@@ -1,0 +1,11 @@
+{
+  "id": "buying_behavior_ola",
+  "slug": "buying_behavior",
+  "description": "Hybrid refine should clarify concentration / channel notes; lock online % and HHI inputs.",
+  "source_file": "ola_commercial_cim.txt",
+  "sources": ["ola_commercial_cim.txt"],
+  "prior_spec": {
+    "wins": ["Ola Electric: Strong Gain (share 32%)"],
+    "losses": ["Share pressure · Hero Vida: Gaining (share 8%)"]
+  }
+}

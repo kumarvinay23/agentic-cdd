@@ -174,16 +174,18 @@ def _esc(text: str) -> str:
 
 def _findings(agent: dict[str, Any], limit: int = 8) -> list[str]:
     from agetic_cdd_api.report_builder_base import agent_cite_source_names
+    from agetic_cdd_api.services_metric_hygiene import (
+        filter_insight_lines,
+        is_polluted_insight,
+    )
 
     srcs = agent_cite_source_names(agent, limit=6)
     out: list[str] = []
-    for item in agent.get("findings") or []:
-        if isinstance(item, str) and item.strip():
-            out.append(_clean(item, 360, sources=srcs))
-        elif isinstance(item, dict):
-            text = item.get("finding") or item.get("note") or item.get("name") or item.get("risk")
-            if text:
-                out.append(_clean(str(text), 360, sources=srcs))
+    for text in filter_insight_lines(agent.get("findings") or [], limit=limit * 3):
+        cleaned = _clean(text, 360, sources=srcs)
+        if not cleaned or is_polluted_insight(cleaned):
+            continue
+        out.append(cleaned)
         if len(out) >= limit:
             break
     return out
@@ -328,8 +330,15 @@ def _header_footer(company: str):
     return _on_page
 
 
-def _insight(styles: dict, text: str) -> Table:
-    data = [[Paragraph(f"<b>Insight:</b> {_esc(_clean(text, 420))}", styles["insight"])]]
+def _insight(styles: dict, text: str):
+    from agetic_cdd_api.services_metric_hygiene import is_polluted_insight
+    from reportlab.platypus import Spacer
+
+    cleaned = _clean(text, 420)
+    if not cleaned or is_polluted_insight(text) or is_polluted_insight(cleaned):
+        # Keep flowable type stable for callers that always append.
+        return Spacer(1, 0.01)
+    data = [[Paragraph(f"<b>Insight:</b> {_esc(cleaned)}", styles["insight"])]]
     t = Table(data, colWidths=[6.5 * inch])
     t.setStyle(
         TableStyle(
@@ -1472,8 +1481,12 @@ def _compose_exec_summary(styles: dict, ctx: BuildContext, section: StorylineSec
 
     thesis = spec.get("value_creation_thesis") or spec.get("verdict_narrative")
     if isinstance(thesis, str) and thesis.strip():
-        out.append(Paragraph("3.1.2 Value-creation thesis", styles["h3"]))
-        out.append(Paragraph(_esc(_clean(thesis, 1200)), styles["body"]))
+        from agetic_cdd_api.services_metric_hygiene import is_polluted_insight
+
+        thesis_clean = _clean(thesis, 1200)
+        if thesis_clean and not is_polluted_insight(thesis) and not is_polluted_insight(thesis_clean):
+            out.append(Paragraph("3.1.2 Value-creation thesis", styles["h3"]))
+            out.append(Paragraph(_esc(thesis_clean), styles["body"]))
 
     pillars = spec.get("investment_pillars")
     if isinstance(pillars, list) and pillars:

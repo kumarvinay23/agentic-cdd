@@ -1,0 +1,685 @@
+===== Umoja Health_FDD_Report (2).pptx slides=34 =====
+
+--- slide 1 ---
+Project Umoja Health
+Financial due diligence
+Umoja Health — buy-side
+Draft for discussion - Unaudited monthly management accounts. Materiality ($31k)
+Strictly private and confidential - draft, subject to change
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 2 ---
+CONTENTS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Contents
+01
+Introduction
+3
+02
+Executive summary
+4
+03
+Transaction and business
+8
+04
+Quality of earnings
+10
+05
+Trading
+14
+06
+Cash flow
+17
+07
+Balance sheet, debt and leases
+19
+08
+Deal considerations
+23
+09
+Appendices
+25
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 3 ---
+INTRODUCTION
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Scope and basis: unaudited management accounts; materiality ($31k) (5% of adj. EBITDA band)
+Periods, sources and evidence tiers
+Period | Source | Basis | Tier
+FY21A, FY23A, FY24A, FY25A, FY26A | Management accounts / CIM | Unaudited management | B
+QoE bridge (FY25) | QoE workbook / Diligence | Adjusted EBITDA | B
+Balance sheet / net debt | Databook BS / SoCF | Management BS | B
+Cash / USDA / leases | CIM + FPEP + lease files | Contract / grant | A/B
+Materiality | ($31k) | 5% of adj. EBITDA band | B
+Entity / perimeter | Umoja Health | buy-side | —
+Currency / scale | USD | Exhibit scale as labelled | —
+Observations
+• Scope locked for Umoja Health
+• Open: R01: Improve Approved databook release
+Limitations: figures remain subject to evidence tiers A/B/C and open information requests.
+Source: Scope profile; Diligence analysis
+Evidence B
+3
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 4 ---
+EXECUTIVE SUMMARY
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Diligence EBITDA is ($618k) in FY25, half of FY24 — earnings quality and cash conversion need scrutiny
+Revenue, FY25
+$4.40m
+YoY 22.2%
+Diligence EBITDA, FY25
+($618k)
+Margin -14.0%; FY24 $377k
+EBITDA, FY24
+$377k
+Prior closed year
+Gross margin, FY25
+—
+Monthly pack / exhibit basis
+Cash, FY25
+$765k
+Net debt $271k
+Accrued / dividends payable
+—
+Not in exhibits
+Key figures ($k)
+Basis: alternate source
+Metric | FY23 | FY24 | FY25
+Revenue | — | 3,598 | 4,401
+Reported EBITDA | 743 | 377 | (618)
+Management EBITDA | — | — | (618)
+Diligence EBITDA | — | — | (618)
+Reported EBITDA margin | — | — | -14.0%
+Diligence EBITDA margin | — | — | -14.0%
+Net income (loss) | 68 | (807) | (3,414)
+NWC | — | — | 18,945
+Net debt / (cash) | — | — | 271
+Observations
+• Revenue spine from CDD accounts extract — FDD exhibit revenue was doubtful / incomplete.
+• Earnings moved -263.9% vs FY24 ($377k → ($618k)).
+• Revenue grew 22.2% into FY25 on the investor workbook basis.
+• IC headline: FY2025 EBITDA ($618k), unadjusted — QoE pending
+Source: Umoja Operating Model 03.31.2026 v6.xlsx; Umoja Operating Model 03.31.2026 v6.xlsx; Umoja Health - Quality of Earnings Data Book DRAFT 12.10.25.xlsx; Diligence analysis
+Evidence B
+4
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 5 ---
+EXECUTIVE SUMMARY
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+1 high / 4 moderate findings ranked
+Findings ranked
+# | Finding | Rating | Quantified effect | Tier | Protection or action
+F01 | Loan schedule and asset register need a clean tie-out | High | Loan / asset-register files are in the room but schedule integrity (#REF / unexp | C | Condition — loan and asset register tie-out before IC reliance
+F02 | Earnings quality depends on unaudited records | Medium | Unaudited basis | B | Information rights / closing condition for audit tie-out
+F03 | Doubtful ebitda FY2023 | Medium | Confirm source basis before using this figure in pricing. | B | Confirm the preferred basis for ebitda FY2023.
+F04 | Doubtful ebitda FY2024 | Medium | Confirm source basis before using this figure in pricing. | B | Confirm the preferred basis for ebitda FY2024.
+F05 | Doubtful ebitda FY2025 | Medium | Confirm source basis before using this figure in pricing. | B | Confirm the preferred basis for ebitda FY2025.
+Source: Diligence analysis
+Evidence A/B/C
+5
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 6 ---
+EXECUTIVE SUMMARY
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Management and diligence EBITDA are both ($618k) in FY25; CIM is not evidenced
+FY25 EBITDA by view and case ($k)
+View / case | Amount
+Management | (618)
+CIM | —
+Diligence | (618)
+Downside | (618)
+Upside | (618)
+Observations
+• Sensitivities are judgemental and are not added to diligence EBITDA.
+Sensitivities are grey: they rest on tier C judgements and are not added to diligence EBITDA.
+Source: QoE workbook; CIM / investor workbook crosswalk
+Evidence B/C
+6
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 7 ---
+EXECUTIVE SUMMARY
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Deal considerations: settle high-priority diligence asks before pricing
+Deal asks from findings
+Priority | Item | Ask management
+HIGH | Loan schedule and asset register need a clean tie- | Condition — loan and asset register tie-out before IC reliance
+MEDIUM | Doubtful ebitda FY2023 | Confirm the preferred basis for ebitda FY2023.
+MEDIUM | Doubtful ebitda FY2024 | Confirm the preferred basis for ebitda FY2024.
+MEDIUM | Doubtful ebitda FY2025 | Confirm the preferred basis for ebitda FY2025.
+MEDIUM | Earnings quality depends on unaudited records | Information rights / closing condition for audit tie-out
+Source: Diligence analysis
+Evidence A/B
+7
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 8 ---
+TRANSACTION AND BUSINESS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Transaction terms — round size and preferred rights pending CIM / teaser
+Transaction overview
+Item | Position
+Issuer | Umoja Health
+Round | Series round: size pending
+Use of proceeds | Growth, tuck-in acquisitions, working capital and general purposes
+Existing preferred | Cumulative / participating terms pending charter
+Control | Cap table pending
+Valuation reference | Round price not in the data room
+Open request | R01: Improve Approved databook release
+Open request | R02: Support YoY Growth for FY2024 with a closed-year schedule
+Observations
+• Arrears on cumulative preferred may rank ahead of new money — confirm in the charter.
+• Financing terms not evidenced — open CIM / teaser request
+• R01: Improve Approved databook release
+Source: CIM / teaser; Diligence analysis
+Evidence B/C
+8
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 9 ---
+TRANSACTION AND BUSINESS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Revenue reached $4.40m in FY25, up 22.2%
+Revenue and earnings by year ($k)
+Basis: alternate source
+Metric | FY23 | FY24 | FY25
+Revenue | — | 3,598 | 4,401
+EBITDA | 743 | 156 | (2,469)
+Observations
+• Revenue spine from CDD accounts extract — exhibit revenue was doubtful / incomplete.
+• R01: Improve Approved databook release
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+Basis: alternate source
+Source: Approved databook exhibits; Diligence analysis
+Evidence B/C
+9
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 10 ---
+QUALITY OF EARNINGS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Diligence EBITDA is ($618k) for FY25A
+Quality of earnings summary (FY25A) ($k)
+Bridge step | Amount | Running
+Diligence reported EBITDA | (618) | (618)
+ADJ-05 Owner and related-party pay | — | Nil / pending
+Diligence adjusted EBITDA | (618) | 
+Sensitivity range (low–high) | (618) – (618) | 
+Observations
+• Diligence EBITDA ($618k) (no material bridge gap vs management).
+• Accounts reported EBITDA ($2.47m) vs QoE opening ($618k) — keep both labelled.
+• Unadjusted earnings: EBITDA ($618k), unadjusted — QoE pending
+• 1 candidate(s) considered at nil — listed for validation, not folded into diligence EBITDA.
+Nil / pending adjustments remain outside diligence EBITDA until G4-approved.
+Sensitivities stay beside adjusted EBITDA.
+Source: QoE workbook; Approved databook exhibits
+Evidence B
+10
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 11 ---
+QUALITY OF EARNINGS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+ADJ-05: Owner and related-party pay
+ADJ-05
+ADJ-05 Owner and related-party pay
+
+Nature
+Nil: CEO / related-party pay not separately evidenced in extract.
+
+Amount
+Management $0k; diligence $0k.
+
+Recurrence
+Uncertain.
+
+Treatment
+Pending
+ID | Mgmt | Diligence | Treatment
+ADJ-05 | 0 | 0 | pending
+Source: QoE workbook
+Evidence B
+11
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 12 ---
+QUALITY OF EARNINGS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+ADJ-05 considered at nil
+Candidates considered at nil
+ID | Item | Diligence view | Notes
+ADJ-05 | Owner and related-party pay | Nil | Nil: CEO / related-party pay not separately evidenced in extract.
+Observations
+• Nil candidates stay outside diligence EBITDA until evidence supports a treatment.
+• R01: Improve Approved databook release
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+Source: QoE workbook
+Evidence C
+12
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 13 ---
+QUALITY OF EARNINGS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Judgemental items move FY25A EBITDA between ($618k) and ($618k); none enters diligence ($618k)
+FY25A sensitivities to diligence EBITDA ($k)
+Case | EBITDA | Direction
+Diligence EBITDA | (618) | Base
+Sensitivity low | (618) | downside
+Sensitivity high | (618) | upside
+Observations
+• Sensitivities are judgemental and do not enter diligence EBITDA.
+• Validate before using either case in price.
+Source: QoE workbook
+Evidence C
+13
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 14 ---
+TRADING
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Revenue spine from CDD accounts extract — trading exhibits incomplete.
+Revenue and margin ($k)
+Basis: alternate source
+Metric | FY23 | FY24 | FY25
+Revenue | — | 3,598 | 4,401
+EBITDA | 743 | 377 | (618)
+EBITDA margin % | — | — | —
+Observations
+• Revenue spine from CDD accounts extract — trading exhibits incomplete.
+• R01: Improve Approved databook release
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+Basis: alternate source
+Source: Umoja Operating Model 03.31.2026 v6.xlsx; Umoja Health - Quality of Earnings Data Book DRAFT 12.10.25.xlsx; Umoja Operating Model 03.31.2026 v6.xlsx; Diligence analysis
+Evidence B
+14
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 15 ---
+TRADING · EMPTY
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Revenue mix / concentration held — municipal and DC schedules not bridged
+Revenue by stream (pending)
+Observations
+• Revenue concentration is held — evidence incomplete for this run.
+• Do not price from this chapter until schedules are provided or the section is scoped out.
+• R01: Improve Approved databook release
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+• R03: Support YoY Growth for FY2025 with a closed-year schedule
+Source: Diligence analysis
+Evidence C
+15
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 16 ---
+TRADING
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Cost intensity: labour and SG&A versus revenue
+Costs and people ($k)
+Basis: investor workbook
+Metric | FY23 | FY24 | FY25
+Revenue (cost basis) | — | 3,598 | 4,401
+Labour | 0 | 73 | 218
+SG&A | 331 | 107 | —
+Labour YoY % | — | — | 201.0%
+Observations
+• Ask management which FY25 cost step-ups are structural vs one-off.
+• Revenue (cost basis) filled from CDD accounts extract where exhibits were blank.
+Basis: investor workbook
+Source: Approved databook exhibits (M3)
+Evidence B
+16
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 17 ---
+CASH FLOW
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Cash flow is held — evidence incomplete for this run.
+Cash conversion and capex ($k)
+Basis: investor workbook
+Metric | FY23 | FY24 | FY25
+EBITDA (conversion) | 743 | 156 | (2,469)
+Observations
+• Cash flow is held — evidence incomplete for this run.
+• Do not price from this chapter until schedules are provided or the section is scoped out.
+• R01: Improve Approved databook release
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+• R03: Support YoY Growth for FY2025 with a closed-year schedule
+Basis: investor workbook
+Source: Monthly management accounts; Approved databook exhibits (M7)
+Evidence B
+17
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 18 ---
+CASH FLOW
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Cash $765k with capex and grant match diligence open
+Cash at period end ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | Dec-23 | Dec-24 | Dec-25
+Cash | — | — | —
+Observations
+• R01: Improve Approved databook release
+Capex FY25 —; depreciation —.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; CIM (USDA)
+Evidence B/C
+18
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 19 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Financial debt $1.04m
+Net debt and debt-like items ($k)
+Basis: Umoja Health - NWC ND Roll-Forward - 12.31.2025
+Metric | FY23 | FY24 | FY25
+Freely available cash | 384 | 895 | 765
+Gross interest-bearing debt | — | — | 1,036
+Net debt / (cash) | — | — | 271
+Dividends payable (proposed debt-like) | — | 1,874 | —
+Observations
+• Proposed: accrued cumulative dividends are debt-like; operating payables stay in NWC.
+Basis: Umoja Health - NWC ND Roll-Forward - 12.31.2025
+Source: Approved databook exhibits (M6/M8); Dividends payable from BS
+Evidence B
+19
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 20 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Lease commitments largely unevidenced — rent may be expensed with no ROU / liability
+Lease and commitment evidence
+Item | Amount | Source
+Rent expense FY25 | — | Management accounts
+Evidenced lease rent (hou06010_Umoja Supply Chain Solutions_PL) | 73 | Lease PDF
+Rent not covered by a lease in the data room | Unknown — open request | Pending lease schedule
+ASC 842 ROU / lease liability | Not recorded | Management accounts
+Lease schedule (all sites) | Missing — open request | Information request
+Observations
+• Leases and commitments is held — evidence incomplete for this run.
+• Do not price from this chapter until schedules are provided or the section is scoped out.
+• R05: Schedule of all leases and site agreements with term, rent and termination rights
+Source: Diligence analysis; lease PDF if present
+Evidence A/C
+20
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 21 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Trade working capital $18.95m at FY25; no peg is proposed
+Trade working capital ($k)
+Basis: Umoja Health - NWC ND Roll-Forward - 12.31.2025
+Metric | FY23 | FY24 | FY25
+Accounts receivable | 4,652 | 3,548 | 73,028
+Inventory | 2,120 | 2,726 | 14,744
+Accounts payable | — | — | 68,826
+Net working capital | — | — | 18,945
+Observations
+• No peg proposed without an audited year-end reconciliation.
+• Request ageing and a reconciled monthly NWC series before SPA peg mechanics.
+Rule applied: no NWC peg without audited year-end tie-out.
+Basis: Umoja Health - NWC ND Roll-Forward - 12.31.2025
+Source: Approved databook exhibits (M5)
+Evidence B
+21
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 22 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Equity and dividend roll — confirm cash leakage before funding
+Earnings and dividends payable roll ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | FY23 | FY24 | FY25
+Net income (loss) | — | — | —
+Dividend accrual through P&L | — | — | —
+Closing dividends payable | — | — | —
+Observations
+• Protect new money with a no-leakage covenant to closing and a bar on using proceeds for arrears.
+• Equity stock pending full BS bridge.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; Diligence analysis
+Evidence B
+22
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 23 ---
+DEAL CONSIDERATIONS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Protections map: 1 high-priority items from diligence findings
+Protections map
+Finding | Protection or action | Mechanism | Priority
+F01 Loan schedule and asset register need a clean tie-out | Condition — loan and asset register tie-out before IC reliance | Closing condition / warranty | High
+F02 Earnings quality depends on unaudited records | Information rights / closing condition for audit tie-out | Information request | Medium
+F03 Doubtful ebitda FY2023 | Confirm the preferred basis for ebitda FY2023. | Information rights / covenant | Medium
+F04 Doubtful ebitda FY2024 | Confirm the preferred basis for ebitda FY2024. | Information rights / covenant | Medium
+F05 Doubtful ebitda FY2025 | Confirm the preferred basis for ebitda FY2025. | Information rights / covenant | Medium
+Source: Diligence analysis
+Evidence A/B
+23
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 24 ---
+DEAL CONSIDERATIONS
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+3 information requests, 1 high priority
+Information requests
+Ref | Document or information requested | Why it matters | Affects | Priority
+R01 | Improve Approved databook release | Release v22 present but below contract (labels_incomplete:ebitda:FY202 | Quality of earnings, Key findings | High
+R02 | Support YoY Growth for FY2024 with a closed-year schedule | Support YoY Growth for FY2024 with a schedule. | Key findings | Medium
+R03 | Support YoY Growth for FY2025 with a closed-year schedule | Support YoY Growth for FY2025 with a schedule. | Key findings | Medium
+Close high-priority requests before relying on unadjusted earnings.
+Priorities follow material chapters and closed-year earnings claims.
+Source: Diligence analysis
+Evidence A/B
+24
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 25 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Claims ledger: 49 claims tested, 30 rejected, 4 out of period, 15 agree (1/2)
+Claims ledger (1/2)
+ID | Agent module | Subject (claim) | Target (document) | Verdict | Use
+C01 | historical performance | YoY Growth FY2024 = -12.8% | databook:db:v22:yoy_growth:2024 | unverifiable | rejected
+C02 | historical performance | YoY Growth FY2025 = -33.8% | databook:db:v22:yoy_growth:2025 | unverifiable | rejected
+C10 | historical performance | yoy_growth_fy2024_pct = -12.7868 | databook:db:v22:yoy_growth:2024 | unverifiable | rejected
+C11 | historical performance | yoy_growth_fy2025_pct = -33.7774 | databook:db:v22:yoy_growth:2025 | unverifiable | rejected
+C19 | historical performance | ebitda_fy2023 = 0 | Umoja Operating Model 03.31.2026 v6.xlsx @ 39 / | false gap | rejected
+C20 | historical performance | ebitda_fy2024 = 0 | Umoja Operating Model 03.31.2026 v6.xlsx @ 40 / | false gap | rejected
+C21 | historical performance | ebitda_fy2025 = 0 | Umoja Operating Model 03.31.2026 v6.xlsx @ 40 / | false gap | rejected
+C22 | historical performance | EBITDA Margin FY2023 = 0% | Umoja Operating Model 03.31.2026 v6.xlsx @ 39 / | false gap | rejected
+C23 | historical performance | EBITDA Margin FY2024 = 0% | Umoja Operating Model 03.31.2026 v6.xlsx @ 40 / | false gap | rejected
+C24 | historical performance | EBITDA Margin FY2025 = 0% | Umoja Operating Model 03.31.2026 v6.xlsx @ 40 / | false gap | rejected
+C29 | historical performance | yoy_growth_fy2024 = -12.7868 | databook:db:v22:yoy_growth:2024 | unverifiable | rejected
+C30 | historical performance | yoy_growth_fy2025 = -33.7774 | databook:db:v22:yoy_growth:2025 | unverifiable | rejected
+Source: Diligence analysis
+Evidence B
+25
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 26 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Claims ledger: 49 claims tested, 30 rejected, 15 agree (2/2)
+Claims ledger (2/2)
+ID | Agent module | Subject (claim) | Target (document) | Verdict | Use
+C32 | historical performance | cogs_fy2022 = 0 | Umoja Health - Quality of Earnings Data Book DRA | out of period | out of period
+C34 | historical performance | revenue_fy2029 = 0 | Financials__VHP Income Statement _2023.pdf @ Fin | out of period | out of period
+Source: Diligence analysis
+Evidence B
+26
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 27 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Document register: 633 entries covering data-room files (1/3)
+Document register (1/3)
+ID | Document | Subject | Basis | Period end | Tier | Use
+D01 | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.20 | Umoja Health | management | – | B | In perimeter
+D02 | 1.08 Builders Reference List.docx | Umoja Health | management | – | C | Deal context / review
+D03 | 1.25 VHP Target Medicaid States w PIPs _ VAS.xls | Umoja Health | management | – | B | In perimeter
+D04 | 1099 Onboarding Tracker.xlsx | Umoja Health | management | – | B | In perimeter
+D05 | 1172555 Contract.pdf | Umoja Health | management | – | C | Deal context / review
+D06 | 2020-12-14 Business Associate Agreement between | Umoja Health | management | – | C | Deal context / review
+D07 | 2020-12-21 Agreement between El Paso Healthcare | Umoja Health | management | – | C | Deal context / review
+D08 | 2021-01-28 Agreement between Dr. Kurian and VHP. | Umoja Health | management | – | C | Deal context / review
+D09 | 2021-02-02 Addendum between El Paso Healthcare a | Umoja Health | management | – | C | Deal context / review
+D10 | 2021-06-25 Agreement between Dr. Lucian Panait _ | Umoja Health | management | – | C | Deal context / review
+D11 | 2021-08-27 Agreement between ALGSN Bariatrics an | Umoja Health | management | – | C | Deal context / review
+D12 | 2021-09-14 Addendum between Dr. Kurian and VHP.p | Umoja Health | management | – | C | Deal context / review
+Source: Data room register
+Evidence A/B/C
+27
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 28 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Document register: 633 entries covering data-room files (2/3)
+Document register (2/3)
+ID | Document | Subject | Basis | Period end | Tier | Use
+D13 | 2022-01-11 Agreement between Alvaro Garcia and V | Umoja Health | management | – | C | Deal context / review
+D14 | 2022-03-08 Agreement between Auralia _ VHP.pdf | Umoja Health | management | – | C | Deal context / review
+D15 | 2022-04-07 Addendum between Astera Cancer Care a | Umoja Health | management | – | C | Deal context / review
+D16 | 2022-05-18 Addendum between Auralia _ VHP.pdf | Umoja Health | management | – | C | Deal context / review
+D17 | 2022-08-25 Agreement between Dr. Jon Williams an | Umoja Health | management | – | C | Deal context / review
+D18 | 2022-09-27 Addendum between Jon Williams and VHP | Umoja Health | management | – | C | Deal context / review
+D19 | 2022-10-04 Agreement between CommonSpirit Health | Umoja Health | management | – | C | Deal context / review
+D20 | 2022-11-07 Amendment between El Paso Healthcare | Umoja Health | management | – | C | Deal context / review
+D21 | 2023-03-13 Addendum between Dr. Kurian and VHP.p | Umoja Health | management | – | C | Deal context / review
+D22 | 2023-03-15 Agreement between El Paso Healthcare | Umoja Health | management | – | C | Deal context / review
+D23 | 2023-05-25 Agreement between Columbia University | Umoja Health | management | – | C | Deal context / review
+D24 | 2023-06-09 Amendment between COPES and VHP.pdf | Umoja Health | management | – | C | Deal context / review
+Source: Data room register
+Evidence A/B/C
+28
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 29 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Document register: 633 entries covering data-room files (3/3)
+Document register (3/3)
+ID | Document | Subject | Basis | Period end | Tier | Use
+D25 | 2023-08-02 Agreement between Cosan and VHP.pdf | Umoja Health | management | – | C | Deal context / review
+D26 | 2023-08-22 Agreement between Baylor College of M | Umoja Health | management | – | C | Deal context / review
+D27 | 2023-09-05 Agreement between Circle Health Group | Umoja Health | management | – | C | Deal context / review
+D28 | 2023-09-16 Agreement between CIAS and VHP.pdf | Umoja Health | management | – | C | Deal context / review
+D29 | 2023-11-08 Agreement between Mom_s Meals and VHP | Umoja Health | management | – | C | Deal context / review
+D30 | 2023-11-27 Amendment between Baylor College of M | Umoja Health | management | – | C | Deal context / review
+D31 | 2023-12-05 Amendment between CommonSpirit and VH | Umoja Health | management | – | C | Deal context / review
+D32 | 2023-12-20 Agreement between GA Foods and VHP.pd | Umoja Health | management | – | C | Deal context / review
+D33 | 2024 K-1 Umoja Supply Chain Solutions LLC - Hugh | Umoja Health | management | – | C | Deal context / review
+D34 | 2024-05-07 ADDENDUM between Dr. Kurian and VHP.d | Umoja Health | management | – | C | Deal context / review
+D35 | 2024-05-08 SOW between Marina Kurian and VHP.doc | Umoja Health | management | – | C | Deal context / review
+D36 | 2024-05-15 SOW between Marina Kurian and VHP_65_ | Umoja Health | management | – | C | Deal context / review
+Source: Data room register
+Evidence A/B/C
+29
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 30 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Source inconsistencies — agent claims vs approved databook
+Source inconsistencies
+Document / metric | What it says | Why it is inconsistent
+None material | — | No contradicted claim pairs for appendix
+Observations
+• Reconcile contradicted claims before IC relies on the claimed figure.
+• Databook remains source of truth for exhibit numbers.
+Source: Claims ledger; Diligence analysis
+Evidence B
+30
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 31 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Monthly working capital: unadjusted benchmarks are available before normalisation
+Trade working capital by period ($k)
+Basis: Unaudited monthly management accounts — unadjusted
+Period | AR | Inventory | AP | Trade NWC
+2023 | — | 2,118 | — | —
+2024 | — | 2,726 | — | —
+2025 | — | 2,434 | — | —
+Observations
+• Figures are unadjusted benchmarks before any NWC peg or normalisation.
+• No peg is proposed without audit tie-out of receivables and payables.
+• R01: Improve Approved databook release
+Basis: Unaudited monthly management accounts — unadjusted
+Source: Monthly management accounts; M5 NWC
+Evidence B
+31
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 32 ---
+APPENDICES · HELD
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+FY2026 delivery: $420k EBITDA is required in August-December on the source plan basis
+Plan versus delivery
+Item | Amount | Basis
+FY25 diligence EBITDA (closed) | (618) | Published / diligence
+YTD Jul-26 delivery (proxy) | — | Management accounts YTD
+Aug–Dec plan EBITDA still required (source plan basis) | $420k | Plan / CIM — confirm with management
+Observations
+• Plan object is not yet a first-class schedule — residual is from source plan / CIM.
+• Confirm monthly plan EBITDA before IC prices the second-half delivery.
+• YTD figures are management-account proxies, not diligence EBITDA.
+Completeness: held — Plan schedule not fully evidenced in the data room
+Source: CIM / plan schedules; monthly management accounts
+Evidence C
+32
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 33 ---
+APPENDICES · HELD
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Funding and IC conditions: the remaining grant cash requirement is not yet established
+Sources, uses and IC conditions
+Item | Amount | Status
+Primary raise (CIM / teaser) | — | Round terms
+USDA / FPEP grant (evidenced) | — | Grant documents
+Matching funds still required | Not established | Sources & uses — open
+Cash at Jul-26 | — | Management accounts
+Observations
+• Funding and IC conditions: the remaining grant cash requirement is not yet established
+• Close high-priority RFIs on preferred rights, customer contract, and funding plan.
+• R01: Improve Approved databook release
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+Completeness: held
+Source: CIM / teaser; FPEP / USDA documents; diligence findings
+Evidence C
+33
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price
+
+--- slide 34 ---
+APPENDICES
+Project Umoja Health | Draft for discussion - Unaudited monthly management accounts
+Glossary
+Glossary
+Term | Definition
+Diligence EBITDA | Reported EBITDA after diligence treatments (e.g. reverse non-recurring add-backs)
+Management EBITDA | Management's adjusted EBITDA including proposed add-backs
+Reported EBITDA | Operating income + depreciation from management accounts
+LTM | Last twelve months to the latest actual month
+YTD | Year-to-date from fiscal year start to latest actual month
+Debt-like | Items treated as debt for value (e.g. dividend arrears)
+Evidence A/B/C | Source trust tiers (contracts / management accounts / weaker)
+Peg | Normalised NWC target for SPA true-up — none proposed without audit tie-out
+QoE | Quality of earnings; normalisation of reported earnings
+NWC | Net working capital (operating CA less operating CL)
+Source: Diligence analysis
+34
+UNRELIABLE — databook contract incomplete · draft / G6 blocked · do not price

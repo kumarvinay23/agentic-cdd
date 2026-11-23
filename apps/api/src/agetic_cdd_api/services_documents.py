@@ -178,11 +178,14 @@ def _is_ev_deal(deal: Deal) -> bool:
 
 def build_copilot_meta() -> dict[str, Any]:
     """Smart-chip metadata for Document copilot (model + capability catalog size)."""
+    from agetic_cdd_api.services_llm import llm_configured, llm_model, llm_provider
+
     caps = list_capabilities()
-    llm_on = bool(settings.document_synthesis_llm and settings.gemini_api_key.strip())
+    llm_on = llm_configured(require_document_synthesis=True)
     return {
         "mode_label": "Smart (recommended)" if llm_on else "Heuristic",
-        "model": settings.gemini_model if llm_on else None,
+        "provider": llm_provider() if llm_on else None,
+        "model": llm_model() if llm_on else None,
         "capability_count": len(caps),
         "synthesis_enabled": llm_on,
     }

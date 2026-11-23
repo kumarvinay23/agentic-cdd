@@ -693,21 +693,50 @@ def ingest_phase1(db: Session, *, deal: Deal) -> dict[str, dict]:
             gate.summary(),
         )
 
+    discovery_payload: dict | None = None
+    from agetic_cdd_api.settings import settings
+    from agetic_cdd_api.services_fin_discovery import (
+        run_fin_discovery_recovery,
+        should_run_fin_discovery,
+    )
+
+    if should_run_fin_discovery(gate, flag_on=settings.fin_discovery_on_gate2_miss):
+        discovery_payload = run_fin_discovery_recovery(
+            deal, gate, room_result=room_result, db=db
+        )
+
     outputs = {
         key: phase1_agent_output(deal, agent_key=key, index=index)
         for key in PHASE1_AGENT_KEYS
     }
     gate_payload = gate.as_dict()
+    gate_ok = gate.ok
+    gate_summary = gate.summary()
+    # Discovery may have promoted a FIN_* file and flipped Gate 2.
+    if discovery_payload and discovery_payload.get("recovered"):
+        post = discovery_payload.get("post_gate")
+        if isinstance(post, dict) and post.get("ok"):
+            gate_payload = post
+            gate_ok = True
+            gate_summary = str(post.get("summary") or gate_summary)
+            logger.info(
+                "Gate 2 recovered via fin discovery for deal %s: %s",
+                gate.deal_id,
+                gate_summary,
+            )
     for payload in outputs.values():
         payload["statement_ingest"] = gate_payload
         spec = dict(payload.get("spec") or {})
         spec["statement_ingest"] = gate_payload
+        if discovery_payload is not None:
+            payload["fin_discovery"] = discovery_payload
+            spec["fin_discovery"] = discovery_payload
         payload["spec"] = spec
-        if gate.ok:
+        if gate_ok:
             continue
         payload["status"] = "failed"
-        payload["error"] = gate.summary()
-        payload["summary"] = gate.summary()
-        findings = [gate.summary(), *[str(f) for f in (payload.get("findings") or [])]]
+        payload["error"] = gate_summary
+        payload["summary"] = gate_summary
+        findings = [gate_summary, *[str(f) for f in (payload.get("findings") or [])]]
         payload["findings"] = findings[:12]
     return outputs

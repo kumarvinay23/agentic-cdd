@@ -1,0 +1,745 @@
+===== Test6_CDD_Deck (15).pptx slides=54 =====
+
+--- slide 1 ---
+DiligenceIQ
+Commercial due diligence
+Commercial Due Diligence: Compost Crew
+Draft for discussion
+Prepared for DiligenceIQ
+November 2026
+CONFIDENTIAL
+
+--- slide 2 ---
+ENGAGEMENT OVERVIEW
+Disclaimer & reliance limitations
+Prepared for discussion of Compost Crew. It is not a recommendation to invest. Accounts and workbooks outrank the CIM, and the CIM outranks agent outputs.
+Evidence is limited to the diligence modules loaded for this deal. A module with no fact base is an open request, not a negative finding. Plan years carry a P suffix and are not results.
+
+--- slide 3 ---
+ENGAGEMENT OVERVIEW
+What to test before signing
+The case on Compost Crew, graded, before the business section. It is not a recommendation to invest.
+Source: DiligenceIQ agent outputs: Scope & Methodology; data room: 2 2 1 Revenue by Service Line  Please see Investor Workbook.txt, 2 3 1 Financial Projections  Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26, Please see 2 1 1 Financial Statements for BS.txt, Please see 2 1 1 Financial Statements for Cash Flow Statements.txt, Please see 2 1 1 Financial Statements.txt
+What to test before signing is set out here, before the business section. Accounts are established, the workbook is indicated, and a CIM sentence is asserted.
+Margins
+Gross margin held while EBITDA margin fell Grade: Established.
+Plan bridge
+The plan and the latest actual use one revenue basis Grade: Indicated.
+Trading case
+A trading case is set against the plan Grade: Indicated.
+Prices
+The billed monthly price is the workbook price Grade: Established.
+Claims
+Monthly retention is shown as a rate for the year Grade: Asserted.
+
+--- slide 4 ---
+ENGAGEMENT OVERVIEW
+Contents
+01   Business Introduction & Market Primer | 08
+02   Investment Highlights | 15
+03   Market Dynamics & Opportunity | 21
+04   Competitive Landscape | 29
+05   Growth Opportunities | 35
+06   Appendix A - Market Sizing Methodology | 44
+07   Appendix B - Evidence & Audit Trail | 48
+
+--- slide 5 ---
+ENGAGEMENT OVERVIEW
+The findings rest on the data room first: accounts and workbooks outrank the CIM, and the CIM outranks the agent outputs
+Where they disagree, the data room is used and the agent finding is an exception.
+Source: DiligenceIQ agent outputs: Scope & Methodology; data room: 2 2 1 Revenue by Service Line  Please see Investor Workbook.txt, 2 3 1 Financial Projections  Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26, Please see 2 1 1 Financial Statements for BS.txt, Please see 2 1 1 Financial Statements for Cash Flow Statements.txt, Please see 2 1 1 Financial Statements.txt
+Evidence base by source type
+Coverage, limitations and what was not available
+No customer survey is assumed.
+Plan years are marked P and are not results.
+Pages without an exhibit are withheld.
+Rank | Source | Use
+1 | Accounts / QBO actuals | Established results
+2 | Company workbook | Indicated, company's model
+3 | CIM / management | Asserted until tied to accounts
+4 | Agent outputs | A lead, rejected if uncited
+
+--- slide 6 ---
+01
+Business Introduction & Market Primer
+Who the target is, how the industry works and where the target sits in it
+01  Business Introduction & Market Primer
+02  Investment Highlights
+03  Market Dynamics & Opportunity
+04  Competitive Landscape
+05  Growth Opportunities
+06  Appendix A - Market Sizing Methodology
+07  Appendix B - Evidence & Audit Trail
+
+--- slide 7 ---
+BUSINESS INTRODUCTION & MARKET PRIMER
+Revenue growth slowed to 13.0% in 2025, from 57.0% the year before
+Actuals from the accounts extract. Plan years are not on this chart.
+Source: DiligenceIQ agent outputs: Statement of operations (management accounts, annual roll-up), Historical Performance; 7 data-room documents; 0 external sources (full list in notes)
+$7.6M
+Revenue 2023
+$11.9M
+Revenue 2024
+$13.4M
+Revenue 2025
+$8.1M
+Revenue 2026 YTD (Jul)
+4.3%
+EBITDA margin 2025
+Figures on the accounts
+Revenue growth slowed to 13.0% in 2025, from 57.0% the year before
+EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572. Revenue FY2025 +13% YoY (same-basis).
+Revenue for those years
+
+--- slide 8 ---
+BUSINESS INTRODUCTION & MARKET PRIMER
+How Compost Crew scaled, on the years the CIM table states
+These are the CIM's figures. They are not a substitute for the accounts.
+Source: DiligenceIQ agent outputs: Company Background; data room: CC CIM JPC FINAL 090126
+Milestones the CIM states
+What the page does not prove
+2020: Active 5,000; ARR $2.3M; Tons 2,500
+2022: Active 8,000; ARR $5.9M; Tons 7,500
+2024: Active 23,000; ARR $12.1M; Tons 13,000
+2025: Active 24,000; ARR $12.9M; Tons 16,000
+When | As the CIM states
+2020 | Active 5,000; ARR $2.3M; Tons 2,500
+2022 | Active 8,000; ARR $5.9M; Tons 7,500
+2024 | Active 23,000; ARR $12.1M; Tons 13,000
+2025 | Active 24,000; ARR $12.9M; Tons 16,000
+2030P | Active ~80,000; ARR $49M; Tons ~53,000
+
+--- slide 9 ---
+BUSINESS INTRODUCTION & MARKET PRIMER
+Labor and related benefits are 33.3% of 2025 revenue
+Each share divides that line by accounts revenue for the same year. Segment shares use the workbook.
+Source: DiligenceIQ agent outputs: Statement of operations (management accounts, annual roll-up); data room: documents  Compost Crew Monthly Financials 23YTD26
+Fleet adds maintenance, fuel, risk management, and other fleet. A cost without an amount is omitted.
+Cost | Amount | Share
+Labor and related benefits | $4.47M | 33.3%
+Subcontractors | $1.18M | 8.8%
+Processing | $0.31M | 2.3%
+SG&A | $4.23M | 31.5%
+Fleet: maintenance, fuel, risk, other | $1.35M | 10.1%
+Residential Sales | $1.98M | 14.8%
+Municipal Sales | $4.79M | 35.7%
+Commercial Sales | $5.62M | 41.9%
+Compost Sales | $0.18M | 1.3%
+Key Compostables | $0.70M | 5.2%
+Other Revenue | $0.14M | 1.0%
+Transfer and disposal costs | $0.99M | 7.4%
+Cost of Goods Sold | $0.94M | 7.0%
+Total Cost of Operations | $9.33M | 69.6%
+Labor & related benefits - SG&A | $1.76M | 13.1%
+Professional Fees | $0.44M | 3.3%
+Rent | $0.41M | 3.1%
+Insurance | $0.20M | 1.5%
+Bank Charges & Fees | $0.13M | 1.0%
+Office Expense | $0.28M | 2.1%
+Compost Business Development | $0.11M | 0.8%
+Operating income (loss) | $0.15M | 1.1%
+Other income (expense) | $0.41M | 3.1%
+
+--- slide 10 ---
+BUSINESS INTRODUCTION & MARKET PRIMER
+Gross retention 90.9% on the model basis and 87.3% on the cohort basis.
+Residential price on the existing book is $29.19 a month. No third-party local price was in the loaded files.
+Source: DiligenceIQ agent outputs: Unit economics and retention, Customer Stickiness; data room: documents  CC Investor Workbook EXTERNAL, CC Investor Workbook EXTERNAL
+The results pages use the actual cohort basis. The model basis is shown beside it. Stripe subscriptions are 7566. Nominal-rate subscriptions are 2071 at 1.94 a month. They already sit inside the 19,195 municipal households, so they are not added again.
+Metric | Commercial | Municipal | Residential
+Active locations | 856 | 19,195 | 5,495
+ARR ($mn) | $5.81M | $5.72M | $1.93M
+Price per month | $566 | $24.84 | $29.19
+Annual gross dollar retention | 90.9% | 95.1% | 88.2%
+Gross dollar retention | 87.3% | — | 84.6%
+Net dollar retention | 106.6% | — | 84.7%
+
+--- slide 11 ---
+BUSINESS INTRODUCTION & MARKET PRIMER
+Logo retention by cohort for Compost Crew
+Each cell is the workbook's retention for that cohort in that year. Revenue cohorts are not mixed in.
+Source: DiligenceIQ agent outputs: Customer cohorts; data room: documents  CC Investor Workbook EXTERNAL
+Logo retention by cohort
+How to read the count
+2021 cohort is 66.9% by 2026H1.
+The accounts column is the cohort's opening count. It is not the new-logo count for that year.
+A later cohort is not assumed to follow an earlier one.
+Cohort | Accounts | 2023 | 2024 | 2025 | 2026H1
+2021 cohort | 260 | 89.6% | 83.1% | 75.4% | 66.9%
+2022 cohort | 142 | 95.1% | 88.0% | 79.6% | 64.8%
+2023 cohort | 126 | 100.0% | 97.6% | 88.1% | 80.2%
+2024 cohort | 166 | — | 100.0% | 97.6% | 84.9%
+2025 cohort | 81 | — | — | 100.0% | 97.5%
+
+--- slide 12 ---
+BUSINESS INTRODUCTION & MARKET PRIMER
+The plan is above both trading cases
+The trading range is already on the record. This page states the gap.
+Source: DiligenceIQ agent outputs: Company Background; data room: documents  CC Investor Workbook EXTERNAL
+What the record supports
+Reliance
+The plan is above both trading cases.
+Read | On the record
+Trading | 15.35 to 24.68 million, against a plan of 50.17
+
+--- slide 13 ---
+02
+Investment Highlights
+The main findings, each stated at the strength of its evidence
+01  Business Introduction & Market Primer
+02  Investment Highlights
+03  Market Dynamics & Opportunity
+04  Competitive Landscape
+05  Growth Opportunities
+06  Appendix A - Market Sizing Methodology
+07  Appendix B - Evidence & Audit Trail
+
+--- slide 14 ---
+INVESTMENT HIGHLIGHTS
+Graded findings, and what to test before signing
+Accounts are established, the workbook is indicated, and a CIM sentence is asserted.
+Source: DiligenceIQ agent outputs: Bottom-up market model (company), Scope & Methodology; data room: documents  TAM SAM  SOM Data
+Finding | Grade | Page
+Gross margin held while EBITDA margin fell | Established | Margins
+The plan and the latest actual use one revenue basis | Indicated | Plan bridge
+A trading case is set against the plan | Indicated | Trading case
+The billed monthly price is the workbook price | Established | Prices
+Monthly retention is shown as a rate for the year | Asserted | Claims
+Accounts and the workbook do not tie on revenue | Established | Tie-out
+
+--- slide 15 ---
+INVESTMENT HIGHLIGHTS
+On the company workbook the market for Compost Crew is TAM $1,546.2M, SAM $463.9M, SOM $139.2M
+TAM, SAM and SOM from the market-volume module.
+Source: DiligenceIQ agent outputs: Market Volume & Growth; data room: TAM SAM  SOM Data, 2026-08-31 summary cap intermediate cap detailed cap, 2 3 2 Assumption Supporting Projections  Please see Investor Workbook.txt, 4 2 2 Equipment List  Please see CIM P46.txt, CC - 12354 Parking Lease, CC - Depreciation Schedule as on 07 31 2026
+TAM / SAM / served market
+Basis, sources and confidence
+TAM $1,546.2M
+SAM $463.9M
+SOM $139.2M
+
+--- slide 16 ---
+INVESTMENT HIGHLIGHTS
+Revenue moved +1.54 million from 2024 to 2025 (+13.0%)
+Each change is later actual revenue minus the prior actual. Plan years are excluded.
+Source: DiligenceIQ agent outputs: Statement of operations (management accounts, annual roll-up); data room: documents  Compost Crew Monthly Financials 23YTD26
+Change in accounts revenue
+How the change was calculated
+2023 to 2024: +4.31 million, +57.0%.
+2024 to 2025: +1.54 million, +13.0%.
+Step | $M | %
+2023 to 2024 | +4.31 | +57.0
+2024 to 2025 | +1.54 | +13.0
+
+--- slide 17 ---
+INVESTMENT HIGHLIGHTS
+The CIM states 99.5% on-time and a 70 NPS. No survey file tests either.
+Each row is a sentence in the CIM. None of them is a survey result.
+Source: DiligenceIQ agent outputs: Company Background; data room: CC CIM JPC FINAL 090126
+These are statements in the CIM. They are not results of a survey or an interview.
+Claim | As stated | Test
+On-time service | 99.5% on-time | No survey file was loaded
+NPS | 70 NPS | No survey file was loaded
+DC locations | about 12,000 of municipal | Not named on the contract sheet
+Rate step-up | about 2.6% a year from 2027 | No dollar effect is calculated
+DC term | Signed in 2025 after a 2023 pilot | CIM wording, not the contract sheet
+DC renewal | 5-year term: one year plus 4 option years | Annual escalators and participation caps
+DC termination | Not in that CIM sentence | The option years are the renewal it describes
+Monthly retention | 98.6% a month | 84.4% a year
+
+--- slide 18 ---
+INVESTMENT HIGHLIGHTS
+Management accounts and the company workbook do not tie on revenue
+2025 accounts $13.41M, workbook $13.28M, CIM $13.3mn.
+Source: DiligenceIQ agent outputs: Statement of operations (management accounts, annual roll-up), Financial summary (company workbook), CIM crosswalk: CIM figures traced to support; data room: documents  Compost Crew Monthly Financials 23YTD26, documents  CC Investor Workbook EXTERNAL
+Year | Accounts | Workbook | CIM
+2023 | $7.56M | $7.53M | $7.5mn
+2024 | $11.87M | $11.74M | $11.7mn
+2025 | $13.41M | $13.28M | $13.3mn
+
+--- slide 19 ---
+03
+Market Dynamics & Opportunity
+How large, how fast-growing and how resilient the addressable market is
+01  Business Introduction & Market Primer
+02  Investment Highlights
+03  Market Dynamics & Opportunity
+04  Competitive Landscape
+05  Growth Opportunities
+06  Appendix A - Market Sizing Methodology
+07  Appendix B - Evidence & Audit Trail
+
+--- slide 20 ---
+MARKET DYNAMICS & OPPORTUNITY
+From 2023 to 2024, Municipal - DC changed +2.04 million. From 2024 to 2025, Commercial changed +0.65 million.
+Municipal lines were 22.8% of workbook revenue in 2023 and 36.1% in 2025.
+Source: DiligenceIQ agent outputs: Historical Performance; data room: documents  CC Investor Workbook EXTERNAL
+Segment | 2023 | 2024 | 2025 | 2023-2024 | 2024-2025
+Commercial | $4.14M | $4.97M | $5.62M | +0.83 | +0.65
+Municipal (ex-DC) | $0.87M | $1.36M | $1.79M | +0.49 | +0.43
+Municipal - DC | $0.85M | $2.89M | $3.00M | +2.04 | +0.11
+Residential (Non-Gov) | $1.65M | $1.97M | $1.98M | +0.32 | +0.01
+Key Compostables | $0.00M | $0.31M | $0.69M | +0.31 | +0.38
+Compost & products | $0.01M | $0.25M | $0.18M | +0.24 | 0.07
+Other | $0.00M | $0.00M | $0.01M | +0.00 | +0.01
+
+--- slide 21 ---
+MARKET DYNAMICS & OPPORTUNITY
+Segment mix for Compost Crew, calculated from segment revenue
+Shares calculated from segment revenue divided by the total.
+Source: DiligenceIQ agent outputs: Scope & Methodology; 6 data-room documents; 0 external sources (full list in notes). † DiligenceIQ calculation
+Share of workbook revenue
+Each share uses that year's total
+Commercial: 42.4% of the total
+Municipal (ex-DC): 13.5% of the total
+Municipal - DC: 22.6% of the total
+Residential (Non-Gov): 14.9% of the total
+Key Compostables: 5.2% of the total
+
+--- slide 22 ---
+MARKET DYNAMICS & OPPORTUNITY
+Gross margin held from 31.8% to 30.4% while EBITDA margin fell from 9.6% to 4.3%
+Actual and year-to-date margins only. A plan margin is not on this chart.
+Source: DiligenceIQ agent outputs: Historical Performance; data room: documents  Compost Crew Monthly Financials 23YTD26
+Gross margin and EBITDA margin
+Not a pricing study
+Gross margin held from 31.8% to 30.4% while EBITDA margin fell from 9.6% to 4.3%
+The lines are gross margin and EBITDA margin for the years on the accounts.
+
+--- slide 23 ---
+MARKET DYNAMICS & OPPORTUNITY
+The plan at 2030P is 3.78x 2025 revenue, a bridge of +36.89 million
+The chart is a waterfall from the latest actual to the plan. The step is the difference. It is not a result.
+Source: DiligenceIQ agent outputs: Financial summary (company workbook); data room: documents  CC Investor Workbook EXTERNAL
+Plan versus latest actual
+Waterfall from the latest actual to the plan
+Multiple 3.78x is plan divided by the latest actual.
+Step | $M
+Actual 2025 | 13.28
+Plan 2030P | 50.17
+Bridge | +36.89
+Multiple | 3.78x
+
+--- slide 24 ---
+MARKET DYNAMICS & OPPORTUNITY
+Recent trading points to 15.35 to 24.68 million by 2030P
+The low case carries year-to-date growth forward. The high case carries the latest full-year growth forward.
+Source: DiligenceIQ agent outputs: Historical Performance, Financial summary (company workbook); data room: documents  CC Investor Workbook EXTERNAL, Compost Crew Monthly Financials 23YTD26, CC Investor Workbook EXTERNAL
+Each case is a calculation from figures already on the record. None of them is a result. Upside and full contract, when shown, are spectrum cases and are not the plan.
+Case | $M
+Plan 2030P | 50.17
+Latest actual growth carried from 2025 to 2030P | 24.68
+Year-to-date pace at 2.9% from 2025 to 2030P | 15.35
+Largest contract, first half times two | 3.17
+Municipal - DC 2026P | 3.96
+DC 2030 modeled | 10.42
+DC 2030 Upside | 15.63
+DC 2030 Full contract | 20.83
+
+--- slide 25 ---
+MARKET DYNAMICS & OPPORTUNITY
+Subscriber retention and revenue retention for Compost Crew diverge as the book ages
+Both series are the retention curve in the workbook. One is not converted into the other.
+Source: DiligenceIQ agent outputs: Customer retention summary; data room: documents  CC Investor Workbook EXTERNAL
+Subscriber retention and revenue retention
+How the two series differ
+The month label is the age of the book on that row.
+A missing month is not interpolated.
+
+--- slide 26 ---
+MARKET DYNAMICS & OPPORTUNITY
+The plan at 50.17 million sits above both trading cases
+Municipal - DC is 22.6% of 2025 workbook revenue.
+Source: DiligenceIQ agent outputs: Historical Performance; data room: documents  CC Investor Workbook EXTERNAL
+Two risks the files support
+What these rows do not prove
+The low case uses the opening months of the latest year against the same months a year earlier.
+The full-year case carries the latest actual growth forward.
+The contract sheet's largest row keeps the workbook's own name.
+Risk | On the record | Open point
+Plan pace | 15.35 to 24.68 versus plan 50.17 | Neither case is a result
+Municipal - DC | $3.00M in 2025, 22.6% of that workbook | $10.42M in 2030P
+
+--- slide 27 ---
+04
+Competitive Landscape
+Who the target competes with and whether its advantages hold up
+01  Business Introduction & Market Primer
+02  Investment Highlights
+03  Market Dynamics & Opportunity
+04  Competitive Landscape
+05  Growth Opportunities
+06  Appendix A - Market Sizing Methodology
+07  Appendix B - Evidence & Audit Trail
+
+--- slide 28 ---
+COMPETITIVE LANDSCAPE
+Compost Cab lists $32 per month, read outside the data room
+These pages are not in the CIM and not in the data room.
+Source: DiligenceIQ agent outputs: Secondary research (analyst); 0 data-room documents; 4 external sources (full list in notes)
+Retrieved 21 September 2026. Compost Cab lists a residential price of $32 per month and a commercial entry from $90 per month. These pages are outside the data room and are not CIM statements.
+Competitor | Footprint | Residential price | Record
+Compost Cab | DC and Baltimore regions | $32 per month | Web, outside the data room
+Veteran Compost | Residential DC metro; commercial Baltimore / Annapolis | Not published | Web, outside the data room
+Monster Organics | DC, MD, VA and NC; HQ Springfield VA | No residential service | Web, outside the data room
+Pluvr | Washington DC | No residential service | Web, outside the data room
+
+--- slide 29 ---
+COMPETITIVE LANDSCAPE
+The CIM competitive page names Republic Services, Waste Management, Monster Organics, and Leafgro
+Shown once, as a self-assessment. Yes and no are the marks on the record.
+Source: DiligenceIQ agent outputs: Competitor Identification, Company Background; data room: CC CIM JPC FINAL 090126
+The CIM also scores Soil Manufacturers. That column is not on this page. Local operating companies read outside the data room are on the competitor page. This matrix does not name them. The CIM page names Republic Services, Waste Management, Monster Organics, and Leafgro.
+Criterion | Target | Major Waste Companies | Other Local Composters | Brokers | Technology Providers
+Composting is the core business | Yes | No | Yes | No | No
+Innovation in collection & | Yes | No | No | Yes | Yes
+Flexible, locally tailored service | Yes | No | Yes | Yes | —
+Technology-enabled operations | Yes | Yes | No | Yes | Yes
+Vertically integrated model | Yes | Yes | No | No | No
+Clear regional growth strategy | Yes | Yes | Yes | No | Yes
+Trained program managers | Yes | No | No | No | No
+Financial strength & scalability | Yes | Yes | No | No | Yes
+
+--- slide 30 ---
+COMPETITIVE LANDSCAPE
+Residential price on the existing book is $29.19 a month
+A published web list price is on this chart and is outside the data room.
+Source: DiligenceIQ agent outputs: Customer Stickiness, Secondary research (analyst); data room: documents  CC Investor Workbook EXTERNAL; external: [Compost Cab - home page <https://compostcab.com/> Retrieved 21 September 2026] unresolved web source
+Monthly price, workbook and web
+Web prices are outside the data room
+Commercial: $566
+Municipal: $24.84
+Residential: $29.19
+Web list prices on the chart are outside the data room.
+A monthly price more than eight times another is not on this axis.
+
+--- slide 31 ---
+COMPETITIVE LANDSCAPE
+On Commercial Summary, NRR is 106.6% and GRR is 87.3%, a spread of +19.3 points
+The spread is NRR minus GRR for this one population. It is not a churn survey.
+Source: DiligenceIQ agent outputs: Customer Stickiness; data room: documents  CC Investor Workbook EXTERNAL
+Churn trigger, frequency and severity
+Addressability
+GRR 87.3% and NRR 106.6% are the module's figures.
+Spread +19.3 points is NRR minus GRR.
+Population | GRR | NRR | NRR minus GRR
+Commercial Summary | 87.3% | 106.6% | +19.3
+
+--- slide 32 ---
+COMPETITIVE LANDSCAPE
+Largest accounts for Compost Crew, as the workbook ranks them
+Names are the labels in the concentration sheet. A rank without a share is left out.
+Source: DiligenceIQ agent outputs: Customer concentration; data room: documents  CC Investor Workbook EXTERNAL
+Largest accounts in the workbook
+What the ranking shows
+The first 8 accounts reach a cumulative share of 19.1%.
+Rank | Account | Revenue | Share | Cumulative
+1 | Commercial Account 0001 | $182,924 | 3.3% | 3.3%
+2 | Commercial Account 0002 | $154,343 | 2.7% | 6.0%
+3 | Commercial Account 0003 | $140,917 | 2.5% | 8.5%
+4 | Commercial Account 0004 | $132,220 | 2.4% | 10.9%
+5 | Commercial Account 0005 | $126,540 | 2.3% | 13.1%
+6 | Commercial Account 0006 | $116,816 | 2.1% | 15.2%
+7 | Commercial Account 0007 | $115,272 | 2.1% | 17.3%
+8 | Commercial Account 0009 | $105,135 | 1.9% | 19.1%
+
+--- slide 33 ---
+05
+Growth Opportunities
+Where the incremental value is and what has to be true to capture it
+01  Business Introduction & Market Primer
+02  Investment Highlights
+03  Market Dynamics & Opportunity
+04  Competitive Landscape
+05  Growth Opportunities
+06  Appendix A - Market Sizing Methodology
+07  Appendix B - Evidence & Audit Trail
+
+--- slide 34 ---
+GROWTH OPPORTUNITIES
+Municipal - DC is 22.6% of 2025 workbook revenue
+Each line is stated in the workbook or the CIM. None of them is a result.
+Source: DiligenceIQ agent outputs: Revenue by segment (company workbook), Company Background, Synergies; data room: documents  CC Investor Workbook EXTERNAL, CC CIM JPC FINAL 090126
+Lever | On the record | Note
+Municipal - DC | $3.00M in 2025; $10.42M in 2030P | 22.6%
+Utica | $0.00M in 2026P | $1.64M in 2030P
+Rate step-up | about 2.6% a year from 2027 | No dollar effect is calculated
+Sales capacity | Latest new logos equal 1.6 of one quota | Not a bookings record
+Agricity | About $1.2M subcontract and $1.6M own book | Not added to company revenue
+
+--- slide 35 ---
+GROWTH OPPORTUNITIES
+Commercial new logos were 81 in 2025 and churned logos were 48, a net of 33
+Net additions are new logos minus churned logos. A year with only one of the two is omitted.
+Source: DiligenceIQ agent outputs: Customer Stickiness, Commercial Summary (CC_Investor_Workbook_EXTERNAL.xlsx) - generic extract, verify; data room: documents  CC Investor Workbook EXTERNAL
+New and churned logos
+Net additions on record
+Net additions are new logos minus churned logos: 139 in 2022, 95 in 2023, 136 in 2024, 33 in 2025.
+The latest new-logo count equals 1.6 of the stated quota.
+Active accounts were 663 in 2025 and 591 at 2026H1.
+
+--- slide 36 ---
+GROWTH OPPORTUNITIES
+The largest contract is 23.0% of 2025 revenue
+Ranked by the latest actual year the contract sheet states.
+Source: DiligenceIQ agent outputs: Contracts, backlog and pipeline, Statement of operations (management accounts, annual roll-up); data room: documents  CC Investor Workbook EXTERNAL, documents  Compost Crew Monthly Financials 23YTD26
+The largest contract is 23.0% of 2025 revenue. The workbook's own name is kept. First-half billings annualize to 3.17 million.
+Contract | 2025 | Lifetime
+Municipal Account 01 | 3,077,660.70 | 8,498,552.61
+Municipal Account 04 | 446,492.69 | 781,481.56
+Municipal Account 02 | 346,137.76 | 1,109,964.62
+Municipal Account 03 | 302,026.84 | 881,965.92
+Municipal Account 06 | 117,664.53 | 358,595.69
+Municipal Account 05 | 109,986.13 | 371,251.50
+
+--- slide 37 ---
+GROWTH OPPORTUNITIES
+The plan takes quota-carrying reps from 8 to 19. No bookings history was loaded.
+Each row is a quota the growth record stored. A missing productivity history is not filled in.
+Source: DiligenceIQ agent outputs: Growth Opportunities; data room: CC CIM JPC FINAL 090126
+Quotas on the record
+What the quota does not prove
+Quotas are the plan's figures. They are not a record of what the current team sells.
+Latest new logos equal 1.6 of the stated quota.
+The growth case takes those reps from 9 to 23.
+Ramp on the record: 90% of quota (75% municipal). Growth case: 100% of quota.
+Marketing on the record: +15% in 2027, flat after. Growth case: +25% in 2027, +30% / yr.
+Driver | Baseline | Growth case
+Quota-carrying sales reps, 2026 → | 8 → 19 | 9 → 23
+Commercial AE quota × AAOV | 52 accounts/yr × $7,000 | +3.5% quota, +4.0% AAOV
+Municipal AE quota × price | 1,200 homes/yr × $20/mo | +3.5% quota, +3.0% price
+Residential AE quota × AAOV | 2,700 homes/yr × $21.31/mo | +3.5% quota, +2.0% AAOV
+New-rep ramp — 5 months to | 90% of quota (75% municipal) | 100% of quota
+Marketing and advertising spend | +15% in 2027, flat after | +25% in 2027, +30% / yr
+Account managers, 2030 | 11 (5 commercial, 6 | 11 (same as baseline)
+Commercial upsell quota × AAOV | 52 upsells/yr × $1,885 | +4.0% AAOV from 2028
+
+--- slide 38 ---
+GROWTH OPPORTUNITIES
+NRR moved from 196.0% in 2022 to 106.6% in 2025
+Each point is the rate stored for that year. A missing year is not interpolated.
+Source: DiligenceIQ agent outputs: Customer Stickiness; data room: documents  CC Investor Workbook EXTERNAL
+Retention by year
+The rate stored for that year
+The chart uses the yearly rates on file.
+Plan years are not added to this curve.
+
+--- slide 39 ---
+GROWTH OPPORTUNITIES
+Arlington 22201 scores 6.18, ahead of the Montgomery zips on this page
+Maryland is the summary ranking. Northern Virginia is the ranking block on the same workbook.
+Source: DiligenceIQ agent outputs: Territory scores, Northern Virginia territory scores; data room: documents  MD NOVA ZIP Expansion Analysis Final 10 22 2025
+A score ranks where to go. It is not a revenue figure.
+Territory | Area | County | ZIP | Score
+Maryland | ROCKVILLE | MONTGOMERY | 20852 | 5.88
+Maryland | ROCKVILLE | MONTGOMERY | 20850 | 5.81
+Maryland | BETHESDA | MONTGOMERY | 20814 | 5.48
+Maryland | SILVER SPRING | MONTGOMERY | 20910 | 5.27
+Northern Virginia | ARLINGTON | ARLINGTON | 22201 | 6.18
+Northern Virginia | FAIRFAX | FAIRFAX CITY | 22030 | 5.52
+Northern Virginia | ARLINGTON | ARLINGTON | 22203 | 5.10
+Northern Virginia | ARLINGTON | ARLINGTON | 22209 | 5.01
+
+--- slide 40 ---
+GROWTH OPPORTUNITIES
+Segment lines are 77.3% of 2025 workbook revenue and 79.2% of the 2030 plan
+Each amount is the segment sheet. The shares use workbook revenue for the same year.
+Source: DiligenceIQ agent outputs: Revenue by segment (company workbook), Financial summary (company workbook); data room: documents  CC Investor Workbook EXTERNAL
+Lines on the segment sheet
+What is not established
+Utica is zero in 2025 on this sheet. Its plan amount is not a result.
+A permit and a grant are not a facility profit and loss.
+Line | 2025 | 2030P
+Commercial | $5.62M | $19.27M
+Municipal (ex-DC) | $1.79M | $7.76M
+Residential (Non-Gov) | $1.98M | $6.60M
+Utica | $0.00M | $1.64M
+Key Compostables | $0.69M | $3.24M
+Compost & products | $0.18M | $1.01M
+Other | $0.01M | $0.23M
+
+--- slide 41 ---
+GROWTH OPPORTUNITIES
+The stated 1.5 million EBITDA effect exceeds the 0.59 million implied by the price and multiple.
+Implied earnings are the stated price divided by the stated multiple.
+Source: DiligenceIQ agent outputs: Synergies; data room: CC CIM JPC FINAL 090126
+Implied earnings are 0.59 million. Stated EBITDA effect minus that figure is 0.91 million. The CIM also states 1.0 million a year of in-sourced margin. The two are not added together.
+Target | Status | Scale | Terms | Implied
+Fat Worm Compost | Closed (2018) | — | ~$250K commercial ARR. Deepened density | —
+WB Waste | Closed (2023) | — | ~$300K commercial ARR. Acquired | —
+Key City Compost | Closed (2024) | — | Frederick curbside, KeyCompostables | —
+Target A | Active Discussion | — | ~$2M ARR, DC-based. Deepens density and | —
+Target B | Initial Discussion | — | Processing expansion opportunity in VA | —
+Target C | Minority Investment | — | ~$1M ARR in SE PA / Philly. Potential | —
+Target D | Initial Discussion | — | Eastern Shore operator. Potential | —
+Bought earnings | Proposed | Price and multiple | $3.0M at 5.1x; cash $1.3M; note $500k; 6% equity; 2.4% warrants | 0.59
+In-sourced margin | CIM | Stated separately | $1.0M a year | —
+
+--- slide 42 ---
+06
+Appendix A - Market Sizing Methodology
+How every number in the sizing was built
+01  Business Introduction & Market Primer
+02  Investment Highlights
+03  Market Dynamics & Opportunity
+04  Competitive Landscape
+05  Growth Opportunities
+06  Appendix A - Market Sizing Methodology
+07  Appendix B - Evidence & Audit Trail
+
+--- slide 43 ---
+APPENDIX A - MARKET SIZING METHODOLOGY
+How the Compost Crew sizing was built, from the current-territory workbook
+Each line is the market model's stated count, price and participation.
+Source: DiligenceIQ agent outputs: Bottom-up market model (company); data room: documents  TAM SAM  SOM Data
+How the sizing was built
+What the workbook states
+These steps are read from the market workbook. A securities ledger is not a customer count.
+Line | As stated
+Residential Logistics (Hauling) | 1,661,465 single-family homes × $300 ASP → TAM; 30% participation (500K homes) →
+Commercial Logistics (Hauling) | 89,653 businesses × $7462 ARR → TAM; 30% participation (27K businesses) → SAM; 30%
+
+--- slide 44 ---
+APPENDIX A - MARKET SIZING METHODOLOGY
+Adjacent lines for Compost Crew are sized in the same workbook
+Product lines sit beside the core collection build. Each keeps the basis the workbook stated.
+Source: DiligenceIQ agent outputs: Bottom-up market model (company); data room: documents  TAM SAM  SOM Data
+Adjacent lines in the workbook
+What is not a capture ratio
+A capture ratio is shown only when the workbook also states that line's sales.
+Line | As stated
+Residential Compost Sales & Soil Amendme | 1,661,465 homes × 0.5 cyds/home × $93 ASP (bagged) → 830K cy → TAM; 30%
+Residential KeyCompostables | 1,661,465 homes × $84 AOV × 1.1 orders/year → 1.8M orders → TAM; 30% participation
+Commercial Compost Sales & Soil Amendmen | 89,653 businesses x 10 cyds/business × $45 ASP (bulk) → 890K cy → TAM; 30%
+Commercial KeyCompostables | 89,653 businesses × $410 AOV × 3 orders/year → TAM; 30% participation → SAM; 30%
+
+--- slide 45 ---
+07
+Appendix B - Evidence & Audit Trail
+Module verdicts, source register and exceptions
+01  Business Introduction & Market Primer
+02  Investment Highlights
+03  Market Dynamics & Opportunity
+04  Competitive Landscape
+05  Growth Opportunities
+06  Appendix A - Market Sizing Methodology
+07  Appendix B - Evidence & Audit Trail
+
+--- slide 46 ---
+APPENDIX B - EVIDENCE & AUDIT TRAIL
+Module verdicts restated at the grade the facts support
+A stated pass is lowered when the facts are thinner than the module claimed.
+Source: DiligenceIQ agent outputs: Scope & Methodology; data room: 2 2 1 Revenue by Service Line  Please see Investor Workbook.txt, 2 3 1 Financial Projections  Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26, Please see 2 1 1 Financial Statements for BS.txt, Please see 2 1 1 Financial Statements for Cash Flow Statements.txt, Please see 2 1 1 Financial Statements.txt
+The adjusted grade is the one this report uses. It is not raised above the facts.
+Module | Stated | Adjusted | Basis
+23 modules | BLOCKED | Blocked | Findings from a blocked module are not relied on.
+Scope & Methodology | PASS / LIMITED | Not produced | No facts were loaded for this module.
+Cash Flow | PASS / LIMITED | Limited | The lower stated grade is used.
+Company Background | PASS / LIMITED | Limited | The lower stated grade is used.
+Cost Structure | REWORK / LIMITED | Limited | The lower stated grade is used.
+Deal Context And Objectives | PASS / LIMITED | Limited | The lower stated grade is used.
+Internal Risk | REWORK / LIMITED | Limited | The lower stated grade is used.
+Ip And Technology | PASS / LIMITED | Limited | The lower stated grade is used.
+
+--- slide 47 ---
+APPENDIX B - EVIDENCE & AUDIT TRAIL
+Module verdicts restated at the grade the facts support
+A stated pass is lowered when the facts are thinner than the module claimed.
+Source: DiligenceIQ agent outputs: Scope & Methodology; data room: 2 2 1 Revenue by Service Line  Please see Investor Workbook.txt, 2 3 1 Financial Projections  Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26, Please see 2 1 1 Financial Statements for BS.txt, Please see 2 1 1 Financial Statements for Cash Flow Statements.txt, Please see 2 1 1 Financial Statements.txt
+The adjusted grade is the one this report uses. It is not raised above the facts.
+Module | Stated | Adjusted | Basis
+Market Definition | PASS / LIMITED | Limited | The lower stated grade is used.
+Valuation Modeling | REWORK / LIMITED | Limited | The lower stated grade is used.
+Appendices | PASS / READY | Indicated | Lowered to the facts on file.
+Historical Performance | PASS / READY | Established | The stated grade matches the facts.
+Cdd Deck | — | Indicated | No verdict was stated, so the facts set the grade.
+Ic Brief | — | Indicated | No verdict was stated, so the facts set the grade.
+Ic Memo | — | Indicated | No verdict was stated, so the facts set the grade.
+Market Intel Deck | — | Indicated | No verdict was stated, so the facts set the grade.
+
+--- slide 48 ---
+APPENDIX B - EVIDENCE & AUDIT TRAIL
+Sources the report rests on, read from the room or only cited
+Read means the workbook was extracted. Cited only means a module named the file.
+Source: DiligenceIQ agent outputs: Scope & Methodology; 15 data-room documents; 0 external sources (full list in notes)
+Read means the workbook was extracted into the evidence register. Cited only means the file was named by a module and was not read as a workbook.
+Source | How used
+documents__CC - Depreciation Schedule as on 07_31_2026.xlsx | Read
+documents__CC_Investor_Workbook_EXTERNAL.xlsx | Read
+documents__Completed 2c2i Baseline Metrics Compost Crew.xlsx | Read
+documents__Compost Crew Impact Metric -2024.xlsx | Read
+documents__Compost Crew Monthly Financials 23YTD26.xlsx | Read
+documents__MD_NOVA_ZIP Expansion Analysis_Final_10_22_2025.xlsx | Read
+documents__OG Loan Schedules.xlsx | Read
+documents__TAM_SAM_ SOM Data.xlsx | Read
+
+--- slide 49 ---
+APPENDIX B - EVIDENCE & AUDIT TRAIL
+Sources the report rests on, read from the room or only cited
+Read means the workbook was extracted. Cited only means a module named the file.
+Source: DiligenceIQ agent outputs: Scope & Methodology; 15 data-room documents; 0 external sources (full list in notes)
+Read means the workbook was extracted into the evidence register. Cited only means the file was named by a module and was not read as a workbook.
+Source | How used
+documents__CC_CIM_JPC_FINAL_090126.pptx | Read
+Other named files | Cited only
+
+--- slide 50 ---
+APPENDIX B - EVIDENCE & AUDIT TRAIL
+What this report could not establish
+Each row is a gap in the record. A withheld template page is not, by itself, a finding.
+Source: DiligenceIQ agent outputs: Scope & Methodology; data room: 2 2 1 Revenue by Service Line  Please see Investor Workbook.txt, 2 3 1 Financial Projections  Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26, Please see 2 1 1 Financial Statements for BS.txt, Please see 2 1 1 Financial Statements for Cash Flow Statements.txt, Please see 2 1 1 Financial Statements.txt
+The adjusted verdicts and the source register are the other half of this audit.
+Severity | Rule | Gap | Slide | Treatment
+HIGH | E1-NOT-PROVIDED | 25 modules are marked blocked. | S099 | Findings from a blocked module are not relied on.
+HIGH | E3-CONFLICT | 2025 accounts $13.41M, workbook $13.28M, CIM $13.3mn. | S031 | The accounts figure is the one used on the results pages. The others stay visible here.
+HIGH | E3-CONFLICT | Gross retention 90.9% on the model basis and 87.3% on the cohort basis. | S013 | The results pages use the actual cohort basis. The model basis is shown beside it.
+MEDIUM | E1-NOT-PROVIDED | Plan years are in the file and are not results. | S046 | They carry a P suffix and stay off the actuals chart.
+MEDIUM | E11-NO-PRIMARY | No customer survey or interviews were loaded. | S065 | NPS and quote pages stay withheld.
+MEDIUM | E1-NOT-PROVIDED | The competitor comparison is a self-assessment. | S062 | Shown once, and not as customer evidence.
+MEDIUM | E1-NOT-PROVIDED | Quotas have no rep-level bookings behind them. | S075 | They are shown as the plan stated them.
+MEDIUM | E1-NOT-PROVIDED | ZIP scores have no revenue attached. | S081 | They are not converted into a market figure.
+
+--- slide 51 ---
+APPENDIX B - EVIDENCE & AUDIT TRAIL
+What this report could not establish
+Each row is a gap in the record. A withheld template page is not, by itself, a finding.
+Source: DiligenceIQ agent outputs: Scope & Methodology; data room: 2 2 1 Revenue by Service Line  Please see Investor Workbook.txt, 2 3 1 Financial Projections  Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26, Please see 2 1 1 Financial Statements for BS.txt, Please see 2 1 1 Financial Statements for Cash Flow Statements.txt, Please see 2 1 1 Financial Statements.txt
+The adjusted verdicts and the source register are the other half of this audit.
+Severity | Rule | Gap | Slide | Treatment
+MEDIUM | E11-NO-PRIMARY | 23 pages need a survey or interview file | 23 withheld | No survey or interview file was loaded.
+MEDIUM | E1-NOT-PROVIDED | 24 pages have nothing further in the loaded record | 24 withheld | Not in the loaded record.
+
+--- slide 52 ---
+ENGAGEMENT OVERVIEW
+Terms used in this report
+A term is listed only when it appears in this report. Plan years carry a P suffix.
+Source: DiligenceIQ analysis
+A term that does not appear in the report is not defined here.
+Term | Meaning in this report
+AAOV | Average annual order value per account.
+ARR | Annual recurring revenue - contracted or subscription revenue at a point in time, annualised.
+Cohort | The group of customers acquired in the same period, tracked over time.
+EBITDA | Earnings before interest, tax, depreciation and amortisation, as reported in the management accounts.
+Gross margin | Gross profit as a share of revenue; gross profit is revenue less cost of operations.
+GRR | Gross revenue retention - revenue kept from a starting cohort after churn and contraction, before any expansion.
+Logo retention | Share of customers (accounts, subscribers) still active at the end of a period.
+NRR | Net revenue retention - GRR plus expansion from the same cohort; above 100% means the cohort grew.
+P (suffix) | Plan or projection year, e.g. 2030P - management's forecast, not a result.
+SAM | Serviceable addressable market - the part of TAM the business model can serve.
+
+--- slide 53 ---
+ENGAGEMENT OVERVIEW
+Terms used in this report
+A term is listed only when it appears in this report. Plan years carry a P suffix.
+Source: DiligenceIQ analysis
+A term that does not appear in the report is not defined here.
+Term | Meaning in this report
+SOM | Serviceable obtainable market - the part of SAM a single operator can realistically win.
+TAM | Total addressable market - every customer in the defined territory multiplied by average spend.
+YTD | Year to date.
+
+--- slide 54 ---
+DiligenceIQ
+Agentic commercial due diligence
+DiligenceIQ · Commercial due diligence on Compost Crew. Draft for discussion, November 2026.
+This document is confidential and prepared solely for the addressee. Do not distribute without written consent.

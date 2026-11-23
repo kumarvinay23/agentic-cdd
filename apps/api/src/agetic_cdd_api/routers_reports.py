@@ -152,6 +152,78 @@ def report_catalog(
     return {"success": True, "data": reports}
 
 
+@router.get("/portfolios/{deal_id}/reports/export-consistency")
+def get_export_consistency(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Latest cross-pack KPI / perimeter consistency report (if built)."""
+    from agetic_cdd_api.services_export_consistency import load_export_consistency
+
+    deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
+    data = load_export_consistency(deal.slug)
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No export consistency report yet — POST to build.",
+        )
+    return {"success": True, "data": data}
+
+
+@router.post("/portfolios/{deal_id}/reports/export-consistency")
+def post_export_consistency(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Run cross-pack consistency (agent KPIs vs FDD facts / promoted)."""
+    from agetic_cdd_api.services_export_consistency import run_export_consistency
+
+    deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
+    report = run_export_consistency(deal.slug)
+    return {"success": True, "data": report.to_dict()}
+
+
+class IcBriefBody(BaseModel):
+    polish_llm: bool = False
+
+
+@router.get("/portfolios/{deal_id}/reports/ic-brief")
+def get_ic_brief(
+    deal_id: str,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Latest IC brief card (risks, open items, consistency alerts)."""
+    from agetic_cdd_api.services_ic_brief import load_ic_brief
+
+    deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
+    data = load_ic_brief(deal.slug)
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No IC brief yet — POST to build.",
+        )
+    return {"success": True, "data": data}
+
+
+@router.post("/portfolios/{deal_id}/reports/ic-brief")
+def post_ic_brief(
+    deal_id: str,
+    body: IcBriefBody | None = None,
+    auth: AuthContext = Depends(get_current_auth),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Build IC brief from SoT agents + export consistency (optional LLM headline)."""
+    from agetic_cdd_api.services_ic_brief import build_ic_brief
+
+    deal = get_deal(db, deal_id=deal_id, org_id=auth.organization.id)
+    polish = bool(body.polish_llm) if body is not None else False
+    brief = build_ic_brief(deal.slug, polish_llm=polish)
+    return {"success": True, "data": brief.to_dict()}
+
+
 @router.post("/portfolios/{deal_id}/reports/{report_type}/generate")
 def generate_report(
     deal_id: str,

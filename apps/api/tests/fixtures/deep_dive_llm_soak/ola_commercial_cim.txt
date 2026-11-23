@@ -1,0 +1,36 @@
+04 Commercial Due Diligence Market, Sales & Customer Analysis
+Customer Profile & Segmentation Segment Share (%) Avg Age Primary Use Case Key Driver
+Urban Professional 38% 27–35 Daily Commute Cost savings + tech
+Student / Young Adult 22% 18–26 College/Short trips Aspirational brand
+Gig Economy Worker 18% 25–40 Delivery/Ride TCO advantage
+Family User 14% 35–50 Family errands Safety + range
+Fleet Operator 8% N/A Commercial fleet B2B economics
+Customer Acquisition & Retention Metric Ola Electric Ather Energy TVS iQube Industry Avg
+CAC (INR) 4,200 6,500 8,200 6,800 NPS Score 34 61 48 42
+Retention Rate (12M) 61% 74% 69% 71% Avg Ticket Size (INR) 96,500 1,44,000 1,08,000 1,10,000
+Time to Purchase (Days) 3.1 5.8 7.2 6.1 Service Satisfaction (%) 52% 78% 71% 68%
+Geographic Sales Distribution (FY2024E) Region Revenue Share (%)
+South India (TN, KA, AP, TS) 34% 36% +92% West India (MH, GJ) 28% 27% +78%
+North India (DL, UP, HR, RJ) 24% 24% +105% East India (WB, OR, AS) 9% 9% +123%
+Central India & Others 5% 4% +88%
+Channel Strategy Assessment Ola Electric employs a direct-to-consumer digital-first model
+supplemented by physical experience centers. The online funnel captures ~68% of orders with a
+3.1-day average conversion cycle. The experience center network (600+ locations) drives test rides.
+Commercial Risks NPS significantly below category leaders — indicates service experience gap.
+Service satisfaction at 52% well below the 68% industry average — reputational risk.
+Repeat purchase rate of 22% vs 35% industry average signals loyalty deficit.
+Online-heavy model limits reach in Tier-3 and rural markets.
+Brand Equity Among Youth Ola Electric commands strong awareness (92% aided recall) among
+18–35 urban consumers — the fastest-growing buyer segment for personal EVs.
+Valuation, Retention & Comparable Analysis Customer Retention & Churn Performance
+The company's current 61% 12-month retention rate significantly lags the 71% industry average.
+Root Cause Analysis — Churn Drivers
+Service Delay & Unresolved Complaints 31% Critical Service Excellence program initiated
+Software Bugs / Feature Gaps (MoveOS) 18% High OTA update cadence increased
+Battery Performance Below Expectations 16% High Gen 2 battery + BMS OTA fix
+Competitive Product Launch (TVS, Ather) 14% Medium Pricing and feature parity push
+Spare Parts Unavailability 11% High Inventory buffer expansion
+Price Increase / Subsidy Reduction 6% Medium S1 X entry-level launch
+Lifestyle / Need Change 4% Low N/A (natural attrition)
+Fleet segment (8% of revenue) offers more predictable renewal visibility than retail.
+Share context · Ola Electric: Strong Gain (share 32%)

@@ -1,0 +1,27 @@
+{
+  "id": "gate_pass_clean",
+  "kind": "gate_pass",
+  "company": "CleanCo",
+  "deal_name": "CleanCo",
+  "description": "No statement-shaped sources — Gate 2 pass; discovery must not run.",
+  "expected_files": [],
+  "files": [
+    {
+      "filename": "org_chart.xlsx",
+      "doc_type": "CORPORATE_DOCS",
+      "sheets": ["Org"],
+      "role": "noise"
+    },
+    {
+      "filename": "nda_summary.xlsx",
+      "doc_type": "CORPORATE_DOCS",
+      "sheets": ["Notes"],
+      "role": "noise"
+    }
+  ],
+  "assert": {
+    "expect_discovery_run": false,
+    "expect_recovered": false,
+    "expect_false_promote": false
+  }
+}
