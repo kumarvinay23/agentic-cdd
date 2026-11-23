@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -13,6 +13,15 @@ from sqlalchemy.orm import Session
 from agetic_cdd_api.db import get_db
 from agetic_cdd_api.deps import AuthContext, get_current_auth
 from agetic_cdd_api.document_capabilities import list_capabilities
+from agetic_cdd_api.llm_request import (
+    HEADER_API_KEY,
+    HEADER_MODEL,
+    HEADER_PROVIDER,
+    LlmOptionsBody,
+    merge_llm_overrides,
+    override_from_body,
+    override_from_headers,
+)
 from agetic_cdd_api.services_deals import get_deal
 from agetic_cdd_api.services_documents import (
     build_decision_chain,
@@ -24,6 +33,7 @@ from agetic_cdd_api.services_documents import (
     post_message,
     put_document,
 )
+from agetic_cdd_api.services_llm import llm_last_invocation, llm_selection, use_llm_override
 from agetic_cdd_api.services_agent_documents import (
     build_agent_decision_chain,
     build_agent_suggestions,
@@ -49,6 +59,29 @@ class DocumentMessageBody(BaseModel):
         default=None,
         description="Optional explicit capability ids from the catalog panel",
     )
+    llm: LlmOptionsBody | None = Field(
+        default=None,
+        description="Optional {provider, model, api_key} override for this turn",
+    )
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    llm_api_key: str | None = None
+
+
+def _resolve_message_llm(
+    body: DocumentMessageBody,
+    *,
+    x_agetic_llm_provider: str | None,
+    x_agetic_llm_model: str | None,
+    x_agetic_llm_api_key: str | None,
+):
+    header_ov = override_from_headers(
+        x_agetic_llm_provider=x_agetic_llm_provider,
+        x_agetic_llm_model=x_agetic_llm_model,
+        x_agetic_llm_api_key=x_agetic_llm_api_key,
+    )
+    body_ov = override_from_body(body, source="body")
+    return merge_llm_overrides(header_ov, body_ov)
 
 
 def _sse_pack(event: dict) -> str:
@@ -93,14 +126,34 @@ def create_document_message(
     body: DocumentMessageBody,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
+    x_agetic_llm_provider: str | None = Header(default=None, alias=HEADER_PROVIDER),
+    x_agetic_llm_model: str | None = Header(default=None, alias=HEADER_MODEL),
+    x_agetic_llm_api_key: str | None = Header(default=None, alias=HEADER_API_KEY),
 ) -> dict:
     deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
-    return post_message(
-        deal,
-        content=body.content,
-        capability_ids=body.capability_ids,
-        db=db,
+    llm_ov = _resolve_message_llm(
+        body,
+        x_agetic_llm_provider=x_agetic_llm_provider,
+        x_agetic_llm_model=x_agetic_llm_model,
+        x_agetic_llm_api_key=x_agetic_llm_api_key,
     )
+    with use_llm_override(llm_ov):
+        result = post_message(
+            deal,
+            content=body.content,
+            capability_ids=body.capability_ids,
+            db=db,
+        )
+        if isinstance(result, dict):
+            data = dict(result.get("data") or result)
+            data["llm"] = llm_selection()
+            inv = llm_last_invocation()
+            if inv:
+                data["llm_invoked"] = inv
+            if "data" in result:
+                return {**result, "data": data}
+            return {**result, "llm": data["llm"], "llm_invoked": inv}
+        return result
 
 
 @router.post("/portfolios/{deal_id}/documents/messages/stream")
@@ -109,18 +162,32 @@ def stream_document_message(
     body: DocumentMessageBody,
     auth: AuthContext = Depends(get_current_auth),
     db: Session = Depends(get_db),
+    x_agetic_llm_provider: str | None = Header(default=None, alias=HEADER_PROVIDER),
+    x_agetic_llm_model: str | None = Header(default=None, alias=HEADER_MODEL),
+    x_agetic_llm_api_key: str | None = Header(default=None, alias=HEADER_API_KEY),
 ) -> StreamingResponse:
     """SSE progress for document research (task running→done, then final turn)."""
     deal = get_deal(db, org_id=auth.organization.id, deal_id=deal_id)
+    llm_ov = _resolve_message_llm(
+        body,
+        x_agetic_llm_provider=x_agetic_llm_provider,
+        x_agetic_llm_model=x_agetic_llm_model,
+        x_agetic_llm_api_key=x_agetic_llm_api_key,
+    )
 
     def generate() -> Iterator[str]:
-        for event in iter_post_message_events(
-            deal,
-            content=body.content,
-            capability_ids=body.capability_ids,
-            db=db,
-        ):
-            yield _sse_pack(event)
+        with use_llm_override(llm_ov):
+            yield _sse_pack({"type": "llm", "llm": llm_selection()})
+            for event in iter_post_message_events(
+                deal,
+                content=body.content,
+                capability_ids=body.capability_ids,
+                db=db,
+            ):
+                yield _sse_pack(event)
+            inv = llm_last_invocation()
+            if inv:
+                yield _sse_pack({"type": "llm_invoked", "llm_invoked": inv})
 
     return StreamingResponse(
         generate(),

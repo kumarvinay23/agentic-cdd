@@ -13,6 +13,7 @@ from agetic_cdd_api.fdd_schemas import (
 from agetic_cdd_api.services_fdd_claims import (
     evaluate_financial_claim,
     index_facts,
+    is_zero_claim_false_gap,
     build_claims_ledger,
 )
 
@@ -80,6 +81,130 @@ def test_false_gap_when_agent_says_missing_but_no_fact() -> None:
     )
     out = evaluate_financial_claim(claim, {})
     assert out.verdict == "false_gap"
+
+
+def test_zero_claim_vs_material_databook_is_false_gap() -> None:
+    """Test6/Umoja: Revenue/EBITDA = 0 vs full-year databook is not a real contradiction."""
+    closed = date.today().year - 1
+    facts = index_facts([_fact("revenue", closed, 13.282)])
+    claim = ClaimsLedgerEntry(
+        claim_id="c_zero",
+        source_agent="historical_performance",
+        text="Revenue FY2025 = 0 USD M",
+        kind="financial",
+        metric_key="revenue",
+        fiscal_year=closed,
+        claimed_value=0.0,
+    )
+    out = evaluate_financial_claim(claim, facts)
+    assert out.verdict == "false_gap"
+    assert out.test_result == "false_gap"
+    assert out.databook_value == 13.282
+    assert out.failed is True
+
+    facts_neg = index_facts([_fact("ebitda", closed, -2.469)])
+    claim_neg = ClaimsLedgerEntry(
+        claim_id="c_zero_ebitda",
+        source_agent="historical_performance",
+        text="EBITDA FY2025 = 0",
+        kind="financial",
+        metric_key="ebitda",
+        fiscal_year=closed,
+        claimed_value=0.0,
+    )
+    assert evaluate_financial_claim(claim_neg, facts_neg).verdict == "false_gap"
+
+    # Real pack-vs-book gap stays contradicted.
+    real = ClaimsLedgerEntry(
+        claim_id="c_real",
+        source_agent="historical_performance",
+        text="revenue_fy_usd_m = 13.412",
+        kind="financial",
+        metric_key="revenue",
+        fiscal_year=closed,
+        claimed_value=13.412,
+    )
+    assert evaluate_financial_claim(real, facts).verdict == "contradicted"
+
+
+def test_is_zero_claim_false_gap_helper() -> None:
+    assert is_zero_claim_false_gap(0.0, 13.282) is True
+    assert is_zero_claim_false_gap(0.0, 0.156) is True
+    assert is_zero_claim_false_gap(0.001, 13.282) is True
+    assert is_zero_claim_false_gap(13.412, 13.282) is False
+    assert is_zero_claim_false_gap(0.0, 0.01) is False
+    assert is_zero_claim_false_gap(0.2, 13.282) is False
+
+
+def test_sticky_rfi_skips_zero_claim_vs_material_book(tmp_path, monkeypatch) -> None:
+    """Full-year gap RFIs from Revenue=0 claims must not open (Test6 pattern)."""
+    from agetic_cdd_api import services_deals as deals_mod
+    from agetic_cdd_api.fdd_schemas import InputKey, RequestListDoc, RequestListItem
+    from agetic_cdd_api.services_fdd_claims import _append_claim_requests
+    from agetic_cdd_api.services_fdd_store import save_request_list
+
+    root = tmp_path / "deals"
+    root.mkdir()
+    monkeypatch.setattr(deals_mod, "deals_root", lambda: root)
+    slug = "zero-claim-rfi"
+    (root / slug).mkdir(parents=True)
+
+    save_request_list(
+        RequestListDoc(
+            run_id="run1",
+            deal_slug=slug,
+            updated_at="t",
+            items=[
+                RequestListItem(
+                    request_id="req_old",
+                    input_key=InputKey.DATABOOK,
+                    title=(
+                        "Reconcile FY2025 Revenue: monthly pack vs databook "
+                        "(gap 13.282)"
+                    ),
+                    detail="Reconcile",
+                    owner="deal_lead",
+                    claimed_value=0.0,
+                    databook_value=13.282,
+                )
+            ],
+        )
+    )
+
+    claims = [
+        ClaimsLedgerEntry(
+            claim_id="cl_zero",
+            source_agent="historical_performance",
+            text="Revenue FY2025 = 0 USD M",
+            kind="financial",
+            metric_key="revenue",
+            fiscal_year=2025,
+            claimed_value=0.0,
+            databook_value=13.282,
+            verdict="false_gap",
+            test_result="false_gap",
+            failed=True,
+        ),
+        ClaimsLedgerEntry(
+            claim_id="cl_real",
+            source_agent="historical_performance",
+            text="revenue_fy2025_usd_m = 13.412",
+            kind="financial",
+            metric_key="revenue",
+            fiscal_year=2025,
+            claimed_value=13.412,
+            databook_value=13.282,
+            verdict="contradicted",
+            test_result="contradicted",
+            failed=True,
+        ),
+    ]
+    doc = _append_claim_requests(deal_slug=slug, run_id="run1", claims=claims)
+    assert doc is not None
+    titles = " | ".join(i.title for i in doc.items)
+    assert "gap 13.282" not in titles
+    # Real small gap still opens an IR.
+    assert any("gap 0.130" in i.title for i in doc.items)
 
 
 def test_wrong_period_for_open_year() -> None:

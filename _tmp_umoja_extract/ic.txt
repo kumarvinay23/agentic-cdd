@@ -1,0 +1,1571 @@
+
+--- page 1 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+1
+INVESTMENT DUE DILIGENCE · INVESTMENT COMMITTEE MEMORANDUM
+IC Memo
+Investment Due Diligence — Umoja Health
+Valuation range · risk assessment · go/no-go recommendation · 100-day plan
+Document
+Investment Committee Memorandum
+Target
+Umoja Health
+Sector
+Healthcare & Life Sciences
+Scope
+Risk · Valuation · Synthesis
+Report Date
+23 November 2026
+Prepared By
+DiligenceIQ
+Document Reference
+IC-MEMO / FY26-Q4 / 001
+Classification
+IC — Voting Members
+STRICTLY PRIVATE & CONFIDENTIAL. This document has been prepared for the exclusive use of the
+Investment Committee. Distribution, reproduction or disclosure to any third party is prohibited without prior
+written consent.
+
+
+--- page 2 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+2
+Basis of Preparation
+This Investment Committee Memorandum for Umoja Health (sector: Healthcare & Life Sciences) aggregates
+Verdict Store and Deep Dive workflow outputs. Figures are taken from deal financials and VDR-backed agent
+specs; nothing is re-derived in this builder.
+Insight: Workflow coverage: 47 agent output(s) available · 633 VDR document(s) in the deal room · sector
+resolved as Healthcare & Life Sciences.
+Preparation principles
+  Prefer Final Verdict agents (valuation_modeling, ic_synthesis, recommendation, trading_comps,
+precedent_transactions, execution_risk) over thin RAG narratives.
+ Each section closes with a Diligence Workflow Read citing named agents and a provenance footer (“Not
+re-derived here”).
+ CONFIRMED attributes are backed by structured Verdict/Deep Dive fields; ASSUMED marks interpolated or
+missing fields.
+ Sensitivity is inferred from DCF scenarios and recommendation returns when a dedicated
+sensitivity_analysis store is absent.
+ Sector and legal-entity labels are taken from deal metadata when set; otherwise inferred from Foundation /
+market agent corpus (never hard-coded per deal).
+ Audience: IC voting members. Classification: Strictly Private & Confidential.
+Document map
+ Part
+Sections
+Primary decision use
+1.0 Risk & Opportunity
+1.1–1.4
+Underwrite external & internal risk; growth & synergy upside
+2.0 Valuation
+2.1–2.3
+DCF / comps / precedents; sensitivity; bid range
+3.0 Executive Synthesis
+3.1–3.3
+Go/No-Go, CPs, 100-day plan, sourcing
+Data-room inventory (cited basis)
+Primary VDR files available to this build. Section-level provenance lists the subset actually cited by each workflow
+agent.
+#
+Document
+Role
+1
+1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx
+VDR
+2
+1.08 Builders Reference List.docx
+VDR
+3
+1.25 VHP Target Medicaid States w PIPs _ VAS.xlsx
+VDR
+4
+1099 Onboarding Tracker.xlsx
+VDR
+5
+1172555 Contract.pdf
+VDR
+6
+2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf
+VDR
+7
+2020-12-21 Agreement between El Paso Healthcare and VHP.pdf
+VDR
+8
+2021-01-28 Agreement between Dr. Kurian and VHP.pdf
+VDR
+9
+2021-02-02 Addendum between El Paso Healthcare and VHP.pdf
+VDR
+10
+2021-06-25 Agreement between Dr. Lucian Panait _ VHP.pdf
+VDR
+11
+2021-08-27 Agreement between ALGSN Bariatrics and VHP.pdf
+VDR
+12
+2021-09-14 Addendum between Dr. Kurian and VHP.pdf
+VDR
+
+
+--- page 3 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+3
+#
+Document
+Role
+13
+2022-01-11 Agreement between Alvaro Garcia and VHP.pdf
+VDR
+14
+2022-03-08 Agreement between Auralia _ VHP.pdf
+VDR
+15
+2022-04-07 Addendum between Astera Cancer Care and VHP.pdf
+VDR
+16
+2022-05-18 Addendum between Auralia _ VHP.pdf
+VDR
+17
+2022-08-25 Agreement between Dr. Jon Williams and VHP.pdf
+VDR
+18
+2022-09-27 Addendum between Jon Williams and VHP.pdf
+VDR
+19
+2022-10-04 Agreement between CommonSpirit Health and VHP.pdf
+VDR
+20
+2022-11-07 Amendment between El Paso Healthcare and VHP.pdf
+VDR
+21
+2023-03-13 Addendum between Dr. Kurian and VHP.pdf
+VDR
+22
+2023-03-15 Agreement between El Paso Healthcare and VHP.pdf
+VDR
+23
+2023-05-25 Agreement between Columbia University and VHP.pdf
+VDR
+24
+2023-06-09 Amendment between COPES and VHP.pdf
+VDR
+
+
+--- page 4 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+4
+Table of Contents
+Also included in the body: Basis of Preparation and part divider pages (soft TOC — not separately numbered as primary
+section entries).
+Basis of Preparation
+1.0 Risk & Opportunity ...................... 05
+ 1.1 Market Risk ............................. 06
+1.2 Internal Risk ........................... 10
+1.3 Growth Opportunities .................... 14
+1.4 Synergies ............................... 17
+2.0 Valuation ............................... 19
+ 2.1 Valuation Model ......................... 20
+2.2 Sensitivity Analysis .................... 24
+2.3 Final Valuation Range ................... 27
+3.0 Executive Synthesis ..................... 29
+ 3.1 Executive Summary ....................... 30
+3.2 Final Recommendation .................... 33
+3.3 Appendices & Sourcing ................... 35
+
+
+--- page 5 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+5
+
+
+--- page 6 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+6
+01
+Risk & Opportunity
+Aggregating market and internal risks, growth opportunities and synergies.
+ DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+
+
+--- page 7 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+7
+1.1 Market Risk
+External-environment exposure assessment for Umoja Health (Healthcare & Life Sciences).
+1.1.3 Risk flags
+  Information request: monthly early-warning indicator
+ There is a strict no refund policy for packages.
+1.1.4 Market volume context
+ Metric
+Value
+Attribute
+CAGR %
+CONFIRMED
+Penetration %
+CONFIRMED
+ Information request: market growth from series endpoints and years elapsed (not stated in the data room)
+1.1.6 Demand drivers
+  Driver: Downstream market agents blocked until… Uses market_volume_and_growth
+ Rank 1: Downstream market agents blocked until… Uses market_volume_and_growth
+1.1.7 Market perimeter & framing
+Delivery of dry goods and products/services to improve equitable access to quality, nutritious food (DOC: 1, DOC:
+2).; Food banks and public health / social services organisations (DOC: 2).
+  service: Delivery of dry goods and products/services to improve equitable access to quality, nutritious food
+(DOC: 1, DOC: 2).
+ customer_types: Food banks and public health / social services organisations (DOC: 2).
+ geography: le largest business unit, comprising… ~60% (DOC: Dallas College Amendment to Fund
+Marketplace Supplier Services FINAL.docx _1.pdf, DOC: Growth _ Go-To-Market__Competitor Analysis
+2024.xlsx, DOC: Growth _ Go-To-Market__Contracting Sample Workflow.pdf)
+ value_chain_stage: What & How Select location for new East Coast warehouse and invest in lease,
+build-out, and ramp-up of new warehouse; Engage salesforce to support Mauricio…
+ Approval gate: pending_approval · blocks downstream=True
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Market Risk: reviewed workflow output (Market Risk).
+ Market Volume & Growth: Bottom-up: Information request: bottom-up arithmetic: units × capture × realised
+price (not stated in the data room)
+ Market Volume & Growth: Market: Information request: market growth from series endpoints and years
+elapsed (not stated in the data room)
+ Market Volume & Growth: Company: Information request: company historical growth from accounting
+records (not stated in the data room)
+ Competitive Differentiation: Test UNTESTED: Information request: advantage claim to test (not stated in the
+data room)
+ Competitive Differentiation: Claim: Information request: advantage claimed for this business (not stated in
+the data room)
+ Customer Segmentation: Concentration unassessed — ledger requested; risk rating withheld
+ Buying Behavior: 2 segment purchase map(s)
+ Buying Behavior: Seasonality not asserted — data thin
+ Capital Structure: 4 facility(ies) with balances
+Source: this deal's diligence workflow output — the Market Risk, Market Volume & Growth, Competitive Differentiation,
+Customer Segmentation, Buying Behavior… agents. Not re-derived here. That analysis cites: 2020-12-14 Business
+Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between El Paso Healthcare
+
+
+--- page 8 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+8
+and VHP.pdf, 2021-02-02 Addendum between El Paso Healthcare and VHP.pdf, 2022-04-07 Addendum between
+Astera Cancer Care and VHP.pdf….
+
+
+--- page 9 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+9
+1.2 Internal Risk
+Operating, technology and human-capital exposure.
+Insight Snapshot
+Insight: Internal risk posture from operational and technology agents.
+Item
+What the workflow found
+Agent
+Source document(s)
+ntity to meet its objectives
+(security incidents)
+maturity 4.0/5; Incident Response: Employee
+Responsibility Incident Response:
+Responsibility Incident Resp
+Internal Risk
+Technology _
+Capabilities__VHP SOC
+2 Type 2 Final Audit
+Report 2024.pdf,
+Technology _ Capabilitie
+s__Architecture and
+Scalability.pdf…
+ted unauthorized disclosures
+(including breaches)
+maturity 4.0/5; Contracts Data Breach Policy
+The entity obtains privacy commitments from
+vendo
+Internal Risk
+Technology _
+Capabilities__VHP SOC
+2 Type 2 Final Audit
+Report 2024.pdf,
+Technology _ Capabilitie
+s__Architecture and
+Scalability.pdf…
+ll employees and contractors
+(who are granted system
+access)
+maturity 1.1/5; Inspected the evidence
+provided for
+Internal Risk
+Technology _
+Capabilities__VHP SOC
+2 Type 2 Final Audit
+Report 2024.pdf,
+Technology _ Capabilitie
+s__Architecture and
+Scalability.pdf…
+rforms a root cause analysis
+(RCA)
+maturity 3.0/5; CC.7.4 CC
+Internal Risk
+Technology _
+Capabilities__VHP SOC
+2 Type 2 Final Audit
+Report 2024.pdf,
+Technology _ Capabilitie
+s__Architecture and
+Scalability.pdf…
+ty of the Security Architect
+(Head of IT)
+maturity 2.2/5; CC.7.4 Inspected the evidence
+provided for the Incident Response:
+Responsibilit
+Internal Risk
+Technology _
+Capabilities__VHP SOC
+2 Type 2 Final Audit
+Report 2024.pdf,
+Technology _ Capabilitie
+s__Architecture and
+Scalability.pdf…
+Information request:
+operational risks evidenced in
+incidents / KPI / downtime
+records
+Operational Risk
+Operations and Member
+Services Manager.png,
+2024 K-1 Umoja Supply
+Chain Solutions LLC -
+Hugh Williams.pdf…
+1.2.1 Technical risk register
+  Governance/control: Systems maturity — ll employees and contractors (who are granted system access)
+ Governance/control: Systems maturity — rforms a root cause analysis (RCA)
+ Governance/control: Systems maturity — ty of the Security Architect (Head of IT)
+1.2.2 Scalability notes
+  Low maturity: ll employees and contractors (who are granted system access) (1.1/5).
+ Low maturity: ty of the Security Architect (Head of IT) (2.2/5).
+ Key-person exposure: Technology Hank Morton (CFO) — Approvals, external relationships and strategic
+direction tied to CFO — continuity risk if Technology Hank Morton exits; succession: Not evidenced…
+
+
+--- page 10 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+10
+ Key-person exposure: Operations Finance (CEO) — Approvals, external relationships and strategic direction
+tied to CEO — continuity risk if Operations Finance exits; succession: Not evidenced in data…
+1.2.3 Key-person / retention
+Overall human capital risk: 2/10 · key persons: 3 · high flight risk: 0.
+  Key-person exposure — Technology Hank Morton (CFO).
+ Key-person exposure — Operations Finance (CEO).
+ Key-person exposure — Umoja Supply Chain Solutions (CEO).
+ No structured HR signals for Execution Risk.
+1.2.4 Customer stickiness signals
+  Same-pop · GRR Information request: gross revenue retention for the bridge period on the logos population,
+with new customers excluded from the numerator (not stated in the data room) · NRR Information request: net
+revenue retention for the bridge period on the logos population, with new customers excluded from the
+numerator (not stated in the data room)
+1.2.5 Data / KPI integrity
+  The risk register is drawn from records (incidents, downtime, rework, quality failures, safety events, staff
+turnover, system outages, permit/licence conditions) — not from a generic risk taxonomy.
+ Each risk is sized: how often it has occurred, what it cost, and what it would do to EBITDA if it recurred at
+that rate.
+ Controls in place are recorded with whether each has been **tested**. An untested control is not mitigation.
+ Risks already reflected in historical results are separated from risks that would be new or larger under the
+plan (higher volume, new geography, new service).
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Internal Risk: 3 key-person exposure(s)
+ Internal Risk: 3 observed control weakness(es)
+ Internal Risk: 0 tested / 1 untested control(s)
+ Operational Risk: 1 priced / protection risk(s)
+ Customer Stickiness: Same-pop · GRR Information request: gross revenue retention for the bridge period on
+the logos population, with new customers excluded from the numerator (not stated in the data room) · NRR
+Information request: net revenue retention for the bridge period on the logos population, with new customers
+excluded from the numerator (not stated in the data room)
+ Appendices: Claims: 60
+ Appendices: Sources: 80
+ Appendices: Citation: supports=2 unverified=38
+ Capital Structure: 4 facility(ies) with balances
+ Capital Structure: Gross debt ~50.5 USD M
+Source: this deal's diligence workflow output — the Internal Risk, Operational Risk, Customer Stickiness, Appendices,
+Capital Structure… agents. Not re-derived here. That analysis cites: Technology _ Capabilities__VHP SOC 2 Type 2
+Final Audit Report 2024.pdf, Technology _ Capabilities__Architecture and Scalability.pdf, 2026-01-11 Umoja - Series
+A-3 Convertible Note - Christopher Tapp Living Trust - signed.pdf, 2026-01-11 Umoja - Series A-3 Convertible Note -
+Christopher Tapp Living Trust_2 - signed.pdf….
+
+
+--- page 11 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+11
+1.3 Growth Opportunities
+Organic and inorganic upside levers.
+1.3.1 Market growth notes
+  Options are ranked by net value, payback and feasibility (with evidence and size). Success probabilities are
+not assigned without a basis. Buyer-funded options are called out.
+1.3.3 Adjacent workflow signals
+  Share not calculable / unassessed on matched basis
+ Movement · Information request: company whose share movement is measured (not stated in the data
+room): Information request: share delta in percentage points (pp) (not stated in the data room)
+ 1 accounts-vs-CIM gap(s)
+ Realised: Information request: realised net price after discounts, credits, surcharges (not stated in the data
+room)
+ Bottom-up: Information request: bottom-up arithmetic: units × capture × realised price (not stated in the data
+room)
+ Market: Information request: market growth from series endpoints and years elapsed (not stated in the data
+room)
+ Company: Information request: company historical growth from accounting records (not stated in the data
+room)
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Growth Opportunities: reviewed workflow output (Growth Opportunities).
+ Cost Structure: 5 information gap(s)
+ Historical Performance: 1 accounts-vs-CIM gap(s)
+ Market Share Strategy: Share not calculable / unassessed on matched basis
+ Market Share Strategy: Movement · Information request: company whose share movement is measured (not
+stated in the data room): Information request: share delta in percentage points (pp) (not stated in the data
+room)
+ Market Volume & Growth: Bottom-up: Information request: bottom-up arithmetic: units × capture × realised
+price (not stated in the data room)
+ Market Volume & Growth: Market: Information request: market growth from series endpoints and years
+elapsed (not stated in the data room)
+ Market Volume & Growth: Company: Information request: company historical growth from accounting
+records (not stated in the data room)
+ Operational Risk: 1 priced / protection risk(s)
+ Market Pricing: Realised: Information request: realised net price after discounts, credits, surcharges (not
+stated in the data room)
+Source: this deal's diligence workflow output — the Growth Opportunities, Cost Structure, Historical Performance,
+Market Share Strategy, Market Volume & Growth… agents. Not re-derived here. That analysis cites: 2020-12-14
+Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between El Paso
+Healthcare and VHP.pdf, 2021-02-02 Addendum between El Paso Healthcare and VHP.pdf, 2022-04-07 Addendum
+between Astera Cancer Care and VHP.pdf….
+
+
+--- page 12 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+12
+1.4 Synergies
+Cost-out, revenue-up and integration value-creation themes.
+Insight Snapshot
+Insight: No named acquirer — synergies cannot be underwritten
+Theme
+Agent
+Source document(s)
+Attribute
+No named acquirer — synergies cannot be
+underwritten
+Synergies
+2020-12-14 Business
+Associate Agreement
+between El Paso
+Healthcare and VHP.pdf,
+2020-12-21 Agreement
+between El Paso
+Healthcare and
+VHP.pdf…
+CONFIRMED
+1.4.1 Synergy notes
+  Synergies cannot be underwritten — no named acquirer.
+ Synergies stay out of the stand-alone valuation. They belong in a separate layer the committee can remove.
+ Unverified synergies are excluded from Final Valuation Range until bottom-up amounts and a named buyer
+are evidenced.
+ Reconcile Growth Opportunities and the stand-alone forecast so organic upside is not double-counted as
+buyer synergy.
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Synergies: No named acquirer — cannot underwrite
+Source: this deal's diligence workflow output — the Synergies agents. Not re-derived here. That analysis cites:
+2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between
+El Paso Healthcare and VHP.pdf, 2021-02-02 Addendum between El Paso Healthcare and VHP.pdf, 2022-04-07
+Addendum between Astera Cancer Care and VHP.pdf….
+
+
+--- page 13 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+13
+
+
+--- page 14 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+14
+02
+Valuation
+DCF, comps, precedents, sensitivity and recommended valuation band.
+ DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+
+
+--- page 15 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+15
+2.1 Valuation Model
+DCF, trading comps and precedent triangulation.
+Insight Snapshot
+Insight: Valuation model from Verdict Store.
+2.1.4 Trading comps
+ Metric
+Value
+Notes
+Peer median EV/Rev
+Nonex
+EV/EBITDA Nonex
+Peer median growth / GM
+None%
+GM None%
+ Deep Dive · market_definition: Market Definition for Umoja Health: perimeter on service, customer type,
+geography and value-chain stage from operating footprint (4/4 axes evidenced). Downstream market agents
+bl…
+2.1.5 Precedent transactions
+Precedent transaction set thin or missing — triangulation relies more on DCF/comps.
+  Uses compensation_alignment: Compensation Adjustment Table for Umoja Health (full bind · 4 source(s) ·
+extract=vdr · health_gaps=0). No structured HR signals for Compensation Alignment.
+2.1.6 Company / historical context
+  Sells: Delivery of dry goods and products/services to improve equitable access to quality, nutritious food
+(DOC: 1, DOC: 2).
+ Legal entity: Umoja Health
+ Ownership: LLC Ownership: Hugh Williams (Managing Member, 51%), Corey McLendon (Co-Owner, 49%)
+(DOC: 2). Inc. Authorized Capital Stock: 35,000,000 total shares (22,000,000 Common Stock, $0.00001 par
+value; 13,000,000 Preferred Stock, $0.00001 par value, subdivided into 5,000,000 Series A-1 Preferred,
+5,000,000 Series A-2 Preferred, and 3,000,000 Series A-3…
+ 1 accounts-vs-CIM gap(s)
+ DCF is not supported until the Cash Flow agent's EBITDA-to-cash bridge is ready — do not invent forecast
+cash flows.
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+ Valuation Model: Final range withheld — Earnings quality / declared earnings
+ Historical Performance: 1 accounts-vs-CIM gap(s)
+ Company Background: Sells: Delivery of dry goods and products/services to improve equitable access to
+quality, nutritious food (DOC: 1, DOC: 2).
+ Company Background: Legal entity: Umoja Health
+ Company Background: Ownership: LLC Ownership: Hugh Williams (Managing Member, 51%), Corey
+McLendon (Co-Owner, 49%) (DOC: 2). Inc. Authorized Capital Stock: 35,000,000 total shares (22,000,000
+Common Stock, $0.00001 par value; 13,000,000 Preferred Stock, $0.00001 par value, subdivided into
+5,000,000 Series A-1 Preferred, 5,000,000 Series A-2 Preferred, and 3,000,000 Series A-3…
+ Market Pricing: Realised: Information request: realised net price after discounts, credits, surcharges (not
+stated in the data room)
+Source: this deal's diligence workflow output — the Valuation Model, Historical Performance, Company Background,
+Market Pricing agents. Not re-derived here. That analysis cites: Chief Financial Officer.docx, Financials__Supplemental
+Diligence Schedules _Expense Details.pdf, Financials__VHP Balance Sheet YE 2024.pdf, Financials__VHP Balance
+Sheet _2023-2024.pdf….
+
+
+--- page 16 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+16
+2.2 Sensitivity Analysis
+Key value drivers and scenario sensitivity.
+Insight Snapshot
+Insight: Sensitivity inferred from DCF scenarios and recommendation returns (no separate sensitivity_analysis
+store on this deal).
+No scenario sensitivity data available in store.
+2.2.3 Operational / supply sensitivity
+  2 stage(s), 0 SPOF(s)
+ Supplier facts reconciled — no term conflicts
+2.2.4 IC interpretation
+Downside cases should be underwritten against subsidy / competitive / retention risks in Part 1. Upside cases
+assume software moat durability and milestone delivery under the Conditional Go structure.
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+ Valuation Model: Final range withheld — Earnings quality / declared earnings
+ Supply Chain Resilience: 2 stage(s), 0 SPOF(s)
+ Supply Chain Resilience: Supplier facts reconciled — no term conflicts
+Source: this deal's diligence workflow output — the Valuation Model, Supply Chain Resilience agents. Not re-derived
+here. That analysis cites: Chief Financial Officer.docx, Financials__Supplemental Diligence Schedules _Expense
+Details.pdf, Financials__VHP Balance Sheet YE 2024.pdf, Financials__VHP Balance Sheet _2023-2024.pdf….
+
+
+--- page 17 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+17
+2.3 Final Valuation Range
+Triangulated final valuation range and implied entry multiples.
+Insight Snapshot
+Insight: Stance: Proceed with diligence on stated conditions — not invest.
+2.3.3 Deal structure / bid posture
+Deal structure: confirm treatment of BB&B Loan in sources & uses; Deal structure: confirm treatment of VHP
+Acquisition in sources & uses; Carry unsized risk with protection until sized: Information request: external risk for
+this business / geography
+Recommended IC posture: underwrite within the triangulated band; stage capital against conditions precedent in
+Part 3; avoid IPO-implied entry without milestone protection.
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+ Valuation Model: Final range withheld — Earnings quality / declared earnings
+Source: this deal's diligence workflow output — the Valuation Model agents. Not re-derived here. That analysis cites:
+Chief Financial Officer.docx, Financials__Supplemental Diligence Schedules _Expense Details.pdf, Financials__VHP
+Balance Sheet YE 2024.pdf, Financials__VHP Balance Sheet _2023-2024.pdf….
+
+
+--- page 18 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+18
+
+
+--- page 19 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+19
+03
+Executive Synthesis
+IC snapshot, final recommendation, 100-day plan and sourcing.
+ DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+
+
+--- page 20 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+20
+3.1 Executive Summary
+Investment Committee snapshot — thesis, pillars, risks and verdict.
+Insight Snapshot
+Insight: Strategy assessment for Umoja Health. Investment stance: Proceed with diligence on stated conditions
+— not invest. Confidence: blocked.
+Dimension
+Detail
+Attribute
+Target
+Umoja Health
+CONFIRMED
+Sector
+Healthcare & Life Sciences
+CONFIRMED
+Go / No-Go
+Proceed with diligence on stated conditions — not invest
+CONFIRMED
+Score
+—
+ASSUMED
+Confidence
+blocked
+CONFIRMED
+Label
+Proceed with diligence on stated conditions — not invest
+CONFIRMED
+3.1.2 Value-creation thesis
+Umoja Supply Chain Solutions (operating as Umoja Health) is a public benefit supply chain and logistics provider
+focused on improving access to nutritious food by delivering dry goods to food banks and related public…
+3.1.3 Investment pillars
+ Pillar
+Detail
+Thesis driver
+Management and VHP shareholder post-closing equity dilution remains capped below
+agreed equity plan targets.
+Thesis driver
+Provider minimum spend contract enforceability maintains recurring revenue floors
+across major practice accounts.
+Financial direction
+Information request: earnings trend from accounting records
+3.1.4 Primary risks
+ Risk
+Probability
+Impact
+Mitigation
+Valuation range blocked —
+Earnings quality / declared
+earnings
+Unresolved
+Published price
+range / walk-away
+discipline
+Owner: Valuation lead
+Valuation range blocked — Net
+debt (capital structure)
+Unresolved
+Published price
+range / walk-away
+discipline
+Owner: Valuation lead
+Valuation range blocked —
+Working capital
+Unresolved
+Published price
+range / walk-away
+discipline
+Owner: Valuation lead
+Blocked workstream:
+revenue_quality
+Unresolved
+Signing readiness /
+price lock
+Owner: Deal team
+Blocked workstream:
+customer_stickiness
+Unresolved
+Signing readiness /
+price lock
+No retention metric and no cohort were
+evidenced, so persistence of revenue cannot be
+measured: GRR, NRR and logo…
+Blocked workstream:
+swot_analysis
+Unresolved
+Signing readiness /
+price lock
+PASS: 13 item(s) traced to upstream agents; no
+invented numbers. Open blocker(s) present —
+positive tone must not…
+3.1.5 Strengths
+  Thesis driver: Management and VHP shareholder post-closing equity dilution remains capped below agreed
+equity plan targets. [deal_context_and_objectives]
+
+
+--- page 21 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+21
+ Thesis driver: Provider minimum spend contract enforceability maintains recurring revenue floors across
+major practice accounts. [deal_context_and_objectives]
+ Financial direction: Information request: earnings trend from accounting records [historical_performance]
+3.1.6 Concerns
+  Valuation range blocked — Earnings quality / declared earnings — could change Published price range /
+walk-away discipline (owner: Valuation lead) [valuation_modeling]
+ Valuation range blocked — Net debt (capital structure) — could change Published price range / walk-away
+discipline (owner: Valuation lead) [valuation_modeling]
+ Valuation range blocked — Working capital — could change Published price range / walk-away discipline
+(owner: Valuation lead) [valuation_modeling]
+ Blocked workstream: revenue_quality — could change Signing readiness / price lock (owner: Deal team)
+[revenue_quality]
+ Blocked workstream: customer_stickiness — could change Signing readiness / price lock (owner: Deal
+team) [customer_stickiness]
+ Blocked workstream: swot_analysis — could change Signing readiness / price lock (owner: Deal team)
+[swot_analysis]
+3.1.7 Deal context
+  Equity plan scenario targets post-closing VHP shareholder minimum threshold of 7.26% and leadership
+team pool of 4.55% to 5.51% post-dilution. [7.26%]
+ Provider package pricing models establish baseline contract floors, such as Dr. Jon Williams' minimum
+annual contract spend of $4,800 ($1,200/quarter). [$4,800 / year]
+ [Hypothesis] Target company achieves double-digit revenue growth while maintaining positive EBITDA
+margins across its virtual care package ecosystem.
+ Fact ledger: 18 evidenced / 18 rows
+ Sells: Delivery of dry goods and products/services to improve equitable access to quality, nutritious food
+(DOC: 1, DOC: 2).
+ Legal entity: Umoja Health
+ Ownership: LLC Ownership: Hugh Williams (Managing Member, 51%), Corey McLendon (Co-Owner, 49%)
+(DOC: 2). Inc. Authorized Capital Stock: 35,000,000 total shares (22,000,000 Common Stock, $0.00001 par
+value; 13,000,000 Preferred Stock, $0.00001 par value, subdivided into 5,000,000 Series A-1 Preferred,
+5,000,000 Series A-2 Preferred, and 3,000,000 Series A-3…
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Executive Summary: Stance: Proceed with diligence on stated conditions — not invest
+ Executive Summary: Depends: Thesis driver
+ Executive Summary: Depends: Thesis driver
+ Recommendation: Price: Reflect sized downside in price negotiation: Information request: largest contract
+value or last-downturn volume
+ Recommendation: CP: Condition precedent: retention agreement executed for Technology Hank Morton
+(CFO)
+ Recommendation: CP: Condition precedent: retention agreement executed for Operations Finance (CEO)
+ Historical Performance: 1 accounts-vs-CIM gap(s)
+ Deal Context & Objectives: Equity plan scenario targets post-closing VHP shareholder minimum threshold of
+7.26% and leadership team pool of 4.55% to 5.51% post-dilution. [7.26%]
+ Deal Context & Objectives: Provider package pricing models establish baseline contract floors, such as Dr.
+Jon Williams' minimum annual contract spend of $4,800 ($1,200/quarter). [$4,800 / year]
+ Deal Context & Objectives: [Hypothesis] Target company achieves double-digit revenue growth while
+maintaining positive EBITDA margins across its virtual care package ecosystem.
+
+
+--- page 22 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+22
+Source: this deal's diligence workflow output — the Executive Summary, Recommendation, Historical Performance,
+Deal Context & Objectives, Appendices… agents. Not re-derived here. That analysis cites: 2026-03-31 Amended and
+Restated Certificate of Incorporation - Umoja Supply Chain DE PBC _Executed and Filed.pdf, 2026-01-30 Umoja -
+Action by UWC in Lieu of the Organizational Meeting of the Board of Directors.pdf, 1.03 DRAFT Umoja - Equity Plan
+_UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx….
+
+
+--- page 23 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+23
+3.2 Final Recommendation
+Go/No-Go, conditions precedent and 100-day plan.
+Insight Snapshot
+Insight: Recommendation: Proceed with diligence on stated conditions — not invest. Confidence: blocked.
+Structure: Deal structure: confirm treatment of BB&B Loan in sources & uses; Deal structure: confirm treatment
+of VHP Acquisition in sources & uses; Carry unsized risk with protection until sized: Information…
+3.2.1 IC voting frame
+ Question
+Workflow answer
+Attribute
+Go / No-Go
+Proceed with diligence on stated conditions — not invest
+CONFIRMED
+Confidence
+blocked
+CONFIRMED
+Structure
+Deal structure: confirm treatment of BB&B Loan in sources &
+uses; Deal structure: confirm treatment of VHP Acquisition in
+sources & uses; Carry unsized risk with protection until…
+CONFIRMED
+Base IRR / MOIC
+None% / Nonex
+CONFIRMED
+3.2.2 Conditions precedent
+  CP: Condition precedent: retention agreement executed for Technology Hank Morton (CFO) — owner:
+Buyer HR / deal counsel; test: Signed retention / employment continuity for Technology Hank Morton (CFO)
+[internal_risk]
+ CP: Condition precedent: retention agreement executed for Operations Finance (CEO) — owner: Buyer HR /
+deal counsel; test: Signed retention / employment continuity for Operations Finance (CEO) [internal_risk]
+ CP: Condition precedent: retention agreement executed for Umoja Supply Chain Solutions (CEO) — owner:
+Buyer HR / deal counsel; test: Signed retention / employment continuity for Umoja Supply Chain Solutions
+(CEO) [internal_risk]
+ CP: Condition precedent: complete testing of Information request: named controls in scope for testing —
+owner: Security / compliance lead; test: Test report issued with no open critical findings for: Information
+request: named controls in scope for testing [internal_risk]
+ CP: Condition precedent: Consent / notification — owner: Regulatory counsel; test: Evidence of clearance:
+Consent / notification [regulatory_compliance]
+ CP: Condition precedent: Indemnity / escrow — owner: Regulatory counsel; test: Evidence of clearance:
+Indemnity / escrow [regulatory_compliance]
+ CP: Resolve open SWOT blocker before decision lock: Key-person exposure — Operations Finance (CEO).
+[internal_risk] — owner: Deal team; test: Blocker cleared or carried with named protection: Key-person
+exposure — Operations Finance (CEO). [internal_risk] [swot_analysis]
+ CP: Resolve open SWOT blocker before decision lock: Key-person exposure — Technology Hank Morton
+(CFO). [internal_risk] — owner: Deal team; test: Blocker cleared or carried with named protection: Key-person
+exposure — Technology Hank Morton (CFO). [internal_risk] [swot_analysis]
+3.2.3 100-day plan
+  Day 0–100: Key-person retention / succession plan for Technology Hank Morton (CFO) [internal_risk]
+ Day 0–100: Key-person retention / succession plan for Operations Finance (CEO) [internal_risk]
+ Day 0–100: Key-person retention / succession plan for Umoja Supply Chain Solutions (CEO) [internal_risk]
+ Day 0–100: Control / systems remediation: Systems maturity — ll employees and contractors (who are
+granted system access) [internal_risk]
+ Day 0–100: Control / systems remediation: Systems maturity — rforms a root cause analysis (RCA)
+[internal_risk]
+3.2.6 Supporting commercial signals
+  Research design proposed — sentiment evidence thin
+ Test UNTESTED: Information request: advantage claim to test (not stated in the data room)
+
+
+--- page 24 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+24
+ Claim: Information request: advantage claimed for this business (not stated in the data room)
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Recommendation: Price: Reflect sized downside in price negotiation: Information request: largest contract
+value or last-downturn volume
+ Recommendation: CP: Condition precedent: retention agreement executed for Technology Hank Morton
+(CFO)
+ Recommendation: CP: Condition precedent: retention agreement executed for Operations Finance (CEO)
+ Valuation Model: Top sensitivity driver: Information request: assumption that moves value
+ Valuation Model: Sensitivity grid direction unchecked
+ Valuation Model: Final range withheld — Earnings quality / declared earnings
+ Executive Summary: Stance: Proceed with diligence on stated conditions — not invest
+ Executive Summary: Depends: Thesis driver
+ Executive Summary: Depends: Thesis driver
+ Appendices: Claims: 60
+Source: this deal's diligence workflow output — the Recommendation, Valuation Model, Executive Summary,
+Appendices, Historical Performance… agents. Not re-derived here. That analysis cites: Umoja Term Sheet.pdf,
+2020-12-14 Business Associate Agreement between El Paso Healthcare and VHP.pdf, 2020-12-21 Agreement between
+El Paso Healthcare and VHP.pdf, Technology _ Capabilities__VHP SOC 2 Type 2 Final Audit Report 2024.pdf….
+
+
+--- page 25 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+25
+3.3 Appendices & Sourcing
+Claim / evidence / calculation registers and citation check (or agent → source index when Appendices agent is absent).
+Insight Snapshot
+Insight: Appendices for Umoja Health. 60 claim(s). 80 evidence row(s). 4 calculation(s). 80 source(s). citation
+supports=2 unverified=38
+3.3.0 Claim register (Appendices agent)
+ Claim ID
+Text
+Category
+Locator
+SAM-01
+Covered: Deal / Strategy
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+SAM-02
+Covered: Company / Management
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+SAM-03
+Covered: Market / Competition
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+SAM-04
+Covered: Customer
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+SAM-05
+Covered: Operations
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+SAM-06
+Covered: Legal / ESG
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+DCAO-01
+Target: Umoja Health
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+DCAO-02
+Equity plan scenario targets post-closing VHP
+shareholder minimum threshold of 7
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+DCAO-03
+Provider package pricing models establish
+baseline contract floors, such as Dr.
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+DCAO-04
+[Hypothesis] Target company achieves
+double-digit revenue growth while maintaini
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+DCAO-05
+Fact ledger: 18 evidenced / 18 rows
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+DCAO-06
+VDR_PRIMARY
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED
+CB-01
+Sells: Delivery of dry goods and products/services
+to improve equitable access t
+VDR_PRIMARY
+2026-03-31 Amended and
+Restated Certific
+CB-02
+Legal entity: Umoja Health
+VDR_PRIMARY
+2026-03-31 Amended and
+Restated Certific
+CB-03
+Ownership: LLC Ownership: Hugh Williams
+(Managing Member, 51%), Corey McLendon (
+VDR_PRIMARY
+2026-03-31 Amended and
+Restated Certific
+CB-04
+VDR_PRIMARY
+2026-03-31 Amended and
+Restated Certific
+CB-INS
+Umoja Supply Chain Solutions (operating as
+Umoja Health) is a public benefit sup
+VDR_PRIMARY
+2026-03-31 Amended and
+Restated Certific
+HP-01
+2 accounting period(s) published
+VDR_PRIMARY
+Financials__VHP Income
+Statement _2023.p
+HP-02
+1 accounts-vs-CIM gap(s)
+VDR_PRIMARY
+Financials__VHP Income
+Statement _2023.p
+HP-03
+Databook promoted · 22 P&L line(s)
+VDR_PRIMARY
+Financials__VHP Income
+Statement _2023.p
+3.3.0b Citation check summary
+
+
+--- page 26 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+26
+ Claims checked: 40
+ Supports: 2; Unverified: 38; Does not support: 0
+ Sources linked: 4; Unlinked: 36
+ Availability is not verification — present in room ≠ reopened.
+3.3.1 Agent source index
+ Agent
+Code
+Slug
+Source document(s)
+Appendices
+FV-08
+appendices
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED 10.20.2025.xlsx, 1.08 Builders
+Reference List.docx, 1.25 VHP Target
+Medicaid States w PIPs _ VAS.xlsx
+Buying Behavior
+DD-09
+buying_behavior
+Current Customers Opportunities _ Costs _
+Ctts.xlsx, Current Customers Opportunities
+_ Costs.xlsx, Customer Service Manager
+Jd.docx
+Capital Structure
+DD-24
+capital_structure
+Business Model__INTERNAL Margins
+Sheet HCSC SSBCI 02.24.xlsx, Business
+Model__VHP Forecast Model 2025-2027
+_6-10-2025.xlsx, Chief Financial
+Officer.docx
+Cash Flow
+DD-24a
+cash_flow
+Chief Financial Officer.docx,
+Financials__Supplemental Diligence
+Schedules _Expense Details.pdf,
+Financials__VHP Balance Sheet YE
+2024.pdf
+Cdd Deck
+cdd_deck
+Umoja_Health_CDD_Deck.pptx
+Company Background
+F-05
+company_background
+2026-03-31 Amended and Restated
+Certificate of Incorporation - Umoja Supply
+Chain DE PBC _Executed and Filed.pdf,
+2026-01-30 Umoja - Action by UWC in Lieu
+of the Organizational Meeting of the Board
+of Directors.pdf,…
+Compensation Alignment
+FV-02
+compensation_alignment
+2026-01-30 Umoja - Action by UWC in Lieu
+of the Organizational Meeting of the Board
+of Directors.pdf, 6.4 Management _
+Employees__Umoja Health Salesperson
+Incentive Compensation Policy.pdf, 6.4
+Management _…
+Competitive Differentiation
+DD-06
+competitive_differentiation
+Dallas College Amendment to Fund
+Marketplace Supplier Services FINAL.docx
+_1.pdf, Growth _
+Go-To-Market__Competitor Analysis
+2024.xlsx, Growth _
+Go-To-Market__Contracting Sample
+Workflow.pdf
+Competitor Identification
+DD-04
+competitor_identification
+Growth _ Go-To-Market__Competitor
+Analysis 2024.xlsx, Competitor Analysis
+2024.xlsx, Dallas College Amendment to
+Fund Marketplace Supplier Services
+FINAL.docx _1.pdf
+Cost Structure
+DD-13
+cost_structure
+2024 K-1 Umoja Supply Chain Solutions
+LLC - Hugh Williams.pdf, 2026-01-30
+Umoja Supply Chain Solutions_ LLC -
+Member Consent re Conversion.pdf,
+2026-02-03 Umoja Invoice v1.pdf
+Customer Satisfaction
+DD-12
+customer_satisfaction
+6.4 Management _ Employees__Umoja
+Health Salesperson Incentive
+Compensation Policy.pdf, CalFoods
+Logistics_IN2509025828.pdf, Current
+Customers Opportunities _ Costs _
+Ctts.xlsx
+
+
+--- page 27 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+27
+Agent
+Code
+Slug
+Source document(s)
+Customer Segmentation
+DD-08
+customer_segmentation
+Current Customers Opportunities _ Costs _
+Ctts.xlsx, Current Customers Opportunities
+_ Costs.xlsx, Customer Service Manager
+Jd.docx
+Customer Stickiness
+DD-11
+customer_stickiness
+6.4 Management _ Employees__Umoja
+Health Salesperson Incentive
+Compensation Policy.pdf, CalFoods
+Logistics_IN2509025828.pdf, Current
+Customers Opportunities _ Costs _
+Ctts.xlsx
+Deal Context & Objectives
+deal_context_and_objectiv
+es
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED 10.20.2025.xlsx, 1.08 Builders
+Reference List.docx, 1.25 VHP Target
+Medicaid States w PIPs _ VAS.xlsx
+Demand Drivers
+DD-03
+demand_drivers
+PO 38621 Umoja Health _Weinberg
+Regional Food Bank.pdf, 2020-12-14
+Business Associate Agreement between El
+Paso Healthcare and VHP.pdf, 2020-12-21
+Agreement between El Paso Healthcare
+and VHP.pdf
+ESG & Sustainability
+F-ESG
+esg_and_sustainability
+1172555 Contract.pdf, 2025.11.20 Initial
+Legal DD List - Project Umber.pdf,
+Addendum Contract.pdf
+Execution Risk
+FV-01
+execution_risk
+2026-01-30 Umoja - Action by UWC in Lieu
+of the Organizational Meeting of the Board
+of Directors.pdf, 1.03 DRAFT Umoja -
+Equity Plan _UPDATED 10.20.2025.xlsx,
+2026-01-30 Builders-Umoja - _1.5m
+Convertible Promissory…
+Export Consistency
+export_consistency
+Growth Opportunities
+DD-01b
+growth_opportunities
+2020-12-14 Business Associate Agreement
+between El Paso Healthcare and VHP.pdf,
+2020-12-21 Agreement between El Paso
+Healthcare and VHP.pdf, 2021-02-02
+Addendum between El Paso Healthcare
+and VHP.pdf
+Historical Performance
+DD-23
+historical_performance
+Financials__VHP Income Statement
+_2023.pdf, Financials__VHP Income
+Statement _2024.pdf, Chief Financial
+Officer.docx
+Ic Brief
+ic_brief
+company_background, execution_risk,
+fdd_facts
+Ic Memo
+ic_memo
+Umoja_Health_IC_Memo.pdf
+Executive Summary
+FV-06
+ic_synthesis
+2026-03-31 Amended and Restated
+Certificate of Incorporation - Umoja Supply
+Chain DE PBC _Executed and Filed.pdf,
+2026-01-30 Umoja - Action by UWC in Lieu
+of the Organizational Meeting of the Board
+of Directors.pdf,…
+Internal Risk
+DD-21
+internal_risk
+Technology _ Capabilities__VHP SOC 2
+Type 2 Final Audit Report 2024.pdf,
+Technology _ Capabilities__Architecture
+and Scalability.pdf, 2026-01-11 Umoja -
+Series A-3 Convertible Note - Christopher
+Tapp Living Trust -…
+IP & Technology
+F-IP
+ip_and_technology
+Technology _ Capabilities__Architecture
+and Scalability.pdf, Technology _
+Capabilities__Data base schema.png,
+Technology _
+Capabilities__Infrastructure.pdf
+
+
+--- page 28 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+28
+Agent
+Code
+Slug
+Source document(s)
+Management Quality
+F-06
+management_quality
+Org Chart__Umoja Org Chart _ VHP.pdf,
+Org Chart__Umoja Org Chart _ VHP.xlsx,
+Team _ Human Resources__VHP Org
+Chart May 2025.pdf
+Market Definition
+DD-02
+market_definition
+Growth _ Go-To-Market__VHP _ Aetna LA
+Overview and Back-Up Slides _full deck_
+3.17.25.pdf, Dallas College Amendment to
+Fund Marketplace Supplier Services
+FINAL.docx _1.pdf, Growth _
+Go-To-Market__Competitor Analysis…
+Market Intel Deck
+market_intel_deck
+Umoja_Health_Market_Intel_Deck.pptx
+Market Pricing
+DD-17
+market_pricing
+Dallas Community College Program Pricing
+5.10.24.docx, 1.03 DRAFT Umoja - Equity
+Plan _UPDATED 10.20.2025.xlsx, 1.08
+Builders Reference List.docx
+Market Risk
+DD-20
+market_risk
+2020-12-14 Business Associate Agreement
+between El Paso Healthcare and VHP.pdf,
+2020-12-21 Agreement between El Paso
+Healthcare and VHP.pdf, 2021-02-02
+Addendum between El Paso Healthcare
+and VHP.pdf
+Market Share Strategy
+DD-05
+market_share_strategy
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED 10.20.2025.xlsx, 1.08 Builders
+Reference List.docx, 2022-09-27
+Addendum between Jon Williams and
+VHP.pdf
+Market Volume & Growth
+DD-01
+market_volume_and_growt
+h
+Attachment 2 Sample Nutrition Assessment
+A.jpeg, Attachment 3 Sample Nutrition
+Assessment B.jpeg, Executive Vehicle
+Schedule.xlsx
+Operational Risk
+DD-19
+operational_risk
+Operations and Member Services
+Manager.png, 2024 K-1 Umoja Supply
+Chain Solutions LLC - Hugh Williams.pdf,
+2026-01-30 Umoja Supply Chain Solutions_
+LLC - Member Consent re Conversion.pdf
+Operations Dashboard
+operations_dashboard
+Umoja_Health_Operations_Dashboard.xlsx
+Precedent Transactions
+FV-04
+precedent_transactions
+Umoja - Builders Transaction -
+Subordination Agreement Short Form
+26.01.29 - signed.pdf, Umoja - Builders
+Transaction - Subordination Agreement
+Short Form 26.01.29V2.pdf
+Recommendation
+FV-07
+recommendation
+Umoja Term Sheet.pdf, 2020-12-14
+Business Associate Agreement between El
+Paso Healthcare and VHP.pdf, 2020-12-21
+Agreement between El Paso Healthcare
+and VHP.pdf
+Regulatory Compliance
+F-04
+regulatory_compliance
+NDA_CW68419_-_CSMS-Virtual_Health_P
+artners_Inc_ND.pdf, 1172555 Contract.pdf,
+2025.11.20 Initial Legal DD List - Project
+Umber.pdf
+Revenue Quality
+DD-09b
+revenue_quality
+2021-09-14 Addendum between Dr. Kurian
+and VHP.pdf, 2026-01-11 Umoja - Series
+A-3 Convertible Note - Andrews Road
+Group_ LLC - signed.pdf, 2026-01-11
+Umoja - Series A-3 Convertible Note - BEN
+WIRTSHAFTER - signed.pdf.
+Scope & Methodology
+scope_and_methodology
+1.03 DRAFT Umoja - Equity Plan
+_UPDATED 10.20.2025.xlsx, 1.08 Builders
+Reference List.docx, 1.25 VHP Target
+Medicaid States w PIPs _ VAS.xlsx
+
+
+--- page 29 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+29
+Agent
+Code
+Slug
+Source document(s)
+Strategic Direction
+F-01
+strategic_direction
+Umoja Teaser for Lenders - Spring
+2026.pdf, 2022-04-07 Addendum between
+Astera Cancer Care and VHP.pdf,
+2022-05-18 Addendum between Auralia _
+VHP.pdf
+Strategy Report
+strategy_report
+Umoja_Health_Strategy_Report.docx
+Supplier Dependence
+DD-22
+supplier_dependence
+2024 K-1 Umoja Supply Chain Solutions
+LLC - Hugh Williams.pdf, 2026-01-30
+Umoja Supply Chain Solutions_ LLC -
+Member Consent re Conversion.pdf,
+2026-03-31 Umoja Supply Chain Solutions
+LLC - Board Member Agreement…
+Supply Chain Resilience
+DD-14
+supply_chain_resilience
+2024 K-1 Umoja Supply Chain Solutions
+LLC - Hugh Williams.pdf, 2026-01-30
+Umoja Supply Chain Solutions_ LLC -
+Member Consent re Conversion.pdf,
+2026-03-31 Umoja Supply Chain Solutions
+LLC - Board Member Agreement…
+SWOT Analysis
+DD-07
+swot_analysis
+Dallas College Amendment to Fund
+Marketplace Supplier Services FINAL.docx
+_1.pdf, Growth _
+Go-To-Market__Competitor Analysis
+2024.xlsx, Growth _
+Go-To-Market__Contracting Sample
+Workflow.pdf
+Synergies
+DD-06b
+synergies
+2020-12-14 Business Associate Agreement
+between El Paso Healthcare and VHP.pdf,
+2020-12-21 Agreement between El Paso
+Healthcare and VHP.pdf, 2021-02-02
+Addendum between El Paso Healthcare
+and VHP.pdf
+Trading Comps
+FV-03
+trading_comps
+Valuation Model
+FV-05
+valuation_modeling
+Chief Financial Officer.docx,
+Financials__Supplemental Diligence
+Schedules _Expense Details.pdf,
+Financials__VHP Balance Sheet YE
+2024.pdf
+3.3.1b Databook financial history (released)
+ Line
+FY values
+Unit
+Status
+EBITDA †
+doubtful (no final value)
+M
+doubtful
+EBITDA Margin †
+doubtful (no final value)
+%
+doubtful
+Gross Margin
+missing
+—
+missing
+Revenue †
+FY2029=0.0
+—
+doubtful
+YoY Growth
+missing
+—
+missing
+Accounts Payable †
+doubtful (no final value)
+M
+doubtful
+Accounts Receivable †
+doubtful (no final value)
+M
+doubtful
+Capex †
+doubtful (no final value)
+—
+doubtful
+Cash †
+doubtful (no final value)
+M
+doubtful
+Cost of Sales †
+doubtful (no final value)
+M
+doubtful
+Current Assets †
+doubtful (no final value)
+M
+doubtful
+Current Liabilities †
+doubtful (no final value)
+M
+doubtful
+† Doubtful — provisional released value, not final.
+
+
+--- page 30 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+30
+3.3.2 Scope & methodology notes
+  Covered: Deal / Strategy
+ Covered: Company / Management
+ Covered: Market / Competition
+ Covered: Customer
+ Covered: Operations
+ Covered: Legal / ESG
+ Covered: Financial
+ Questions evidenced: 3/10
+3.3.3 Storyline coverage
+ Section
+Primary agents
+#
+1.1 Market Risk
+market_risk, market_volume_and_growth,
+competitive_differentiation, customer_segmentation…
+7
+1.2 Internal Risk
+internal_risk, operational_risk, customer_stickiness,
+appendices…
+7
+1.3 Growth Opportunities
+growth_opportunities, cost_structure, historical_performance,
+market_share_strategy…
+9
+1.4 Synergies
+synergies
+1
+2.1 Valuation Model
+valuation_model, final_valuation_range, historical_performance,
+company_background…
+6
+2.2 Sensitivity Analysis
+sensitivity_analysis, supply_chain_resilience
+2
+2.3 Final Valuation Range
+final_valuation_range, sensitivity_analysis, valuation_model
+3
+3.1 Executive Summary
+executive_summary, recommendations, historical_performance,
+deal_context_and_objectives…
+10
+3.2 Final Recommendation
+recommendations, final_valuation_range, executive_summary,
+appendices…
+8
+3.3 Appendices & Sourcing
+appendices, scope_and_methodology
+2
+3.3.4 Attribute legend
+ Attribute
+Meaning
+CONFIRMED
+Backed by a structured Verdict / Deep Dive / Foundation field present in this deal's stores.
+ASSUMED
+Interpolated, missing, or only weakly evidenced in agent output — treat as diligence gap.
+Not re-derived
+Figures shown as published by upstream agents; the IC Memo builder does not re-model.
+3.3.5 IC glossary (selected)
+  TAM / SAM / SOM — total / serviceable / obtainable market framing from market_volume_and_growth.
+ Football field — cross-method equity / EV band (DCF, trading comps, precedents).
+ WACC — discount rate used in DCF scenarios from valuation_modeling.
+ IRR / MOIC — returns under recommendation scenario set.
+ CP / 100-day plan — conditions precedent and post-close value-creation cadence from recommendation.
+ Sector label — Healthcare &amp; Life Sciences (resolved from deal metadata or market/foundation corpus).
+.W Diligence Workflow Read
+Section synthesised from named pipeline agents (figures from deal financials / VDR).
+  Appendices: Claims: 60
+
+
+--- page 31 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+31
+ Appendices: Sources: 80
+ Appendices: Citation: supports=2 unverified=38
+ Scope & Methodology: Covered: Deal / Strategy
+ Scope & Methodology: Covered: Company / Management
+ Scope & Methodology: Covered: Market / Competition
+Source: this deal's diligence workflow output — the Appendices, Scope & Methodology agents. Not re-derived here.
+That analysis cites: 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders Reference List.docx,
+1.25 VHP Target Medicaid States w PIPs _ VAS.xlsx, 1099 Onboarding Tracker.xlsx….
+
+
+--- page 32 ---
+Investment Committee Memo | Umoja Health
+Strictly Private & Confidential
+© DiligenceIQ · Investment Due Diligence
+32
+IC attestation
+This memorandum for Umoja Health (Healthcare & Life Sciences) is generated for Investment
+Committee voting members. It summarises Verdict Store and Deep Dive outputs available as of 23
+November 2026. Readers should cross-check material figures against source agent specs and the cited
+VDR documents before a final vote.
+Distribution control: Strictly Private & Confidential — DiligenceIQ deal workspace.

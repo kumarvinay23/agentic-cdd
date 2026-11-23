@@ -309,7 +309,11 @@ def test_claims_contradicted_opens_request(deal_root: Path) -> None:
     assert ledger.contradicted >= 1
     req = load_request_list(slug, m.run_id)
     assert req is not None
-    assert any("contradicted" in (i.title or "") for i in req.items)
+    # Client-facing titles are "Reconcile … (gap …)", not the ledger verdict word.
+    assert any(
+        "Reconcile" in (i.title or "") and "gap" in (i.title or "").lower()
+        for i in req.items
+    )
 
 
 def test_claims_unverifiable_without_facts(deal_root: Path) -> None:

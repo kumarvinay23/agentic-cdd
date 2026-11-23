@@ -172,15 +172,18 @@ def _findings(
     *,
     ctx: BuildContext | None = None,
 ) -> list[str]:
+    from agetic_cdd_api.services_metric_hygiene import (
+        filter_insight_lines,
+        is_polluted_insight,
+    )
+
     srcs = _agent_cite_sources(agent)
     out: list[str] = []
-    for item in agent.get("findings") or []:
-        if isinstance(item, str) and item.strip():
-            out.append(_clean(item, 320, sources=srcs, ctx=ctx))
-        elif isinstance(item, dict):
-            text = item.get("finding") or item.get("note") or item.get("name") or item.get("risk")
-            if text:
-                out.append(_clean(str(text), 320, sources=srcs, ctx=ctx))
+    for text in filter_insight_lines(agent.get("findings") or [], limit=limit * 3):
+        cleaned = _clean(text, 320, sources=srcs, ctx=ctx)
+        if not cleaned or is_polluted_insight(cleaned):
+            continue
+        out.append(cleaned)
         if len(out) >= limit:
             break
     return out

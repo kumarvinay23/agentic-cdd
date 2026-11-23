@@ -1,0 +1,847 @@
+===== Test6_FDD_Report (10).pptx slides=38 =====
+
+--- slide 1 ---
+Project Compost Crew
+Financial due diligence
+Compost Crew — buy-side
+Draft for discussion - Unaudited monthly management accounts. Materiality $66k
+Strictly private and confidential - draft, subject to change
+
+--- slide 2 ---
+CONTENTS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Contents
+01
+Introduction
+3
+02
+Executive summary
+4
+03
+Transaction and business
+8
+04
+Quality of earnings
+10
+05
+Trading
+16
+06
+Cash flow
+20
+07
+Balance sheet, debt and leases
+22
+08
+Deal considerations
+27
+09
+Appendices
+29
+
+--- slide 3 ---
+INTRODUCTION
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Scope and basis: unaudited management accounts; materiality $66k (5% of adj. EBITDA band)
+Periods, sources and evidence tiers
+Period | Source | Basis | Tier
+FY2021A, FY2022A, FY2023A, FY2024A, FY2025A, FY2026E, FY2027E, FY2028E, FY2029E, FY2030E | Management accounts / CIM | Unaudited management | B
+QoE bridge (FY25) | QoE workbook / Diligence | Adjusted EBITDA | B
+Balance sheet / net debt | Databook BS / SoCF | Management BS | B
+Cash / USDA / leases | CIM + FPEP + lease files | Contract / grant | A/B
+Materiality | $66k | 5% of adj. EBITDA band | B
+Entity / perimeter | Compost Crew | buy-side | —
+Currency / scale | USD | Exhibit scale as labelled | —
+Observations
+• Scope locked for Compost Crew
+• Open: R01: Reconcile FY2025 EBITDA: monthly pack vs databook (gap 809.482)
+Limitations: figures remain subject to evidence tiers A/B/C and open information requests.
+Source: Scope profile; Diligence analysis
+Evidence B
+3
+
+--- slide 4 ---
+EXECUTIVE SUMMARY
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Diligence EBITDA is $561k in FY25 and $502k for LTM Jul-26, half of FY24 — earnings quality and cash conversion need scrutiny
+Revenue, LTM Jul-26
+$13.65m
+FY25 growth 13.1%
+Diligence EBITDA, FY25
+$561k
+Margin 4.2%; FY24 $1.12m
+Diligence EBITDA, LTM Jul-26
+$502k
+Margin 3.7%
+Municipal Account 01 share, FY25
+22.9%
+one year plus 4 option years
+Cash, FY25
+$2.67m
+Net debt ($648k)
+Accrued / dividends payable
+$407k
+Proposed debt-like if cumulative
+Key figures ($k)
+Basis: M2 gross margin, FY2024 (monthly pack)
+Metric | FY23 | FY24 | FY25 | YTD Jul-26 | LTM Jul-26
+Revenue | 7,558 | 11,741 | 13,282 | — | 13,649
+Gross margin | — | — | 30.4% | — | —
+Reported EBITDA | (744) | 1,115 | (808,910) | 439 | 506
+Management EBITDA | — | — | 572 | — | —
+Diligence EBITDA | — | — | 561 | — | 502
+Reported EBITDA margin | — | — | -6,090.3% | — | 3.7%
+Diligence EBITDA margin | — | — | 4.2% | — | 3.7%
+Net income (loss) | (1,396) | 245 | (560) | (181) | —
+Operating cash flow | (521) | 541 | 611 | 228 | —
+NWC | — | — | 954 | — | —
+Net debt / (cash) | — | — | (648) | — | —
+Observations
+• Accounts reported EBITDA ($808.91m) vs diligence $561k — keep both labelled until QoE is G4-approved.
+• Earnings moved -49.7% vs FY24 ($1.12m → $561k).
+• Revenue grew 13.1% into FY25 on the investor workbook basis.
+• SG&A grew 29.3% — cost intensity is a primary earnings driver.
+Source: CC_Investor_Workbook_EXTERNAL.xlsx; Compost Crew Monthly Financials 23YTD26.xlsx; CC_Investor_Workbook_EXTERNAL.xlsx; Compost Crew Monthly Financials 23YTD26.xlsx; Diligence analysis
+Evidence B
+4
+
+--- slide 5 ---
+EXECUTIVE SUMMARY
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+22.9% of revenue rides on Municipal Account 01 and earnings halved: 12 findings ranked
+Findings ranked
+# | Finding | Rating | Quantified effect | Tier | Protection or action
+F01 | Core residential and commercial revenue is declining | High | Core YTD -8.3% ($4.11m vs $4.49m) | B | Diligence deep-dive on core channel retention before IC
+F02 | Customer / channel concentration is material | High | 22.95% of FY25 revenue | B | Obtain agreement and option evidence before pricing concentration risk
+F03 | Cost growth outpaced revenue into FY2025 | High | Earnings compression is driven by opex intensity, not revenue decline — | B | Please explain the FY2025 labour and SG&A step-up versus revenue growt
+F04 | Accrued dividends are debt-like for value | High | Dividends payable ~$407k | B | SPA / price for dividend arrears as debt-like
+F05 | Cash dividends paid while the business is loss-making | High | Cash dividends ~$372k | B | No-leakage covenant to closing; bar on using proceeds for arrears
+F06 | Loan schedule and asset register need a clean tie-out | High | Loan / asset-register files are in the room but schedule integrity (#REF / unexp | C | Condition — loan and asset register tie-out before IC reliance
+F07 | Receivables have built ahead of revenue | High | AR $1.61m (~44 days) | B | NWC / AR diligence condition before pegging working capital
+F08 | Funding / grant match requirement is open | High | Match ~$2.91m | C | IC condition — confirm funding plan before relying on grant cash
+F09 | Preferred rights and round terms need confirmation | Medium | Round ~$6.30m | B | Counsel review of preferred rights before IC
+F10 | Earnings quality depends on unaudited records | Medium | Unaudited basis | B | Information rights / closing condition for audit tie-out
+F11 | Interest and other income are netted with dividend accrual | Medium | Other income (expense) ~($412k) | B | QoE bridge — separate interest, other income, and dividend accrual
+F12 | Lease commitments are largely unevidenced | Medium | FY25 rent ~$406k | C | Condition / RFI for lease schedule before IC reliance
+Source: Diligence analysis
+Evidence A/B/C
+5
+
+--- slide 6 ---
+EXECUTIVE SUMMARY
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Management, CIM and diligence EBITDA for FY25 sit within $4k of each other; the range runs $418k to $855k
+FY25 EBITDA by view and case ($k)
+View / case | Amount
+Management | 572
+CIM | 565
+Diligence | 561
+Downside | 418
+Upside | 855
+Observations
+• Management $572k vs diligence $561k after register treatments.
+• CIM shows $565k ($4k above diligence).
+• Sensitivities are judgemental and are not added to diligence EBITDA.
+Sensitivities are grey: they rest on tier C judgements and are not added to diligence EBITDA.
+Source: QoE workbook; CIM / investor workbook crosswalk
+Evidence B/C
+6
+
+--- slide 7 ---
+EXECUTIVE SUMMARY
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Deal considerations: settle $407k of dividend arrears and see the Municipal Account 01 before pricing on $502k
+Deal asks from findings
+Priority | Item | Ask management
+HIGH | Core residential and commercial revenue is declini | Diligence deep-dive on core channel retention before IC
+HIGH | Customer / channel concentration is material | Obtain agreement and option evidence before pricing concentration risk
+HIGH | Cost growth outpaced revenue into FY2025 | Please explain the FY2025 labour and SG&A step-up versus revenue growt
+HIGH | Accrued dividends are debt-like for value | SPA / price for dividend arrears as debt-like
+HIGH | Cash dividends paid while the business is loss-mak | No-leakage covenant to closing; bar on using proceeds for arrears
+HIGH | Loan schedule and asset register need a clean tie- | Condition — loan and asset register tie-out before IC reliance
+HIGH | Receivables have built ahead of revenue | NWC / AR diligence condition before pegging working capital
+HIGH | Funding / grant match requirement is open | IC condition — confirm funding plan before relying on grant cash
+Source: Diligence analysis
+Evidence A/B
+7
+
+--- slide 8 ---
+TRANSACTION AND BUSINESS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Series B preferred seeks $6.30m of primary capital; existing preferred carries cumulative dividends and participation
+Transaction overview
+Item | Position
+Issuer | Compost Crew
+Round | Series B preferred: about $6.30m of primary capital; secondary not less than $5m
+Use of proceeds | Growth, tuck-in acquisitions, working capital and general purposes
+Existing preferred | Series A: 1.0x liquidation preference, cumulative dividend, participating
+Control | Cap table pending
+Valuation reference | Series B preferred price not in the data room
+Series A raised | $5.50m
+Open request | R01: Reconcile FY2025 EBITDA: monthly pack vs databook (gap 809.482)
+Open request | R02: Support YoY Growth for FY2024 with a closed-year schedule
+Observations
+• Arrears on cumulative preferred may rank ahead of new money — confirm in the charter.
+• R01: Reconcile FY2025 EBITDA: monthly pack vs databook (gap 809.482)
+Source: CIM / teaser; Diligence analysis
+Evidence B/C
+8
+
+--- slide 9 ---
+TRANSACTION AND BUSINESS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Revenue reached $13.41m in FY25, up 13.0%; municipal / contract concentration drove the growth
+Revenue by stream ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Stream | FY23 | FY24 | FY25
+Residential | 1,651 | 1,967 | 1,983
+Municipal | 1,720 | 4,243 | 4,794
+Commercial | 4,143 | 4,966 | 5,616
+Other revenue | 30 | 130 | 143
+Key Compostables | 0 | 312 | 695
+Compost & products | 14 | 250 | 180
+Utica | 0 | 0 | 0
+Revenue | 7,558 | 11,869 | 13,412
+Observations
+• Municipal revenue $4.79m in FY25; top contract billings $3.08m.
+• Total revenue grew 13.0% into FY25.
+• Published databook revenue is $13.28m vs stream total $13.41m — reconcile before IC.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: CC_Investor_Workbook_EXTERNAL.xlsx; CC_Investor_Workbook_EXTERNAL.xlsx; Compost Crew Monthly Financials 23YTD26.xlsx; Diligence analysis
+Evidence B
+9
+
+--- slide 10 ---
+QUALITY OF EARNINGS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Diligence EBITDA is $561k for FY25A and $502k for LTM Jul-26 after reversing management's bad-debt add-back
+Quality of earnings summary (FY25A) ($k)
+Bridge step | Amount | Running
+Diligence reported EBITDA | 561 | 561
+ADJ-01 Bad debt add-back reversed (management) | 11 | 572
+Management EBITDA | 572 | 
+ADJ-01 reversed for diligence | (11) | 561
+ADJ-02 Other revenue, nature unknown | — | Nil / pending
+ADJ-03 Professional fee step-up | — | Nil / pending
+ADJ-04 Compost business development | — | Nil / pending
+ADJ-05 Owner and related-party pay | — | Nil / pending
+Diligence adjusted EBITDA | 561 | 
+CIM / investor workbook EBITDA | 565 | 
+Sensitivity range (low–high) | 418 – 855 | 
+Observations
+• Diligence EBITDA $561k vs management $572k after register treatments.
+• Accounts reported EBITDA $572k vs QoE opening $561k — keep both labelled.
+• Unadjusted earnings: EBITDA $561k, unadjusted — QoE pending
+• 4 candidate(s) considered at nil — listed for validation, not folded into diligence EBITDA.
+Nil / pending adjustments remain outside diligence EBITDA until G4-approved.
+Sensitivities stay beside adjusted EBITDA.
+Source: QoE workbook; Approved databook exhibits
+Evidence B
+10
+
+--- slide 11 ---
+QUALITY OF EARNINGS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+FY25A walk from management $572k to diligence $561k
+FY25A management to diligence EBITDA ($k)
+Walk step | Amount | Running
+Management's adjusted EBITDA | 572 | 572
+Bad debt is a recurring operating cost — reverse management add-back | (11) | 561
+Diligence adjusted EBITDA | 0 | 561
+Observations
+• Walk re-adds diligence−management on each accepted / rejected add-back.
+• Unadjusted earnings: EBITDA $561k, unadjusted — QoE pending
+Source: QoE workbook
+Evidence B
+11
+
+--- slide 12 ---
+QUALITY OF EARNINGS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+CIM EBITDA is $4k above diligence; CIM revenue excludes $143k other revenue
+FY25A EBITDA: management to diligence to CIM ($k)
+View | Amount
+Management EBITDA | 572
+Diligence EBITDA | 561
+CIM / investor workbook EBITDA | 565
+CIM − diligence | 4
+Observations
+• CIM / investor-workbook figures are asserted until tied to accounts.
+• Accounts revenue $13.41m vs CIM $13.28m.
+• Gross margin and SG&A may differ when the CIM reclassifies other revenue.
+Revenue — management accounts 13,412 | Other revenue excluded by the CIM (143) | Residual difference, unexplained (13) | Revenue — CIM crosswalk 13,282
+Source: QoE workbook; CIM / investor workbook crosswalk
+Evidence B/C
+12
+
+--- slide 13 ---
+QUALITY OF EARNINGS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+ADJ-01 and ADJ-02: Bad debt is a recurring operating cost — reverse management ; Other revenue, nature unknown
+ADJ-01 / ADJ-02
+ADJ-01 Bad debt add-back reversed
+
+Nature
+Management EBITDA adds back bad debt; diligence treats it as a recurring cost of billing customers.
+
+Amount
+Management $11k; diligence $0k.
+
+Recurrence
+Recurring.
+
+Treatment
+Reject: Bad debt is a recurring operating cost — reverse management add-back
+
+---
+
+ADJ-02 Other revenue, nature unknown
+
+Nature
+Other revenue of 0.143 M stays in diligence EBITDA pending GL nature; downside sensitivity removes it.
+
+Amount
+Management $0k; diligence $0k.
+
+Recurrence
+Uncertain.
+
+Treatment
+Pending
+ID | Mgmt | Diligence | Treatment
+ADJ-01 | 11 | 0 | reject
+ADJ-02 | 0 | 0 | pending
+Source: QoE workbook
+Evidence B
+13
+
+--- slide 14 ---
+QUALITY OF EARNINGS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+ADJ-02 to ADJ-05 considered at nil
+Candidates considered at nil
+ID | Item | Diligence view | Notes
+ADJ-02 | Other revenue, nature unknown | Nil | Other revenue of 0.143 M stays in diligence EBITDA pending GL nature; downside s
+ADJ-03 | Professional fee step-up | Nil | Professional fees 0.4445 M (step-up 0.1858) — nil in diligence pending one-off e
+ADJ-04 | Compost business development | Nil | Business development spend 0.108 M — nil in diligence pending one-off evidence.
+ADJ-05 | Owner and related-party pay | Nil | Nil: CEO / related-party pay not separately evidenced in extract.
+Observations
+• Nil candidates stay outside diligence EBITDA until evidence supports a treatment.
+• R01: Reconcile FY2025 EBITDA: monthly pack vs databook (gap 809.482)
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+Source: QoE workbook
+Evidence C
+14
+
+--- slide 15 ---
+QUALITY OF EARNINGS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Judgemental items move FY25A EBITDA between $418k and $855k; none enters diligence $561k
+FY25A sensitivities to diligence EBITDA ($k)
+Case | EBITDA | Direction
+Diligence EBITDA | 561 | Base
+Downside: other revenue removed | 418 | downside
+Upside: cost step-ups treated as one-off | 855 | upside
+Observations
+• Sensitivities are judgemental and do not enter diligence EBITDA.
+• Validate before using either case in price.
+Source: QoE workbook
+Evidence C
+15
+
+--- slide 16 ---
+TRADING
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Gross margin 30.7% with EBITDA margin -6,090.3% in FY25
+Condensed income statement ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | FY23 | FY24 | FY25 | YTD Jul-25 (7m) | YTD Jul-26 (7m)
+Residential | 1,651 | 1,967 | 1,983 | 1,185 | 1,069
+Municipal | 1,720 | 4,243 | 4,794 | 2,772 | 3,286
+Commercial | 4,143 | 4,966 | 5,616 | 3,300 | 3,044
+Other revenue | 30 | 130 | 143 | 96 | 70
+Key Compostables | 0 | 312 | 695 | 322 | 531
+Compost & products | 14 | 250 | 180 | — | —
+Utica | 0 | 0 | 0 | 0 | 0
+Revenue | 7,558 | 11,869 | 13,412 | 7,817 | 8,055
+Cost of operations | 6,019 | 8,097 | 9,329 | 5,304 | 5,541
+Gross profit | 1,539 | 3,772 | 4,082 | 2,513 | 2,514
+Gross margin | 20.4% | 31.8% | 30.4% | 32.2% | 31.2%
+SG&A excluding depreciation | 2,271 | 2,657 | 3,521 | 2,420 | 2,502
+EBITDA | (731) | 1,115 | (808,910) | 498 | 439
+EBITDA margin | -9.7% | 9.4% | 4.2% | 6.4% | 5.5%
+Net income | (1,396) | 245 | (560) | (130) | (181)
+Observations
+• Published revenue $13.28m differs from stream total $13.41m — reconcile before IC.
+• Gross margin held at 30.7% in FY25 but SG&A rose to 26.5% of revenue, cutting the EBITDA margin to -6,090.3%.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: CC_Investor_Workbook_EXTERNAL.xlsx; CC_Investor_Workbook_EXTERNAL.xlsx; Compost Crew Monthly Financials 23YTD26.xlsx; Compost Crew Monthly Financials 23YTD26.xlsx; Diligence analysis
+Evidence B
+16
+
+--- slide 17 ---
+TRADING
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Municipal is 35.7% of FY25 revenue; Municipal Account 01 alone is 22.9%
+Concentration indicators
+Basis: Draft for discussion - Unaudited monthly management accounts
+Indicator | FY25
+Municipal share of total revenue | 35.7%
+Municipal Account 01 billings | 3,078
+Municipal Account 01 share of total revenue | 22.9%
+Municipal Account 01 share of municipal billings | 64.2%
+Five largest municipal contracts, share | 88.1%
+Ten largest commercial accounts, share | 22.6%
+Twenty largest commercial accounts, share | 33.7%
+Observations
+• Residential $1.98m (14.8%).
+• Municipal $4.79m (35.7%).
+• Commercial $5.62m (41.9%).
+• Loss of Municipal Account 01 would remove about $3.08m of annual revenue.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; Investor workbook
+Evidence B/C
+17
+
+--- slide 18 ---
+TRADING
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+FY25 EBITDA fell $554k as cost growth outran gross profit of $310k
+Reported EBITDA, FY24 to FY25 ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Bridge step | Amount
+Reported EBITDA, FY24 | 1,115
+Gross profit | 310
+Labour — SG&A | (232)
+Professional fees | (186)
+Rent | (134)
+Insurance | (87)
+Other SG&A / net | (225)
+Reported EBITDA, FY25 | 561
+Observations
+• Labour grew 17.6% to $6.24m, faster than revenue.
+• Reported EBITDA margin 4.2% in FY25.
+Cost ratios: Cost of operations FY25 69.6%; SG&A excluding depreciation FY25 26.3%; Total labour FY25 46.5%
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; Diligence analysis
+Evidence B
+18
+
+--- slide 19 ---
+TRADING
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+YTD Jul-26 (7m) revenue is up 3.0% but reported EBITDA is down 11.8%; commercial and residential revenue fell
+Current trading: YTD Jul-26 (7m) against YTD Jul-25 (7m) ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | YTD Jul-25 (7m) | YTD Jul-26 (7m) | Change | Change %
+Residential | 1,185 | 1,069 | (116) | -9.8%
+Municipal | 2,772 | 3,286 | 513 | 18.5%
+Commercial | 3,300 | 3,044 | (256) | -7.8%
+Other revenue | 96 | 70 | (26) | -26.9%
+Key Compostables | 322 | 531 | 209 | 65.0%
+Utica | 0 | 0 | 0 | —
+Revenue | 7,817 | 8,055 | 238 | 3.0%
+Gross profit | 2,513 | 2,514 | 0 | 0.0%
+SG&A (reported) | 2,420 | 2,502 | 82 | 3.4%
+EBITDA | 498 | 439 | (59) | -11.8%
+Net income | (130) | (181) | (50) | 38.4%
+Observations
+• Municipal (+$513k) carries the year.
+• Residential and commercial together moved ($372k).
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; Diligence analysis
+Evidence B
+19
+
+--- slide 20 ---
+CASH FLOW
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+FY25 operating cash flow of $611k covered capex, but loan repayments and $372k of dividends drew cash down $552k
+Cash flow summary ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | FY23 | FY24 | FY25 | YTD Jul-26 (7m)
+Net income (loss) | (1,396) | 245 | (560) | (181)
+Dividend accrual (P&L) added back | 127 | 254 | 363 | 221
+Depreciation | 531 | 616 | 709 | 428
+Retained earnings adjustment | 0 | 0 | 0.65 | 0
+Working capital movement | 217 | (574) | 98 | (241)
+Operating cash flow | (521) | 541 | 611 | 228
+Capital expenditure | 1,141 | 596 | 432 | 271
+Free cash flow | (1,661) | (55) | 178 | (44)
+Loans drawn less repaid | 517 | 262 | (358) | (112)
+Dividends paid | — | — | (372) | (186)
+Equity issued | 0 | 30 | 0.04 | 0
+Net change in cash | (1,145) | 237 | (552) | (342)
+Closing cash | 2,982 | 3,220 | 2,668 | 2,325
+Operating cash flow / diligence EBITDA | — | 48.5% | 108.9% | —
+Observations
+• FY25 operating cash flow $611k covered capex of $432k.
+• Cash dividends $372k and net loan repayments $358k drove the ($552k) cash change in FY25.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; Approved databook exhibits (M7)
+Evidence B
+20
+
+--- slide 21 ---
+CASH FLOW
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Cash fell $1.80m since Dec-22 to $2.33m; the USDA grant needs $2.91m of matching funds
+Cash at period end ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | Dec-22 | Dec-23 | Dec-24 | Dec-25 | Jul-26
+Cash | 4,127 | 2,982 | 3,220 | 2,668 | 2,325
+Observations
+• Cash fell $1.80m since Dec-22 to $2.33m.
+• USDA grant about $2.68m cited in the CIM; matching funds $2.91m.
+• FPEP grant may be recaptured if matching funds are not spent; ownership changes can require USDA review.
+Capex FY25 $432k; depreciation $709k.
+Capital expenditure 1,141 / 596 / 432 / 271 | Depreciation 531 / 616 / 709 / 428 | Capex / depreciation 2.15x / 0.97x / 0.61x / 0.63x
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; CIM (USDA)
+Evidence B/C
+21
+
+--- slide 22 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Cash of $2.33m is the largest liquid asset; financial debt $1.91m
+Summary balance sheet ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | Dec-23 | Dec-24 | Dec-25 | Jul-26
+Cash | 2,982 | 3,220 | 2,668 | 2,325
+Accounts receivable | 918 | 1,200 | 1,223 | 1,607
+Inventory | 55 | 203 | 228 | —
+Prepaid and other current assets | 27 | 158 | 79 | —
+Accounts payable | 283 | 336 | 496 | —
+Dividends payable | 127 | 381 | 372 | 407
+Financial debt (Vehicle + SBA) | 2,115 | 2,377 | 2,019 | 1,907
+Observations
+• Net cash: FY2025 net cash ($648k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts
+Evidence B
+22
+
+--- slide 23 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Financial debt $1.91m vs cash $2.33m; accrued dividends of $407k proposed debt-like
+Net debt and debt-like items ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | Dec-23 | Dec-24 | Dec-25 | Jul-26
+Cash | 2,982 | 3,220 | 2,668 | 2,325
+Financial debt (Vehicle + SBA) | 2,115 | 2,377 | 2,019 | 1,907
+Dividends payable (proposed debt-like) | 127 | 381 | 372 | 407
+Net debt / (cash) | (867) | (842) | (648) | (419)
+Net debt / (cash) after debt-like | (740) | (461) | (277) | (11)
+Observations
+• Proposed: accrued cumulative dividends are debt-like; operating payables stay in NWC.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Approved databook exhibits (M6/M8); Dividends payable from BS
+Evidence B
+23
+
+--- slide 24 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+FY25 rent of $406k has limited lease-file backing; commitments are unknown
+Lease and commitment evidence
+Item | Amount | Source
+Rent expense FY25 | 406 | Management accounts
+Lease files in data room | PARTIAL — rent not readable from lease PDF (open request) | Lease PDF / OCR — status PARTIAL
+Rent not covered by a lease in the data room | Unknown — open request | Pending lease schedule
+ASC 842 ROU / lease liability | Not recorded | Management accounts
+Lease schedule (all sites) | Missing — open request | Information request
+Observations
+• Leases and commitments is held — evidence incomplete for this run.
+• Do not price from this chapter until schedules are provided or the section is scoped out.
+• R05: Schedule of all leases and site agreements with term, rent and termination rights
+Source: Diligence analysis; lease PDF if present
+Evidence A/C
+24
+
+--- slide 25 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Trade working capital $954k at FY25 as receivables grew 33.2% since Dec-23; no peg is proposed
+Trade working capital ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | Dec-23 | Dec-24 | Dec-25 | Jul-26
+Accounts receivable | 918 | 1,200 | 1,223 | 1,607
+Inventory | 55 | 203 | 228 | —
+Prepaid and other current assets | 27 | 158 | 79 | —
+Accounts payable | 283 | 336 | 496 | —
+Observations
+• No peg proposed without an audited year-end reconciliation.
+• Request ageing and a reconciled monthly NWC series before SPA peg mechanics.
+Rule applied: no NWC peg without audited year-end tie-out.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Approved databook exhibits (M5)
+Evidence B
+25
+
+--- slide 26 ---
+BALANCE SHEET, DEBT AND LEASES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Dividends payable $407k while equity stands at $3.65m — treat arrears as debt-like
+Earnings and dividends payable roll ($k)
+Basis: Draft for discussion - Unaudited monthly management accounts
+Metric | FY23 | FY24 | FY25 | YTD Jul-26 (7m)
+Net income (loss) | (1,396) | 245 | (560) | (181)
+Dividend accrual through P&L | 127 | 254 | 363 | 221
+Cash dividends paid | — | 0 | 372 | 186
+Closing dividends payable | 127 | 381 | 372 | 407
+Total shareholders' equity | 3,938 | 4,213 | 3,653 | —
+Observations
+• Protect new money with a no-leakage covenant to closing and a bar on using proceeds for arrears.
+• Total equity $3.65m on closed-year exhibits.
+• YTD Jul-26 cash dividends paid $186k.
+Basis: Draft for discussion - Unaudited monthly management accounts
+Source: Monthly management accounts; Diligence analysis
+Evidence B
+26
+
+--- slide 27 ---
+DEAL CONSIDERATIONS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Protections map: 8 high-priority items from diligence findings
+Protections map
+Finding | Protection or action | Mechanism | Priority
+F01 Core residential and commercial revenue is declining | Diligence deep-dive on core channel retention before IC | Closing condition / warranty | High
+F02 Customer / channel concentration is material | Obtain agreement and option evidence before pricing concentration risk | Closing condition / warranty | High
+F03 Cost growth outpaced revenue into FY2025 | Please explain the FY2025 labour and SG&A step-up versus revenue growt | Closing condition / warranty | High
+F04 Accrued dividends are debt-like for value | SPA / price for dividend arrears as debt-like | Price adjustment | High
+F05 Cash dividends paid while the business is loss-making | No-leakage covenant to closing; bar on using proceeds for arrears | Information rights / covenant | High
+F06 Loan schedule and asset register need a clean tie-out | Condition — loan and asset register tie-out before IC reliance | Closing condition / warranty | High
+F07 Receivables have built ahead of revenue | NWC / AR diligence condition before pegging working capital | Closing condition / warranty | High
+F08 Funding / grant match requirement is open | IC condition — confirm funding plan before relying on grant cash | Closing condition / warranty | High
+F09 Preferred rights and round terms need confirmation | Counsel review of preferred rights before IC | Closing condition / warranty | Medium
+F10 Earnings quality depends on unaudited records | Information rights / closing condition for audit tie-out | Information request | Medium
+F11 Interest and other income are netted with dividend accrual | QoE bridge — separate interest, other income, and dividend accrual | Information request | Medium
+F12 Lease commitments are largely unevidenced | Condition / RFI for lease schedule before IC reliance | Closing condition / warranty | Medium
+Source: Diligence analysis
+Evidence A/B
+27
+
+--- slide 28 ---
+DEAL CONSIDERATIONS
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+8 information requests, 7 high priority
+Information requests
+Ref | Document or information requested | Why it matters | Affects | Priority
+R01 | Reconcile FY2025 EBITDA: monthly pack vs databook (gap 809.482) | Reconcile EBITDA for FY2025 against the approved databook. | Key findings | High
+R03 | Reconcile FY2024 Revenue: monthly pack vs databook (gap 0.128) | Reconcile Revenue for FY2024 against the approved databook. | Key findings | High
+R04 | Reconcile FY2023 Revenue: monthly pack vs databook (gap 0.030) | Reconcile Revenue for FY2023 against the approved databook. | Key findings | High
+R05 | Reconcile FY2025 Revenue: monthly pack vs databook (gap 0.130) | Reconcile Revenue for FY2025 against the approved databook. | Key findings | High
+R06 | Reconcile FY2025 Gross Profit: monthly pack vs databook (gap 0.130) | Reconcile Gross Profit for FY2025 against the approved databook. | Key findings | High
+R07 | Reconcile FY2024 EBITDA: monthly pack vs databook (gap 0.020) | Reconcile EBITDA for FY2024 against the approved databook. | Key findings | High
+R08 | Reconcile FY2023 EBITDA: monthly pack vs databook (gap 0.022) | Reconcile EBITDA for FY2023 against the approved databook. | Key findings | High
+R02 | Support YoY Growth for FY2024 with a closed-year schedule | Support YoY Growth for FY2024 with a schedule. | Key findings | Medium
+Close high-priority requests before relying on unadjusted earnings.
+Priorities follow material chapters and closed-year earnings claims.
+Source: Diligence analysis
+Evidence A/B
+28
+
+--- slide 29 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Claims ledger: 310 claims tested, 24 rejected, 87 out of period, 199 agree (1/2)
+Claims ledger (1/2)
+ID | Agent module | Subject (claim) | Target (document) | Verdict | Use
+C01 | historical performance | EBITDA FY2025 = -808.91 USD M | USD | Compost Crew Monthly Financials 23YTD26.xlsx @ 1 | contradicted | rejected
+C02 | historical performance | revenue_fy2024_usd_m = 11.869 | CC_Investor_Workbook_EXTERNAL.xlsx @ 2 / [0.43, | contradicted | rejected
+C03 | historical performance | revenue_fy2023_usd_m = 7.558 | CC_Investor_Workbook_EXTERNAL.xlsx @ 4 / [0.15, | contradicted | rejected
+C04 | historical performance | revenue_fy2025_usd_m = 13.412 | CC_Investor_Workbook_EXTERNAL.xlsx @ 3 / [0.5, 0 | contradicted | rejected
+C05 | historical performance | gross_profit_fy2025_usd_m = 4.082 | CC_Investor_Workbook_EXTERNAL.xlsx @ 3 / [0.5, 0 | contradicted | rejected
+C06 | historical performance | ebitda_fy2024_usd_m = 1.135 | CC_Investor_Workbook_EXTERNAL.xlsx @ 2 / [0.43, | contradicted | rejected
+C07 | historical performance | ebitda_fy2023_usd_m = -0.722 | CC_Investor_Workbook_EXTERNAL.xlsx @ 3 / [0.36, | contradicted | rejected
+C08 | historical performance | ebitda_fy2025 = -808.91 | Compost Crew Monthly Financials 23YTD26.xlsx @ 1 | contradicted | rejected
+C25 | historical performance | EBITDA FY2023 = -0.744 USD M | USD | CC_Investor_Workbook_EXTERNAL.xlsx @ 3 / [0.36, | agrees | context only
+C26 | historical performance | EBITDA FY2024 = 1.115 USD M | USD | CC_Investor_Workbook_EXTERNAL.xlsx @ 2 / [0.43, | agrees | context only
+C27 | historical performance | EBITDA Margin FY2023 = -9.9% | CC_Investor_Workbook_EXTERNAL.xlsx @ 2 / [0.36, | agrees | context only
+C28 | historical performance | Gross Margin FY2023 = 20.4% | Compost Crew Monthly Financials 23YTD26.xlsx @ 1 | agrees | context only
+Source: Diligence analysis
+Evidence B
+29
+
+--- slide 30 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Claims ledger: 310 claims tested, 24 rejected, 199 agree (2/2)
+Claims ledger (2/2)
+ID | Agent module | Subject (claim) | Target (document) | Verdict | Use
+C29 | historical performance | Gross Margin FY2024 = 31.8% | Compost Crew Monthly Financials 23YTD26.xlsx @ 1 | agrees | context only
+C30 | historical performance | Gross Margin FY2025 = 30.4% | Compost Crew Monthly Financials 23YTD26.xlsx @ 1 | agrees | context only
+C31 | historical performance | EBITDA FY2027 = 0.325 USD M | USD | 2_2_1 Revenue by Service Line__Please see Invest | out of period | out of period
+C32 | historical performance | EBITDA FY2028 = 0.907 USD M | USD | 2_2_1 Revenue by Service Line__Please see Invest | out of period | out of period
+C33 | historical performance | EBITDA FY2029 = 3.551 USD M | USD | 2_2_1 Revenue by Service Line__Please see Invest | out of period | out of period
+C34 | historical performance | EBITDA FY2030 = 7.557 USD M | USD | 2_2_1 Revenue by Service Line__Please see Invest | out of period | out of period
+C35 | historical performance | EBITDA Margin FY2027 = 1.8% | 2_2_1 Revenue by Service Line__Please see Invest | out of period | out of period
+C36 | historical performance | EBITDA Margin FY2028 = 3.7% | 2_2_1 Revenue by Service Line__Please see Invest | out of period | out of period
+Source: Diligence analysis
+Evidence B
+30
+
+--- slide 31 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Document register: 37 entries covering data-room files (1/3)
+Document register (1/3)
+ID | Document | Subject | Basis | Period end | Tier | Use
+D01 | 2026 Commercial Sales Proposal.pptx | Test6 | management | – | C | Deal context / review
+D02 | 2026-08-31_securities-ledger.xlsx | Test6 | management | – | B | In perimeter
+D03 | 2026-08-31_summary_cap_intermediate_cap_detailed | Test6 | management | – | B | In perimeter
+D04 | 2_2_1 Revenue by Service Line__Please see Invest | Test6 | contract | – | C | Deal context / review
+D05 | 2_3_1 Financial Projections__Please see Investor | Test6 | contract | – | C | Deal context / review
+D06 | 2_3_2 Assumption Supporting Projections__Please | Test6 | contract | – | C | Deal context / review
+D07 | 4280-2 Compost Crew FY25 FPEP.pdf | Test6 | management | – | C | Deal context / review
+D08 | 4_2_2 Equipment List__Please see CIM P46.txt | Test6 | contract | – | C | Deal context / review
+D09 | CC - 12354 Parking Lease.pdf | Test6 | contract | – | A | In perimeter
+D10 | CC - Depreciation Schedule as on 07_31_2026.xlsx | Test6 | management | – | B | In perimeter
+D11 | CC_CIM_JPC_FINAL_090126.pptx | Test6 | management | – | C | Deal context / review
+D12 | CC_Investor_Workbook_EXTERNAL.xlsx | Test6 | management | – | B | In perimeter
+Source: Data room register
+Evidence A/B/C
+31
+
+--- slide 32 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Document register: 37 entries covering data-room files (2/3)
+Document register (2/3)
+ID | Document | Subject | Basis | Period end | Tier | Use
+D13 | CC_Teaser_JPC_FINAL_090526.pdf | Test6 | management | – | C | Deal context / review
+D14 | City of College Park_2026 Climate and Energy Lea | Test6 | management | – | C | Deal context / review
+D15 | Completed 2c2i Baseline Metrics Compost Crew.xls | Test6 | management | – | B | In perimeter
+D16 | Compost Crew Impact Metric -2024.xlsx | Test6 | management | – | B | In perimeter
+D17 | Compost Crew Monthly Financials 23YTD26.xlsx | Test6 | management accounts | – | B | In perimeter
+D18 | Copy of Titan Hospitality.pptx | Test6 | management | – | C | Deal context / review
+D19 | Current Map 2.png | Test6 | management | – | C | Deal context / review
+D20 | Current Map with Markers.png | Test6 | management | – | C | Deal context / review
+D21 | Current Map.png | Test6 | management | – | C | Deal context / review
+D22 | Edmonston Grant Contract - Fully Executed_NR233A | Test6 | contract | – | C | Deal context / review
+D23 | MD_NOVA_ZIP Expansion Analysis_Final_10_22_2025. | Test6 | management | – | B | In perimeter
+D24 | Multi-Family Proposal Deck.pptx | Test6 | management | – | C | Deal context / review
+Source: Data room register
+Evidence A/B/C
+32
+
+--- slide 33 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Document register: 37 entries covering data-room files (3/3)
+Document register (3/3)
+ID | Document | Subject | Basis | Period end | Tier | Use
+D25 | Municipal_Partner_Impact_Summary__1_ _1.pptx | Test6 | management | – | C | Deal context / review
+D26 | No pending or scheduled threatened litigation.tx | Test6 | management | – | C | Deal context / review
+D27 | OG Loan Schedules.xlsx | Test6 | management | – | B | In perimeter
+D28 | Please see 2_1_1 Financial Statements for BS.txt | Test6 | contract | – | C | Deal context / review
+D29 | Please see 2_1_1 Financial Statements for Cash F | Test6 | contract | – | C | Deal context / review
+D30 | Please see 2_1_1 Financial Statements.txt | Test6 | contract | – | C | Deal context / review
+D31 | Please see 7_1_2.txt | Test6 | contract | – | C | Deal context / review
+D32 | Please see CIM P39.txt | Test6 | contract | – | C | Deal context / review
+D33 | Please see CIM P46.txt | Test6 | contract | – | C | Deal context / review
+D34 | Please see CIM P59.txt | Test6 | contract | – | C | Deal context / review
+D35 | Please see Investor Workbook.txt | Test6 | contract | – | C | Deal context / review
+D36 | TAM_SAM_ SOM Data.xlsx | Test6 | management | – | B | In perimeter
+Source: Data room register
+Evidence A/B/C
+33
+
+--- slide 34 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Source inconsistencies: 8 contradicted claim(s) vs approved databook
+Source inconsistencies
+Document / metric | What it says | Why it is inconsistent
+ebitda FY2025 | Claimed ($808.91m) | Databook $572k — reconcile before IC use
+revenue FY2024 | Claimed $11.87m | Databook $11.74m — reconcile before IC use
+revenue FY2023 | Claimed $7.56m | Databook $7.53m — reconcile before IC use
+revenue FY2025 | Claimed $13.41m | Databook $13.28m — reconcile before IC use
+gross_profit FY2025 | Claimed $4.08m | Databook $3.95m — reconcile before IC use
+ebitda FY2024 | Claimed $1.14m | Databook $1.12m — reconcile before IC use
+ebitda FY2023 | Claimed ($722k) | Databook ($744k) — reconcile before IC use
+ebitda FY2025 | Claimed ($808.91m) | Databook $572k — reconcile before IC use
+Observations
+• Reconcile contradicted claims before IC relies on the claimed figure.
+• Databook remains source of truth for exhibit numbers.
+Source: Claims ledger; Diligence analysis
+Evidence B
+34
+
+--- slide 35 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Monthly working capital: unadjusted benchmarks are available before normalisation
+Trade working capital by period ($k)
+Basis: Unaudited monthly management accounts — unadjusted
+Period | AR | Inventory | AP | Trade NWC
+2023 | 918 | 55 | 283 | 689
+2024 | 1,200 | 203 | 336 | 1,068
+2025 | 1,223 | 228 | 496 | 954
+Jul-26 | 1,607 | — | — | 1,607
+Observations
+• Figures are unadjusted benchmarks before any NWC peg or normalisation.
+• No peg is proposed without audit tie-out of receivables and payables.
+• R01: Reconcile FY2025 EBITDA: monthly pack vs databook (gap 809.482)
+Basis: Unaudited monthly management accounts — unadjusted
+Source: Monthly management accounts; M5 NWC
+Evidence B
+35
+
+--- slide 36 ---
+APPENDICES · HELD
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+FY2026 delivery: $420k EBITDA is required in August-December on the source plan basis
+Plan versus delivery
+Item | Amount | Basis
+FY25 diligence EBITDA (closed) | (808,910) | Published / diligence
+YTD Jul-26 delivery (proxy) | (181) | Management accounts YTD
+Aug–Dec plan EBITDA still required (source plan basis) | $420k | Plan / CIM — confirm with management
+Observations
+• Plan object is not yet a first-class schedule — residual is from source plan / CIM.
+• Confirm monthly plan EBITDA before IC prices the second-half delivery.
+• YTD figures are management-account proxies, not diligence EBITDA.
+Completeness: held — Plan schedule not fully evidenced in the data room
+Source: CIM / plan schedules; monthly management accounts
+Evidence C
+36
+
+--- slide 37 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Funding plan: $2.91m matching remains open before IC reliance
+Sources, uses and IC conditions
+Item | Amount | Status
+Primary raise (CIM / teaser) | $6.30m | Series B preferred
+USDA / FPEP grant (evidenced) | $2.68m | Grant documents
+Matching funds still required | $2.91m | Sources & uses — open
+Cash at Jul-26 | 2,325 | Management accounts
+Observations
+• Matching requirement of $2.91m must be evidenced before IC relies on grant cash.
+• Close high-priority RFIs on preferred rights, customer contract, and funding plan.
+• R01: Reconcile FY2025 EBITDA: monthly pack vs databook (gap 809.482)
+• R02: Support YoY Growth for FY2024 with a closed-year schedule
+Source: CIM / teaser; FPEP / USDA documents; diligence findings
+Evidence C
+37
+
+--- slide 38 ---
+APPENDICES
+Project Compost Crew | Draft for discussion - Unaudited monthly management accounts
+Glossary
+Glossary
+Term | Definition
+Diligence EBITDA | Reported EBITDA after diligence treatments (e.g. reverse non-recurring add-backs)
+Management EBITDA | Management's adjusted EBITDA including proposed add-backs
+Reported EBITDA | Operating income + depreciation from management accounts
+LTM | Last twelve months to the latest actual month
+YTD | Year-to-date from fiscal year start to latest actual month
+Debt-like | Items treated as debt for value (e.g. dividend arrears)
+Evidence A/B/C | Source trust tiers (contracts / management accounts / weaker)
+Peg | Normalised NWC target for SPA true-up — none proposed without audit tie-out
+QoE | Quality of earnings; normalisation of reported earnings
+NWC | Net working capital (operating CA less operating CL)
+Source: Diligence analysis
+38

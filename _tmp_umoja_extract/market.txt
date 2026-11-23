@@ -1,0 +1,366 @@
+===== Umoja Health_Market_Intel_Deck.pptx slides=25 =====
+
+--- slide 1 ---
+INVESTMENT DUE DILIGENCE · MARKET INTELLIGENCE
+Market Intel Deck
+Investment Due Diligence — Umoja Health
+Positioning matrices, market maps and competitive battlecards
+DOCUMENT
+Market Intelligence Deck
+TARGET
+Umoja Health
+SECTOR
+Healthcare & Life Sciences
+REPORT DATE
+23 November 2026
+STRICTLY PRIVATE & CONFIDENTIAL · PREPARED FOR INVESTMENT COMMITTEE
+01 / 25
+
+--- slide 2 ---
+DOCUMENT OVERVIEW
+Agenda
+Four IC-facing chapters mapped from the 17-section storyline.
+01
+Key Findings
+Executive snapshot of the deal-level conclusions
+02
+Market Analysis
+Market definition, sizing, growth, pricing and demand drivers
+03
+Competitive Landscape
+Competitors, positioning, differentiation and SWOT analysis
+04
+Summary
+Final position and primary risks for the Investment Committee
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Agenda · Investment Due Diligence · © DiligenceIQ
+02 / 25
+
+--- slide 3 ---
+01
+SECTION 01
+Key Findings
+Executive snapshot of the deal-level conclusions
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+03 / 25
+
+--- slide 4 ---
+SECTION 01
+Key Findings — Umoja Health
+Executive snapshot of in-scope drivers, verdict and primary competitive threat
+1
+IN-SCOPE DRIVERS
+Delivery of dry goods and products/services to improve equitable access to quality, nutritious food (DOC: 1, DOC: 2).; Food banks and…
+2
+OUT-OF-SCOPE
+Outside primary geography focus (TO Programs tailored to community needs including geography, preferred language, cultural preferences &…
+3
+ENGAGEMENT RATIONALE
+▪ Based in Houston, TX, the Company has established market leadership in several lucrative and growing niches in the value foods sector,…
+4
+VERDICT
+Bottom-up: Information request: bottom-up arithmetic: units × capture × realised price (not stated in the data room)
+5
+RELATIVE STRENGTH
+Share not calculable / unassessed on matched basis
+6
+PRIMARY COMP. THREAT
+Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 01 · Key Findings · Investment Due Diligence · © DiligenceIQ
+04 / 25
+
+--- slide 5 ---
+WORKFLOW ANALYSIS
+Key Findings — the diligence agents' read
+Conclusions carried over from this deal's completed workflow analysis.
+DILIGENCE WORKFLOW READ
+—  service: Delivery of dry goods and products/services to improve equitable access to quality, nutritious food (DOC: 1, DOC: 2). (from the Market Definition agent)
+—  Bottom-up: Information request: bottom-up arithmetic: units × capture × realised price (not stated in the data room) (from the Market Volume & Growth agent)
+—  Test UNTESTED: Information request: advantage claim to test (not stated in the data room) (from the Competitive Differentiation agent)
+—  S: Information request: earnings trend from accounting records [historical_performance] (from the SWOT Analysis agent)
+—  Customer doing nothing / in-housing (substitute) (from the Competitor Identification agent)
+Source: Growth _ Go-To-Market__VHP _ Aetna LA Overview and Back-Up Slides _full deck_ 3.17.25.pdf, Dallas College Amendment to Fund Marketplace Supplier Services FINAL.docx _1.pdf, Attachment 2 Sample Nutrition Assessment A.jpeg, Attachment 3 Sample Nutrition Assessment B.jpeg, Growth _ Go-To-Market__Competitor Analysis 2024.xlsx
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 01 · Key Findings · Investment Due Diligence · © DiligenceIQ
+05 / 25
+
+--- slide 6 ---
+02
+SECTION 02
+Market Analysis
+Market definition, sizing, growth, pricing and demand drivers
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+06 / 25
+
+--- slide 7 ---
+SECTION 02
+2.1 MARKET DEFINITION: Market perimeter & definition
+Defining the boundaries of where Umoja Health operates and competes.
+Insight Snapshot: Delivery of dry goods and products/services to improve equitable access to quality, nutritious food (DOC: 1, DOC: 2).
+Parameter | Scope | Source
+Primary Market | Delivery of dry goods and products/services to improve equitable access to quality, nutritious food (DOC: 1, DOC: 2). | market_definition
+Adjacent / segments | Healthcare & Life Sciences adjacencies | market_definition
+Geographic Focus | TO Programs tailored to community needs including geography, preferred language, cultural preferences & more. | market_definition
+In-Scope Drivers | 2 segment purchase map(s) | market_definition
+Out-of-Scope | Non-core segments outside Healthcare & Life Sciences primary focus | market_definition
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+07 / 25
+Workflow: Market Definition · Buying Behavior · Customer Segmentation  ·  Not re-derived in deck UI
+
+--- slide 8 ---
+2.2 TAM / SAM / SOM estimation
+Structured sizing from market_volume_and_growth.
+TAM
+—
+Not populated
+SAM
+—
+Not populated
+SOM
+—
+Not populated
+Derived shares & growth
+• CAGR observations: 
+• Penetration: 
+• Information request: market growth from series endpoints and years elapsed (not stated in the data room)
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+08 / 25
+Workflow: Market Volume & Growth · Market Definition  ·  Not re-derived in deck UI
+
+--- slide 9 ---
+2.3 Market taxonomy, segmentation & boundaries
+• Concentration unassessed — ledger requested; risk rating withheld
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+09 / 25
+Workflow: Market Definition · Customer Segmentation · Buying Behavior  ·  Not re-derived in deck UI
+
+--- slide 10 ---
+2.4 Historical trajectory & growth rate
+Insight Snapshot: Bottom-up: Information request: bottom-up arithmetic: units × capture × realised price (not stated in the data room)
+Volume / growth notes
+• Information request: market growth from series endpoints and years elapsed (not stated in the data room)
+Growth levers / share
+• 1 accounts-vs-CIM gap(s)
+Company financials (released databook)
+Line | FY values | Status
+EBITDA † | doubtful (no final value) | doubtful
+EBITDA Margin † | doubtful (no final value) | doubtful
+Gross Margin | missing | missing
+Revenue † | FY2029=0.0 | doubtful
+YoY Growth | missing | missing
+† Doubtful — provisional released value, not final.
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+10 / 25
+Workflow: Market Volume & Growth · Growth Opportunities · Historical Performance · Market Share Strategy  ·  Not re-derived in deck UI
+
+--- slide 11 ---
+2.5 CAGR benchmarking & market lifecycle
+CAGR %
+market_volume_and_growth
+Penetration
+observed / projected
+Lifecycle read
+—
+from CAGR & notes
+• Bottom-up: Information request: bottom-up arithmetic: units × capture × realised price (not stated in the data room)
+• Market: Information request: market growth from series endpoints and years elapsed (not stated in the data room)
+• Company: Information request: company historical growth from accounting records (not stated in the data room)
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+11 / 25
+Workflow: Market Volume & Growth  ·  Not re-derived in deck UI
+
+--- slide 12 ---
+2.6 Pricing power, competitive position & margin
+• Realised: Information request: realised net price after discounts, credits, surcharges (not stated in the data room)
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+12 / 25
+Workflow: Market Pricing · Competitive Differentiation  ·  Not re-derived in deck UI
+
+--- slide 13 ---
+2.7 Macro & structural demand drivers
+Insight Snapshot: Downstream market agents blocked until… Uses market_volume_and_growth
+Structural drivers
+• Downstream market agents blocked until… Uses market_volume_and_growth
+Regional / cycle risks
+• —
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+13 / 25
+Workflow: Demand Drivers · Market Risk  ·  Not re-derived in deck UI
+
+--- slide 14 ---
+2.8 Sustainability, cyclicality & demand verdict
+Insight Snapshot: Driver: Downstream market agents blocked until… Uses market_volume_and_growth
+• Driver: Downstream market agents blocked until… Uses market_volume_and_growth
+• Rank 1: Downstream market agents blocked until… Uses market_volume_and_growth
+• Revenue
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 02 · Market Analysis · Investment Due Diligence · © DiligenceIQ
+14 / 25
+Workflow: Demand Drivers · ESG & Sustainability · Revenue Quality  ·  Not re-derived in deck UI
+
+--- slide 15 ---
+03
+SECTION 03
+Competitive Landscape
+Competitors, positioning, differentiation and SWOT analysis
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+15 / 25
+
+--- slide 16 ---
+3.1 Direct & adjacent competitor universe
+• Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+16 / 25
+Workflow: Competitor Identification  ·  Not re-derived in deck UI
+
+--- slide 17 ---
+3.2 Competitive positioning matrix
+Share vs price / NPS proxy grid from competitor_identification.
+• Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+17 / 25
+Workflow: Competitor Identification · Competitive Differentiation  ·  Not re-derived in deck UI
+
+--- slide 18 ---
+3.3 Competitive capability matrix & barriers
+Capabilities / differentiators
+• Test UNTESTED: Information request: advantage claim to test (not stated in the data room)
+• Claim: Information request: advantage claimed for this business (not stated in the data room)
+Gaps / barriers / moat signals
+• —
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+18 / 25
+Workflow: Competitive Differentiation · Market Risk  ·  Not re-derived in deck UI
+
+--- slide 19 ---
+3.4 Core strategic differentiators & moat
+Insight Snapshot: 2 run-category(ies) mapped
+• 2 run-category(ies) mapped
+• 1 register-verified right(s)
+• ▪ Based in Houston, TX, the Company has established market leadership in several lucrative and growing niches in the value foods sector, including ‘Food as Health’ services for large health insurers a
+• ▪ The Builders Fund, a lower middle market private equity firm with deep expertise in food and health & wellness , has recently invested growth capital in Umoja.
+• The Company is outgrowing its current working capital line of credit amidst rapid growth in its Value Add business line.
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+19 / 25
+Workflow: Competitive Differentiation · IP & Technology · Strategic Direction  ·  Not re-derived in deck UI
+
+--- slide 20 ---
+3.5 Competitive battlecards
+Top competitors from competitor_identification.
+• Customer doing nothing / in-housing (substitute)
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+20 / 25
+Workflow: Competitor Identification · Market Share Strategy · Competitive Differentiation  ·  Not re-derived in deck UI
+
+--- slide 21 ---
+3.6 Differentiation verdict & market share
+Insight Snapshot: Share not calculable / unassessed on matched basis
+• Share is not calculable on a matched numerator/denominator basis — unassessed, not a leadership or weakness finding.
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+21 / 25
+Workflow: Market Share Strategy · Competitive Differentiation · Growth Opportunities  ·  Not re-derived in deck UI
+
+--- slide 22 ---
+3.7 SWOT summary matrix
+Strengths
+• Information request: earnings trend from accounting records [historical_performance]
+• Market perimeter set on 4/4 axes (le largest business unit, comprising… ~60% (DOC: Chief Financial Officer.docx, DOC: Financials__Supplemental Diligence Schedules _Expense Details.pdf, DOC: Financials__VHP Balance Sheet _2023-2024.pdf)) [market_definition]
+Weaknesses
+• Key-person exposure — Operations Finance (CEO). [internal_risk]
+• Key-person exposure — Technology Hank Morton (CFO). [internal_risk]
+• Workforce / safety: Safety / incidents [esg_and_sustainability]
+• Cash trend / liquidity headroom [internal_risk]
+Opportunities
+• Ranked demand driver: Downstream market agents blocked until… Uses market_volume_and_growth (3) [demand_drivers]
+Threats
+• Key-person dependency: Operations Finance (CEO) [management_quality]
+• Key-person dependency: Technology Hank Morton (CFO) [management_quality]
+• Litigation / claim: The Parties acknowledge that Confidential Information is unique and valuable to ea ch Party, and… [regulatory_compliance]
+• Litigation / claim: You acknowledge and agree that: (i) you selected the Equipment, accept it AS IS and WE MAKE NO… [regulatory_compliance]
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 03 · Competitive Landscape · Investment Due Diligence · © DiligenceIQ
+22 / 25
+Workflow: SWOT Analysis  ·  Not re-derived in deck UI
+
+--- slide 23 ---
+04
+SECTION 04
+Summary
+Final position and primary risks for the Investment Committee
+DILIGENCEIQ · INVESTMENT DUE DILIGENCE · STRICTLY PRIVATE & CONFIDENTIAL
+23 / 25
+
+--- slide 24 ---
+CLOSING SUMMARY
+Market Intel Deck — Summary
+Final consolidated position for the Investment Committee.
+DEAL POSITION
+—  Market Definition: Delivery of dry goods and products/services to improve equitable access to quality, nutritious food (DOC: 1, DOC: 2).; Food banks and…
+—  Market Verdict: Bottom-up: Information request: bottom-up arithmetic: units × capture × realised price (not stated in the data room)
+—  Relative Strength: Share not calculable / unassessed on matched basis
+—  Primary Comp. Threat: Customer doing nothing / in-housing (substitute)
+—  Recommendation: Share not calculable / unassessed on matched basis
+END OF MARKET INTEL DECK · UMOJA HEALTH · STRICTLY PRIVATE & CONFIDENTIAL
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 04 · Summary · Investment Due Diligence · © DiligenceIQ
+24 / 25
+
+--- slide 25 ---
+Appendix — Methodology & sources
+Market figures from agents; company financials from released databook only (G1).
+Agent | Code | Slug | Sources
+Market Definition | DD-02 | market_definition | Growth _ Go-To-Market__VHP _ Aetna LA Overview and Back-Up Slides _ful
+Market Volume & Growth | DD-01 | market_volume_and_growth | Attachment 2 Sample Nutrition Assessment A.jpeg, Attachment 3 Sample N
+Market Pricing | DD-17 | market_pricing | Dallas Community College Program Pricing 5.10.24.docx, 1.03 DRAFT Umoj
+Demand Drivers | DD-03 | demand_drivers | PO 38621 Umoja Health _Weinberg Regional Food Bank.pdf, 2020-12-14 Bus
+Competitor Identification | DD-04 | competitor_identification | Growth _ Go-To-Market__Competitor Analysis 2024.xlsx, Competitor Analy
+Competitive Differentiation | DD-06 | competitive_differentiation | Dallas College Amendment to Fund Marketplace Supplier Services FINAL.d
+Market Share Strategy | DD-05 | market_share_strategy | 1.03 DRAFT Umoja - Equity Plan _UPDATED 10.20.2025.xlsx, 1.08 Builders
+SWOT Analysis | DD-07 | swot_analysis | Dallas College Amendment to Fund Marketplace Supplier Services FINAL.d
+Released databook — company financial history
+Line | FY values | Unit | Status
+EBITDA † | doubtful (no final value) | M | doubtful
+EBITDA Margin † | doubtful (no final value) | % | doubtful
+Gross Margin | missing | — | missing
+Revenue † | FY2029=0.0 | — | doubtful
+YoY Growth | missing | — | missing
+Accounts Payable † | doubtful (no final value) | M | doubtful
+† Doubtful — provisional released value, not final.
+MARKET INTEL DECK · Umoja Health
+STRICTLY PRIVATE & CONFIDENTIAL
+Section 04 · Appendix · Investment Due Diligence · © DiligenceIQ
+25 / 25
+Workflow: Market Definition · Market Volume & Growth · Market Pricing · Demand Drivers  ·  Not re-derived in deck UI

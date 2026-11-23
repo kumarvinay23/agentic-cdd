@@ -76,8 +76,12 @@ Numeric claims in these strings must already appear in SOURCE_TEXT or HEURISTIC_
 
 
 def deep_dive_llm_enabled() -> bool:
-    """True when hybrid refine is flagged on and a Gemini key is configured."""
-    return bool(settings.deep_dive_llm) and bool(settings.gemini_api_key.strip())
+    """True when hybrid refine is flagged on and the active LLM provider has a key."""
+    from agetic_cdd_api.services_llm import llm_configured
+
+    return bool(settings.deep_dive_llm) and llm_configured(
+        require_document_synthesis=False
+    )
 
 
 def refine_customer_spec(

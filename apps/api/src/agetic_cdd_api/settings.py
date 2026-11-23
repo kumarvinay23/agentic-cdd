@@ -81,13 +81,39 @@ class Settings(BaseSettings):
     seed_admin_name: str = "Admin"
     seed_org_name: str = "Agentic CDD Workspace"
 
-    # Document Workspace LLM synthesis (Gemini). Empty key → heuristic only.
+    # LLM provider for Document Workspace / Deep Dive / FIN discovery JSON calls.
+    # gemini | openai | anthropic — switch without code changes; restart API after change.
+    llm_provider: str = "gemini"
+    # Optional model override for the active provider. Empty → provider default below.
+    llm_model: str = ""
+    # Optional generic key for the active provider. Provider-specific keys win when set.
+    llm_api_key: str = ""
+
+    # Gemini (default provider). Empty key → heuristic only when provider=gemini.
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.6-flash"
+
+    # OpenAI-compatible Chat Completions (provider=openai).
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
+
+    # Anthropic Messages API (provider=anthropic).
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-5"
+
+    # Master switch for Document Workspace LLM synthesis (all providers).
     document_synthesis_llm: bool = True
 
-    # Deep Dive hybrid refine (Slice 3+). Off by default; heuristics always run first.
+    # Deep Dive hybrid refine (Slice 3+ pilot: satisfaction / buying). Off by default;
+    # heuristics always run first. Soak with scripts/run_deep_dive_llm_soak.py before
+    # enabling for CDD insight A/B.
     deep_dive_llm: bool = False
+
+    # Gate 2 miss only: LLM ranks likely FIN_* files then re-runs parsers.
+    # Off by default — never on the hot path for deals that already ingest series.
+    # Quality harden rejects/reverts zero-only or no-improvement promotes.
+    fin_discovery_on_gate2_miss: bool = False
 
     # When true, FDD/CDD export fails if the databook contract is incomplete.
     # When false (default), export still writes the file but marks it unreliable

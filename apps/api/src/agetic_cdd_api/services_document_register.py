@@ -43,6 +43,58 @@ def document_type(doc_id: str) -> str | None:
     return None
 
 
+def update_document_type(
+    deal: Any,
+    file_name: str,
+    doc_type: str,
+    *,
+    confidence: float | None = None,
+    source: str = "fin_discovery",
+    preferred_sheets: list[str] | tuple[str, ...] | None = None,
+    suggested_sheet: str | None = None,
+) -> dict[str, Any] | None:
+    """Promote / retarget a register row's ontology ``doc_type`` (in-memory + SQL).
+
+    Does not wipe facts — unlike a full register rebuild. Returns the updated
+    row snapshot, or ``None`` when the file is not registered.
+    """
+    deal_id = _deal_id(deal)
+    name = str(file_name or "").strip()
+    type_id = str(doc_type or "").strip()
+    if not deal_id or not name or not type_id:
+        return None
+    kind = _type_by_id(type_id)
+    if kind is None:
+        raise ValueError(f"unknown document type: {type_id}")
+
+    rows = _ROOMS.get(deal_id)
+    if not rows:
+        rows = register_room(deal)
+    row = next((item for item in rows if item.get("file_name") == name), None)
+    if row is None:
+        return None
+
+    previous = str(row.get("doc_type") or "") or None
+    conf = float(confidence) if confidence is not None else float(kind.get("confidence") or 0.9)
+    conf = max(0.0, min(1.0, conf))
+    row["doc_type"] = type_id
+    row["doc_type_confidence"] = conf
+    row["evidence_tier"] = str(kind.get("evidence_tier") or row.get("evidence_tier") or "C")
+    basis = kind.get("basis")
+    row["basis_default"] = basis if basis in _BASIS else row.get("basis_default")
+    row["doc_type_source"] = str(source or "fin_discovery")
+    row["doc_type_previous"] = previous
+    sheets = [str(s).strip() for s in (preferred_sheets or []) if str(s).strip()]
+    if sheets:
+        row["preferred_sheets"] = sheets
+    hint = str(suggested_sheet or (sheets[0] if sheets else "")).strip()
+    if hint:
+        row["suggested_sheet"] = hint
+    _ROOMS[deal_id] = rows
+    _update_doc_type(row)
+    return dict(row)
+
+
 def note_unread(deal_id: str, file_name: str, reason: str) -> None:
     """Keep an unread file in the register and record why.
 
@@ -357,6 +409,30 @@ def _update_status(row: dict[str, Any]) -> None:
     result = psql(url, sql)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "document status update failed")
+
+
+def _update_doc_type(row: dict[str, Any]) -> None:
+    """Persist a single-row doc_type change without deleting facts."""
+    from agetic_cdd_api.settings import settings
+
+    url = settings.databook_database_url.strip()
+    if not url or not _deal_exists(url, str(row["deal_id"])):
+        return
+    from agetic_cdd_api.services_databook_migrate import psql
+
+    basis = row.get("basis_default")
+    basis_sql = "NULL" if not basis else _text(basis)
+    sql = (
+        "UPDATE document SET "
+        f"doc_type = {_text(row['doc_type'])}, "
+        f"doc_type_confidence = {float(row.get('doc_type_confidence') or 0)}, "
+        f"evidence_tier = {_text(row.get('evidence_tier') or 'C')}, "
+        f"basis_default = {basis_sql} "
+        f"WHERE doc_id = {_text(row['doc_id'])};"
+    )
+    result = psql(url, sql)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "document type update failed")
 
 
 def _persist(deal_id: str, rows: list[dict[str, Any]]) -> None:

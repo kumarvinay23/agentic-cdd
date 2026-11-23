@@ -1,0 +1,83 @@
+Table of Contents
+1.0 Deal Framing & Scope ........................ 01
+    1.1 Deal Context & Objectives ............... 01
+    1.2 Scope & Methodology ..................... 03
+2.0 Company & Management ........................ 07
+    2.1 Company Background ...................... 07
+    2.2 Strategic Direction ..................... 10
+    2.3 Management Quality ...................... 12
+3.0 Legal, IP & ESG ............................. 15
+    3.1 Regulatory Compliance ................... 15
+    3.2 IP & Technology Assessment .............. 16
+    3.3 ESG & Sustainability .................... 17
+Also included in this document (not listed above, matching the live Strategy TOC): Executive Summary · Appendices — Source Index.
+Executive Summary
+Insight: Strategy assessment for Compost Crew. Investment stance: Proceed with diligence on stated conditions — not invest. Confidence: blocked.
+Compost Crew is a US-based organics waste collection, processing, and compostables supply business operating primarily across Maryland, Northern Virginia, and Washington D.C. The company generates revenue by providing…
+Investment pillars
+Thesis driver
+Financial direction
+Primary risks
+Valuation range blocked — Earnings quality / declared earnings — Published price range / walk-away discipline; Owner: Valuation lead
+Valuation range blocked — Net debt (capital structure) — Published price range / walk-away discipline; Owner: Valuation lead
+Valuation range blocked — Working capital — Published price range / walk-away discipline; Owner: Valuation lead
+Blocked workstream: revenue_quality — Signing readiness / price lock; Owner: Deal team
+Blocked workstream: customer_stickiness — Signing readiness / price lock; No retention metric and no cohort were evidenced, so persistence of revenue cannot be measured: GRR, NRR and logo retention are unquantified and the cohort curve is absent. The retention workbook and · Owner: Deal team
+Blocked workstream: swot_analysis — Signing readiness / price lock; PASS: 10 item(s) traced to upstream agents; no invented numbers. Open blocker(s) present — positive tone must not override. · Owner: Deal team
+Transaction posture
+Structure: Deal structure response to internal risk: Covenant position; Deal structure: confirm treatment of Information request: facility name from loan docs / ledger in sources & uses; Carry unsized risk with protection until sized: Information request: external risk for this business / g
+Source: this deal's diligence workflow output— the Executive Summary, Recommendation agents. Not re-derived here. That analysis cites: MD_NOVA_ZIP Expansion Analysis_Final_10_22_2025.xlsx, CC_Investor_Workbook_EXTERNAL.xlsx, 2026 Commercial Sales Proposal.pptx, 2026-08-31_securities-ledger.xlsx, 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt….
+1.0 Deal Framing & Scope
+Extracting deal context, hypotheses and defining the analytical roadmap.
+1.1 Deal Context & Objectives
+Insight: Compost Crew is a DMV-based organic waste recycling and composting business generating $13.46M in ARR as of June 30, 2026 across 25,546 active locations. Historical performance shows revenue expanding from $7.53M (2023) to $13.28M (2025) with volatile EBITDA margins (ranging from -9.88% in 2023 to +9.50% in 2024 and…
+1.1.1 Key context findings
+1.1.2 Key investment hypotheses (Must-Be-True)
+Insight: Thesis framework: growth_equity. Attractiveness score: 7/10.
+1.1.3 Market perimeter signals
+Insight: Organics waste collection services, compostable product supplies ('Key Compostables'), and processed compost products (DOC: [2], DOC: [5]).
+Geographic mix:
+Washington D.C. metropolitan area (including Maryland and Northern Virginia) and Philadelphia (DOC: 2026-08-31_securities-ledger.xlsx, DOC: 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, DOC: 2_3_1 Financial Projections__Please see Investor Workbook.txt)
+1.2 Scope & Methodology
+Insight: Coverage record for Compost Crew: 6/8 in-scope questions have at least partial evidence; 5/8 complete. Documents read 5/37. 3 unfinished item(s) must close before a decision.
+1.2.1 Deliverable focus areas
+Source: this deal's diligence workflow output— the Strategic Direction, Growth Opportunities, Market Definition, Deal Context & Objectives, Synergies, Scope & Methodology agents. Not re-derived here. That analysis cites: 4_2_2 Equipment List__Please see CIM P46.txt, CC_CIM_JPC_FINAL_090126.pptx, Please see CIM P39.txt, Please see CIM P46.txt, Please see CIM P59.txt….
+2.0 Company & Management
+Analyzing company background, strategic direction and management quality.
+2.1 Company Background
+Insight: Compost Crew is a US-based organics waste collection, processing, and compostables supply business operating primarily across Maryland, Northern Virginia, and Washington D.C. The company generates revenue by providing subscription and contracted organics collection services to commercial, municipal, and residential…
+2.1.3 Competitive context
+2.2 Strategic Direction
+Insight: Thesis framework: growth_equity. Attractiveness score: 7/10.
+2.2.2 Synergy themes
+2.2.3 Technology & scalability
+2.3 Management Quality
+Insight: Organisation risk score: 6/10.
+2.3.1 Key-person & retention risk
+Insight: Overall human capital risk: 2/10.
+Source: this deal's diligence workflow output— the Company Background, Strategic Direction, Growth Opportunities, Synergies, Management Quality, Execution Risk… agents. Not re-derived here. That analysis cites: MD_NOVA_ZIP Expansion Analysis_Final_10_22_2025.xlsx, CC_Investor_Workbook_EXTERNAL.xlsx, 2026-08-31_securities-ledger.xlsx, Compost Crew Monthly Financials 23YTD26.xlsx, Completed 2c2i Baseline Metrics Compost Crew.xlsx….
+3.0 Legal, IP & ESG
+Assessing regulatory compliance, IP portfolio and ESG sustainability.
+3.1 Regulatory Compliance
+Insight: No NDA risk clauses extracted. — severity 2/5
+3.2 IP & Technology Assessment
+Insight: 1 run-category(ies) mapped
+3.3 ESG & Sustainability
+Insight: Safety / incidents: Information request: safety incident / LTIFR / TRIR record
+3.3.1 Supply-chain resilience
+2 stage(s), 0 SPOF(s)
+Supplier facts reconciled — no term conflicts
+3.3.2 Operational integrity notes
+The risk register is drawn from records (incidents, downtime, rework, quality failures, safety events, staff turnover, system outages, permit/licence conditions) — not from a generic risk taxonomy.
+Each risk is sized: how often it has occurred, what it cost, and what it would do to EBITDA if it recurred at that rate.
+Controls in place are recorded with whether each has been **tested**. An untested control is not mitigation.
+Source: this deal's diligence workflow output— the Regulatory Compliance, IP & Technology, ESG & Sustainability, Supply Chain Resilience, Operational Risk agents. Not re-derived here. That analysis cites: Edmonston Grant Contract - Fully Executed_NR233A750005C012 - Apr 2023 _1.pdf, No pending or scheduled threatened litigation.txt, CC - Depreciation Schedule as on 07_31_2026.xlsx, OG Loan Schedules.xlsx, 4280-2 Compost Crew FY25 FPEP.pdf….
+Appendices — Source Index
+Insight: Appendices for Compost Crew. 60 claim(s). 38 evidence row(s). 5 calculation(s). 38 source(s). citation supports=3 unverified=37
+Claim register (Appendices agent)
+Citation check summary
+Claims checked: 40; supports=3; unverified=37; does_not_support=0. Availability is not verification.
+…and 7 additional agents omitted from the printed index.
+Appendix — Databook financial history (released)
+Material company figures prefer the current Databook release (proven / doubtful / missing). Unproven agent figures are not shown as final.
+† Doubtful — provisional released value, not final. mixed = partial year coverage (not a silent final).

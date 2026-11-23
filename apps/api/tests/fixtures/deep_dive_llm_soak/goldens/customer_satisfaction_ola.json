@@ -1,0 +1,14 @@
+{
+  "id": "customer_satisfaction_ola",
+  "slug": "customer_satisfaction",
+  "description": "Hybrid refine should sharpen satisfaction prose while locking NPS / driver %.",
+  "source_file": "ola_commercial_cim.txt",
+  "sources": ["ola_commercial_cim.txt"],
+  "prior_spec": {
+    "competitors": [
+      {"name": "Ola Electric", "nps": 34.0, "market_share_pct": 32.0},
+      {"name": "Ather Energy", "nps": 61.0, "market_share_pct": 12.0},
+      {"name": "TVS iQube", "nps": 48.0, "market_share_pct": 18.0}
+    ]
+  }
+}

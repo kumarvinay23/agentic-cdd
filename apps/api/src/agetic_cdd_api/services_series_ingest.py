@@ -164,7 +164,13 @@ def assess_statement_series_ingest(
             if skip:
                 reasons.append(f"skipped:{name}:{skip}")
 
+    # Zeros alone are not usable history — they flip Gate 2 green while poisoning
+    # downstream claims/reconcile (FIN discovery harden).
+    nonzero_series = sum(1 for fact in series_facts if _series_value_abs(fact) > 0.0)
     usable = series_fact_count > 0 or series_metric_count > 0
+    if series_fact_count > 0 and nonzero_series == 0:
+        reasons.append("zero_only_series_cells")
+        usable = False
     if expected and not usable:
         if url:
             from agetic_cdd_api.services_deal_profile import published_databook
@@ -172,7 +178,8 @@ def assess_statement_series_ingest(
             if not published_databook(deal_id):
                 reasons.append("profile_unpublished")
         if room is not None and not any(str(r).startswith("skipped:") for r in reasons):
-            reasons.append("no_mapped_series_cells")
+            if "zero_only_series_cells" not in reasons:
+                reasons.append("no_mapped_series_cells")
         if room is None and "databook_url_unset" not in reasons:
             if not any(str(r).startswith("read_failed:") for r in reasons):
                 reasons.append("statement_read_returned_empty")
@@ -241,6 +248,18 @@ def _is_series_fact(fact: Any) -> bool:
     if status and status not in {"SELECTED", "HELD", "DERIVED", "COMPARATIVE"}:
         return False
     return value is not None
+
+
+def _series_value_abs(fact: Any) -> float:
+    """Absolute numeric magnitude for a series fact; non-numeric → 0."""
+    if isinstance(fact, dict):
+        value = fact.get("value")
+    else:
+        value = getattr(fact, "value", None)
+    try:
+        return abs(float(value))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _metric_count_from_facts(facts: list[Any]) -> int:

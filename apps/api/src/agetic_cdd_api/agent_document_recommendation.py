@@ -733,7 +733,9 @@ def _harvest_valuation(payload: dict[str, Any]) -> list[dict[str, Any]]:
         if a:
             out.append(a)
     earn = spec.get("earnings_basis") if isinstance(spec.get("earnings_basis"), dict) else {}
-    if earn.get("amount") is not None and not str(earn.get("amount")).startswith("Information"):
+    from agetic_cdd_api.services_metric_hygiene import earnings_basis_is_usable
+
+    if earnings_basis_is_usable(earn):
         finding = (
             f"Earnings basis: {earn.get('metric')} {earn.get('amount')} "
             f"{earn.get('unit')} ({earn.get('period')})"

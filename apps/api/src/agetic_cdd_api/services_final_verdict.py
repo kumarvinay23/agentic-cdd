@@ -1145,7 +1145,9 @@ def _build_stage_b_output(
         )[:600]
         findings_list: list[str] = []
         earn = vm_spec.get("earnings_basis") if isinstance(vm_spec.get("earnings_basis"), dict) else {}
-        if earn.get("amount") is not None and not str(earn.get("amount")).startswith("Information"):
+        from agetic_cdd_api.services_metric_hygiene import earnings_basis_is_usable
+
+        if earnings_basis_is_usable(earn):
             findings_list.append(
                 f"Earnings basis: {earn.get('metric')} {earn.get('amount')} "
                 f"{earn.get('unit')} ({earn.get('period')})"

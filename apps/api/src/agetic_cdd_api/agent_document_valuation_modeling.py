@@ -358,33 +358,55 @@ def _earnings_basis(
                         )
                 break
 
-    # Historical accounts when pack lacks a USD earnings figure
+    # Historical accounts when pack lacks a USD earnings figure.
+    # Reject non-positive stubs and raw-$ spills (53876 next to ~13 USD M).
     if (amount == _NA or amount is None) and isinstance(historical, dict):
+        from agetic_cdd_api.services_metric_hygiene import (
+            clean_money_unit,
+            pick_scale_consistent_amount,
+        )
+
         for row in historical.get("pl_lines") or []:
             if not isinstance(row, dict):
                 continue
-            if "revenue" not in str(row.get("line_item") or "").lower():
+            item = str(row.get("line_item") or row.get("metric_key") or "").lower()
+            if "revenue" not in item:
                 continue
-            # Prefer latest filled fiscal year column
+            unit = clean_money_unit(str(row.get("unit") or "USD M"))
+            candidates: list[tuple[int, float]] = []
+            labels_by_year = {
+                2025: "FY2025E (accounts)",
+                2024: "FY2024E (accounts)",
+                2023: "FY2023 (accounts)",
+            }
             for key, label in (
                 ("fy2025_value", "FY2025E (accounts)"),
                 ("fy2024_value", "FY2024E (accounts)"),
                 ("fy2023_value", "FY2023 (accounts)"),
             ):
                 val = row.get(key)
-                if isinstance(val, (int, float)):
-                    amount = float(val)
-                    unit = str(row.get("unit") or "USD M")
-                    metric = "Revenue"
-                    period = label
-                    source = _DOC_CITE
-                    adjustments = (
-                        "As reported in historical performance extract — "
-                        "convert explicitly if a method uses a USD metric"
-                    )
-                    break
-            if amount != _NA and amount is not None:
-                break
+                try:
+                    year = int(key[2:6])
+                    amt = float(val)
+                except (TypeError, ValueError):
+                    continue
+                candidates.append((year, amt))
+                labels_by_year[year] = label
+            picked = pick_scale_consistent_amount(
+                candidates, family="revenue", unit=unit
+            )
+            if picked is None:
+                continue
+            year, amt = picked
+            amount = float(amt)
+            metric = "Revenue"
+            period = labels_by_year.get(year, f"FY{year} (accounts)")
+            source = _DOC_CITE
+            adjustments = (
+                "As reported in historical performance extract — "
+                "convert explicitly if a method uses a USD metric"
+            )
+            break
 
     # Back-solve from EV range / multiple when revenue still missing
     comps = trading_comps if isinstance(trading_comps, dict) else {}
@@ -432,16 +454,33 @@ def _earnings_basis(
         )
         source = _DOC_CITE
 
-    return {
-        "metric": metric,
-        "period": period,
-        "amount": amount if amount is not None else _NA,
-        "unit": unit,
-        "adjustments": adjustments,
-        "source": source,
-        "notes": _EARNINGS_RULE,
-        "company": company,
-    }
+    from agetic_cdd_api.services_metric_hygiene import (
+        clean_money_unit,
+        is_positive_amount,
+        sanitize_earnings_basis,
+    )
+
+    # Final hygiene: never declare a zero/negative earnings amount as the basis.
+    if amount is not None and amount != _NA and not is_positive_amount(amount):
+        amount = _NA
+        adjustments = (
+            "Earnings amount withheld — historical/pack figure was non-positive "
+            "(unit/scale hygiene)."
+        )
+        source = _NA
+
+    return sanitize_earnings_basis(
+        {
+            "metric": metric,
+            "period": period,
+            "amount": amount if amount is not None else _NA,
+            "unit": clean_money_unit(unit),
+            "adjustments": adjustments,
+            "source": source,
+            "notes": _EARNINGS_RULE,
+            "company": company,
+        }
+    )
 
 
 def _arith_check(
@@ -1628,9 +1667,15 @@ def _normalise_llm_spec(
 ) -> dict[str, Any]:
     llm = dict(raw) if isinstance(raw, dict) else {}
 
+    from agetic_cdd_api.services_metric_hygiene import (
+        earnings_basis_is_usable,
+        sanitize_earnings_basis,
+    )
+
     earnings = llm.get("earnings_basis") if isinstance(llm.get("earnings_basis"), dict) else {}
-    if not earnings.get("metric"):
-        earnings = heur.get("earnings_basis") or {}
+    if not earnings.get("metric") or not earnings_basis_is_usable(earnings):
+        earnings = heur.get("earnings_basis") or earnings
+    earnings = sanitize_earnings_basis(earnings)
     earnings["notes"] = _EARNINGS_RULE
     earnings["company"] = company
     llm["earnings_basis"] = earnings
@@ -1826,6 +1871,17 @@ def build_valuation_modeling_spec(
         if isinstance(historical_performance, dict)
         else _load("historical_performance")
     )
+    # Prefer released databook P&L for earnings basis (skip agent zero stubs).
+    if isinstance(hist_spec, dict):
+        try:
+            from agetic_cdd_api.services_databook_consume import prefer_released_pl_lines
+
+            hist_spec = dict(hist_spec)
+            hist_spec["pl_lines"] = prefer_released_pl_lines(
+                deal.slug, hist_spec.get("pl_lines") if isinstance(hist_spec.get("pl_lines"), list) else []
+            )
+        except Exception:
+            pass
     cf_spec = cash_flow_spec if isinstance(cash_flow_spec, dict) else _load("cash_flow")
     cap_spec = (
         capital_structure if isinstance(capital_structure, dict) else _load("capital_structure")

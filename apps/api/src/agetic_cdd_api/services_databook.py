@@ -720,7 +720,13 @@ def _reingest_vdr_file(db: Session, deal: Deal, filename: str, *, rebuild_search
     return name
 
 
-def reread_databook_document(db: Session, deal: Deal, filename: str) -> DatabookSummary:
+def reread_databook_document(
+    db: Session,
+    deal: Deal,
+    filename: str,
+    *,
+    preferred_sheets: list[str] | tuple[str, ...] | None = None,
+) -> DatabookSummary:
     """Deep re-extract one VDR file into the library, then Rescan databook (decision replay)."""
     _reingest_vdr_file(db, deal, filename, rebuild_search=True)
     meta = load_meta(deal)
@@ -729,7 +735,7 @@ def reread_databook_document(db: Session, deal: Deal, filename: str) -> Databook
     try:
         from agetic_cdd_api.services_databook_hitl import reread_document
 
-        reread_document(deal, filename)
+        reread_document(deal, filename, preferred_sheets=preferred_sheets)
     except Exception:
         logger.warning("Ontology reread failed for %s", filename, exc_info=True)
     return rescan_databook(deal)

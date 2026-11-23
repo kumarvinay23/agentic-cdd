@@ -38,6 +38,9 @@ import {
   databookViewRequest,
   databookVouchRequest,
   dataQualityRequest,
+  finDiscoveryAcceptRequest,
+  finDiscoveryCandidatesRequest,
+  finDiscoveryRejectRequest,
   type DatabookFinding,
   type DatabookLineRow,
   type DatabookRow,
@@ -46,6 +49,7 @@ import {
   type DataQualityCandidate,
   type DataQualityItem,
   type DataQualityPayload,
+  type FinDiscoveryHitlCandidate,
   type ValidationCard,
   type ValidationPack,
 } from "@/lib/api";
@@ -78,6 +82,7 @@ export function DealDatabook({
   const [reason, setReason] = useState("");
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [rereadFile, setRereadFile] = useState("");
+  const [finSuggestions, setFinSuggestions] = useState<FinDiscoveryHitlCandidate[]>([]);
   const [materialOnly, setMaterialOnly] = useState(true);
   const [importing, setImporting] = useState(false);
   const [sourceTarget, setSourceTarget] = useState<SourceTarget | null>(null);
@@ -116,6 +121,12 @@ export function DealDatabook({
         setRows(rowRes.data.items);
         setFindings(findRes.data.items);
         setPack(packRes?.data ?? null);
+        try {
+          const hitl = await finDiscoveryCandidatesRequest(accessToken, dealId, "pending");
+          setFinSuggestions(hitl.data.candidates ?? []);
+        } catch {
+          setFinSuggestions([]);
+        }
       } catch (storeErr) {
         if (nextView?.source !== "ontology") throw storeErr;
       }
@@ -128,18 +139,20 @@ export function DealDatabook({
 
   const loadFileStore = useCallback(async () => {
     if (!accessToken) return;
-    const [sum, dq, rowRes, findRes, packRes] = await Promise.all([
+    const [sum, dq, rowRes, findRes, packRes, hitlRes] = await Promise.all([
       databookSummaryRequest(accessToken, dealId),
       dataQualityRequest(accessToken, dealId),
       databookRowsRequest(accessToken, dealId, { material: materialOnly }),
       databookFindingsRequest(accessToken, dealId),
       databookValidationPackRequest(accessToken, dealId).catch(() => null),
+      finDiscoveryCandidatesRequest(accessToken, dealId, "pending").catch(() => null),
     ]);
     setSummary(sum.data);
     setQuality(dq);
     setRows(rowRes.data.items);
     setFindings(findRes.data.items);
     setPack(packRes?.data ?? null);
+    setFinSuggestions(hitlRes?.data.candidates ?? []);
   }, [accessToken, dealId, materialOnly]);
 
   useEffect(() => {
@@ -380,6 +393,40 @@ export function DealDatabook({
       await refresh();
     } catch (err) {
       onError(err instanceof ApiError ? err.message : "Re-read failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onAcceptFinSuggestion = async (item: FinDiscoveryHitlCandidate) => {
+    if (!accessToken) return;
+    setBusy(true);
+    onError(null);
+    try {
+      await finDiscoveryAcceptRequest(accessToken, dealId, {
+        filename: item.filename,
+        doc_type: item.suggested_doc_type || undefined,
+      });
+      await refresh();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Accept FIN suggestion failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRejectFinSuggestion = async (item: FinDiscoveryHitlCandidate) => {
+    if (!accessToken) return;
+    setBusy(true);
+    onError(null);
+    try {
+      await finDiscoveryRejectRequest(accessToken, dealId, {
+        filename: item.filename,
+        reason: "operator_rejected",
+      });
+      await refresh();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Reject FIN suggestion failed");
     } finally {
       setBusy(false);
     }
@@ -923,6 +970,63 @@ export function DealDatabook({
             Uploaded-files queue in triage order (set-aside → forecast → assumption → failed check → sources
             disagree → unread → not landed). Re-read re-extracts one VDR file, then Rescans Databook.
           </p>
+          {finSuggestions.length > 0 ? (
+            <div className="overflow-hidden rounded-lg border border-[#c7d2fe] bg-[#f8fafc]">
+              <div className="border-b border-[#e5e7eb] px-4 py-2.5">
+                <div className="text-[13px] font-semibold text-[#1e3a5f]">
+                  Suggested FIN sources
+                </div>
+                <p className="mt-0.5 text-[12px] text-[#64748b]">
+                  Gate 2 discovery ranked these workbooks but did not auto-promote them. Accept
+                  promotes to FIN_* and re-reads (sheet-aware); Reject dismisses the suggestion.
+                </p>
+              </div>
+              <div className="divide-y divide-[#e5e7eb]">
+                {finSuggestions.map((item) => (
+                  <div
+                    key={`fin-hitl-${item.filename}`}
+                    className="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-[#0f172a]">{item.filename}</div>
+                      <p className="mt-0.5 text-[12px] text-[#64748b]">
+                        {item.suggested_doc_type || "FIN_*"}
+                        {item.confidence != null ? ` · conf ${Number(item.confidence).toFixed(2)}` : ""}
+                        {item.suggested_sheet ? ` · sheet ${item.suggested_sheet}` : ""}
+                        {item.skip_reason ? ` · skipped: ${item.skip_reason}` : ""}
+                      </p>
+                      {item.risk_flags && item.risk_flags.length > 0 ? (
+                        <p className="mt-0.5 text-[11px] text-[#b45309]">
+                          Risk: {item.risk_flags.join(", ")}
+                        </p>
+                      ) : null}
+                      {item.why ? (
+                        <p className="mt-1 text-[11px] text-[#64748b]">{item.why}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onAcceptFinSuggestion(item)}
+                        className="rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onRejectFinSuggestion(item)}
+                        className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-medium text-[#0f172a] hover:bg-[#f8fafc] disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="overflow-hidden rounded-lg border border-[#e5e7eb] bg-white">
             <div className="divide-y divide-[#e5e7eb]">
               {filesPager.pageItems.map((f) => (

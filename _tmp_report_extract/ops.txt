@@ -1,0 +1,138 @@
+
+--- sheet Executive Dashboard ---
+Operations Dashboard |  |  | 
+Compost Crew · Executive Dashboard · Strictly Private & Confidential |  |  | 
+Prepared by DiligenceIQ |  |  | 
+Executive Scorecard — Key Performance Indicators |  |  | 
+KPI | Latest (period) | YoY | RAG Status
+Revenue Growth (YoY) | -100.0% (FY2025) | -100.0% | At-Risk
+Gross Margin | 0.304388% (FY2025) | - | At-Risk
+EBITDA | -32132 (FY2025) | - | At-Risk
+Cash & Equivalents | 2,366,368 | - | Monitor
+Workbook Contents |  |  | 
+Section | Coverage | Status | 
+01 — Customer Analysis | grounded in: customer segmentation, customer stickiness, customer satisfaction | Covered | 
+02 — Operational & Risk | grounded in: operational risk, supplier dependence, supply chain resilience, cost structure | Covered | 
+03 — Financial Analysis | grounded in: historical performance, revenue quality, cost structure, capital structure | Covered | 
+Diligence Workflow Analysis — findings from this deal's agents |  |  | 
+Agent | Finding | Source document(s) | Status
+Historical Performance | EBITDA was already positive in FY2024 (USD M 1.135); latest FY2025 is USD M 0.572. Revenue FY2025 +13% YoY (same-basis). ( ). | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx | On-Track
+Historical Performance | 8 accounting period(s) published | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx | Monitor
+Operational Risk | 1 priced / protection risk(s) | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2026-08-31_securities-ledger.xlsx, 2_3_1 Financial Projections__Please see Investor Workbook.txt | Monitor
+Operational Risk | Quality PASS · Reliance BLOCKED | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2026-08-31_securities-ledger.xlsx, 2_3_1 Financial Projections__Please see Investor Workbook.txt | Monitor
+Internal Risk | 1 observed control weakness(es) | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+Internal Risk | 0 tested / 1 untested control(s) | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+Management Quality | Management QA 4/7 PASS | MD_NOVA_ZIP Expansion Analysis_Final_10_22_2025.xlsx, CC_Investor_Workbook_EXTERNAL.xlsx, 2026-08-31_securities-ledger.xlsx | Monitor
+Management Quality | Quality PASS · Reliance BLOCKED | MD_NOVA_ZIP Expansion Analysis_Final_10_22_2025.xlsx, CC_Investor_Workbook_EXTERNAL.xlsx, 2026-08-31_securities-ledger.xlsx | Monitor
+Deal Context & Objectives | Target: Compost Crew | 2026 Commercial Sales Proposal.pptx, 2026-08-31_securities-ledger.xlsx, 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx | Monitor
+Deal Context & Objectives | $20.4M of the $22.2M Contract potential: is recurring collection revenue Contract potential: Model assumption: 12,000 homes today; ; waitlist 2,300 60,000 homes by 2030; ; 30,000 homes by 2030; ; $4M Revenue today* ~$22.2M Revenue by 2030 $10.4M Revenue by 2030 Our 5-year DC municipal contract, which started as a pilot in 2023 and was signed in 2025, supports growth from 12,000 to 60,000 homes RESIDENTIAL 98.6% Monthly retention (2025) COMMERCIAL 99.3% Monthly retention (2025) 17… [$20.4M → $22.2M → $4M]. | 2026 Commercial Sales Proposal.pptx, 2026-08-31_securities-ledger.xlsx, 2026-08-31_summary_cap_intermediate_cap_detailed_cap.xlsx | Monitor
+Capital Structure | Schedule incomplete — leverage withheld | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+Capital Structure | 1 schedule gap(s) | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+Cash Flow | 1 cash-bridge line(s) | Please see 2_1_1 Financial Statements for Cash Flow Statements.txt, 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx | Monitor
+Cash Flow | 1 EBITDA→cash line(s) | Please see 2_1_1 Financial Statements for Cash Flow Statements.txt, 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx | Monitor
+
+--- sheet Customer Analysis ---
+Operations Dashboard |  | 
+Compost Crew · Customer Analysis · Strictly Private & Confidential |  | 
+Retention & Stickiness Metrics |  | 
+Metric | Value | Source
+
+--- sheet Operational & Risk ---
+Operations Dashboard |  |  | 
+Compost Crew · Operational & Risk · Strictly Private & Confidential |  |  | 
+Cash Flow & Liquidity |  |  | 
+Metric | Value |  | 
+Closing Cash | 116878 |  | 
+EBITDA | -0.722 |  | 
+Diligence Workflow Analysis — findings from this deal's agents |  |  | 
+Agent | Finding | Source document(s) | Status
+Internal Risk | 1 observed control weakness(es) | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+Internal Risk | 0 tested / 1 untested control(s) | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+Operational Risk | 1 priced / protection risk(s) | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2026-08-31_securities-ledger.xlsx, 2_3_1 Financial Projections__Please see Investor Workbook.txt | Monitor
+Operational Risk | Quality PASS · Reliance BLOCKED | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2026-08-31_securities-ledger.xlsx, 2_3_1 Financial Projections__Please see Investor Workbook.txt | Monitor
+Supplier Dependence | Quality PASS · Reliance BLOCKED | CC - Depreciation Schedule as on 07_31_2026.xlsx, OG Loan Schedules.xlsx, CC_CIM_JPC_FINAL_090126.pptx | Monitor
+Supply Chain Resilience | 2 stage(s), 0 SPOF(s) | 2026-08-31_securities-ledger.xlsx, 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2_3_1 Financial Projections__Please see Investor Workbook.txt | Monitor
+Supply Chain Resilience | Supplier facts reconciled — no term conflicts | 2026-08-31_securities-ledger.xlsx, 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt, 2_3_1 Financial Projections__Please see Investor Workbook.txt | Monitor
+Capital Structure | Schedule incomplete — leverage withheld | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+Capital Structure | 1 schedule gap(s) | 2_3_1 Financial Projections__Please see Investor Workbook.txt, Compost Crew Monthly Financials 23YTD26.xlsx, Please see 2_1_1 Financial Statements for BS.txt | Monitor
+
+--- sheet Financial Analysis ---
+Operations Dashboard |  |  |  |  |  |  |  |  |  |  |  | 
+Compost Crew · Financial Analysis · Strictly Private & Confidential |  |  |  |  |  |  |  |  |  |  |  | 
+Financial Series — Full Metric Grid |  |  |  |  |  |  |  |  |  |  |  | 
+Metric | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 |  | 
+Accounts Payable | - | 0.06653664999999999 | 0.28338178 | 0.33579663 | 0.4964697199999999 | - | - | - | - | - |  | 
+Accounts Receivable | - | 0.6020540400000001 | 0.9177724899999999 | 1.20033662 | 1.2225019 | - | - | - | - | - |  | 
+CAPEX | - | - | -1.14086844 | -0.59555795 | -0.4323847199999999 | -0.27149625 | - | - | - | - |  | 
+Cash | - | 4126793.04 | 3356228.93 | 3243135.63 | 2753840.63 | 2366367.5 | - | - | - | - |  | 
+Cogs | - | - | 11546.26 | 6374.06 | 43742.98 | 28183.45 | - | - | - | - |  | 
+Cost of Sales | - | - | 11546.26 | 6374.06 | 43742.98 | 28183.45 | - | - | - | - |  | 
+Current Assets | - | 4.93995107 | 4.08996611 | 4.885106640000001 | 4.28652244 | - | - | - | - | - |  | 
+Current Liabilities | - | 0.52826336 | 1.0469707 | 1.05101838 | 1.1021385 | - | - | - | - | - |  | 
+EBITDA | - | - | -0.744 | 1.115 | -32131.95 | 18262.53 | 0.325 | 0.907 | 3.551 | 7.557 |  | 
+EBITDA Margin | - | - | -0.09883103081827843 | - | - | - | 0.01798859799634693 | 0.03705216716369133 | 0.09860054423279835 | 0.1506308676672846 |  | 
+Gross Margin | - | - | 0.2036594398329895 | 0.3178071538445795 | 0.3043879718241957 | 0.3120587086432446 | 0.3601594066530138 | 0.3862902896360145 | 0.3960681957016715 | 0.4059877613665809 |  | 
+Gross Profit | - | - | 1.539 | 3.771994409999999 | 3.952 | 2.513571019999999 | 6.507 | 9.456 | 14.264 | 20.368 |  | 
+GRR Commercial | - | 0.9811818179896332 | 0.8564660158683555 | 0.7980186726115925 | 0.872742530051471 | - | - | - | - | - |  | 
+GRR Residential | 0.7616750768464854 | 0.7975474299094387 | 0.5083165614432218 | 0.8524309235449149 | 0.8458024479283474 | - | - | - | - | - |  | 
+Inventory | - | 0.07014182000000001 | 0.05453294 | 0.20329566 | 0.22828394 | - | - | - | - | - |  | 
+Labor Cost | - | - | 4.768278 | 5.30132608 | 6.235031020000001 | 3.58585896 | - | - | - | - |  | 
+Long Term Liabilities | - | 1.59854209 | 2.24236833 | 2.75833549 | 2.39120196 | - | - | - | - | - |  | 
+Net Change In Cash | - | - | -1.14463948 | 0.2373607 | -0.5517320600000001 | -0.34240881 | - | - | - | - |  | 
+Net Income | - | - | -1.395633969999999 | 0.2448944999999993 | -0.5602822099999983 | -0.1805009200000008 | - | - | - | - |  | 
+NRR Commercial | - | 1.959701467820993 | 1.244960940989588 | 1.024347294889829 | 1.065633639641065 | - | - | - | - | - |  | 
+NRR Residential | 0.7719159130590624 | 0.8035547711132834 | 0.5147126938486187 | 0.8601327846679349 | 0.8473769144981966 | - | - | - | - | - |  | 
+Operating Cash Flow | - | - | -0.5206092800000001 | 0.54085517 | 0.6105295 | 0.22750981 | - | - | - | - |  | 
+Revenue | - | - | 0 | 19059.49 | 0 | 14.3 | 18.066 | 24.479 | 36.01499999999999 | 50.168 |  | 
+Sba Loan | - | 0.21208778 | 0.1575831 | 0.32159821 | 0.31329394 | - | - | - | - | - |  | 
+Sga | - | - | 2.802002639999999 | 3.2726669 | 4.23083521 | 2.50196663 | - | - | - | - |  | 
+Term Loan | - | 1.38645431 | 1.95779723 | 2.05577264 | 1.70602802 | - | - | - | - | - |  | 
+Total Assets | - | 7.460111710000001 | 7.227011320000001 | 8.021993620000002 | 7.146389859999999 | - | - | - | - | - |  | 
+Total Equity | - | 5.33330626 | 3.937672290000001 | 4.21263975 | 3.6530494 | - | - | - | - | - |  | 
+Total Liabilities | - | 2.12680545 | 3.28933903 | 3.80935387 | 3.49334046 | - | - | - | - | - |  | 
+Yoy Growth | - | - | - | - | -100 | - | 26.335664 | 35.49762 | 47.126108 | 39.297515 |  | 
+Financial Series — Databook release (P0) |  |  |  |  |  |  |  |  |  |  |  | 
+Line Item | FY2030 | FY2029 | FY2028 | FY2027 | FY2026 | FY2025 | FY2024 | FY2023 | FY2022 | FY2021 | Unit | Status
+EBITDA | 7.557 | 3.551 | 0.907 | 0.325 | 0.4392539000000001 † | 0.5717606999999999 † | 1.115 | -0.744 | missing | missing | USD M | M | mixed
+EBITDA Margin | 0.1506308676672846 | 0.09860054423279835 | 0.03705216716369133 | 0.01798859799634693 | doubtful † | doubtful † | doubtful † | -0.09883103081827843 | missing | missing | % | doubtful
+
+--- sheet Source Data ---
+Operations Dashboard |  |  |  |  | 
+Compost Crew · Source Data · Strictly Private & Confidential |  |  |  |  | 
+Underlying Reference Data — provenance fact rows |  |  |  |  | 
+Metric | Fiscal Year | Value | Unit | Agent | Source
+Accounts Payable | 2022 | 0.06653664999999999 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Payable | 2022 | 0.06653664999999999 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Payable | 2022 | 0.06653664999999999 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Payable | 2023 | 0.28338178 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Payable | 2023 | 0.28338178 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Payable | 2023 | 0.28338178 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Payable | 2024 | 0.33579663 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Payable | 2024 | 0.33579663 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Payable | 2024 | 0.33579663 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Payable | 2025 | 0.4964697199999999 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Payable | 2025 | 0.4964697199999999 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Payable | 2025 | 0.4964697199999999 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2022 | 0.6020540400000001 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Receivable | 2022 | 0.6020540400000001 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2022 | 0.6020540400000001 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2023 | 0.9177724899999999 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Receivable | 2023 | 0.9177724899999999 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2023 | 0.9177724899999999 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2024 | 1.20033662 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Receivable | 2024 | 1.20033662 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2024 | 1.20033662 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2025 | 1.2225019 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Accounts Receivable | 2025 | 1.2225019 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Accounts Receivable | 2025 | 1.2225019 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Capex | 2023 | -1.14086844 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Capex | 2023 | -1.14086844 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+CAPEX | 2023 | -1.14086844 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Capex | 2024 | -0.59555795 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Capex | 2024 | -0.59555795 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+CAPEX | 2024 | -0.59555795 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Capex | 2025 | -0.4323847199999999 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Capex | 2025 | -0.4323847199999999 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+CAPEX | 2025 | -0.4323847199999999 | - | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
+Capex | 2026 | -0.27149625 | M | Databook | Compost Crew Monthly Financials 23YTD26.xlsx
+Capex | 2026 | -0.27149625 | M | Historical Performance | 2_2_1 Revenue by Service Line__Please see Investor Workbook.txt
